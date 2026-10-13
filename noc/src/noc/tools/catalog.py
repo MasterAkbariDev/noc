@@ -7,6 +7,8 @@ from noc_shared.permissions import PermissionClass
 from noc_shared.tools import GetServiceLogsArgs, GetServiceStatusArgs, NoArgs, TopProcessesArgs
 
 INVESTIGATOR = "investigator"
+METRICS = "metrics"
+LOGS = "logs"
 
 
 def traceparent_for(context: ToolContext) -> str:
@@ -50,7 +52,7 @@ def sentinel_read_tool(
 
 
 def build_metric_tools(client: PrometheusClient, resources: ResourceLookup) -> list[ToolSpec]:
-    return build_prometheus_tools(client, resources, frozenset({INVESTIGATOR}))
+    return build_prometheus_tools(client, resources, frozenset({INVESTIGATOR, METRICS}))
 
 
 def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
@@ -62,7 +64,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "active/sub state, restart count, main process exit status, active since, memory."
             ),
             args_model=GetServiceStatusArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, METRICS, LOGS}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -74,7 +76,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "and by anyone who can make it log."
             ),
             args_model=GetServiceLogsArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, LOGS}),
             sentinels=sentinels,
             untrusted_fields=("lines",),
         ),
@@ -85,7 +87,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "steal and iowait percent, load averages (1, 5, 15 minutes). One 0.5 s sample."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, METRICS}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -95,7 +97,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "bytes, swap total and used bytes."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, METRICS}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -105,7 +107,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "percent full and inode counts."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, METRICS}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -117,7 +119,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "start a process."
             ),
             args_model=TopProcessesArgs,
-            agents=frozenset({INVESTIGATOR}),
+            agents=frozenset({INVESTIGATOR, METRICS}),
             sentinels=sentinels,
             untrusted_fields=("processes",),
         ),

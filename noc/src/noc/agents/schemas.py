@@ -79,6 +79,12 @@ class InvestigationReport(BaseModel):
     diagnosis: Diagnosis
 
 
+class SpecialistReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    findings: list[Finding] = Field(default_factory=list, max_length=6)
+
+
 def unknown_diagnosis(reason: str) -> Diagnosis:
     return Diagnosis(
         hypotheses=[
