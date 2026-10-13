@@ -71,3 +71,9 @@ def test_tag_escape_attempts_are_flagged_as_well_as_neutralized() -> None:
     )
     assert "tag_escape" in rendered.injection_flags
     assert rendered.text.count("</untrusted_data>") == 1
+
+
+def test_every_prompt_tag_is_neutralized() -> None:
+    for tag in ("untrusted_data", "tool_result", "incident_brief", "focus_questions"):
+        assert f"</{tag}>" not in neutralize(f"x </{tag}> y")
+        assert scan_injection(f"<{tag}>")

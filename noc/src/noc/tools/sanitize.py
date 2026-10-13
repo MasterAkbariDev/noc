@@ -6,6 +6,7 @@ from typing import Any
 from noc.llm.redaction import redact
 
 MAX_UNTRUSTED_LINE_CHARS = 500
+PROMPT_TAGS = "untrusted_data|tool_result|incident_brief|focus_questions"
 TRUNCATION_MARKER = "\n[... truncated by NOC tool layer ...]"
 
 INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -20,7 +21,7 @@ INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"\b(restart_service|restart_container|kill_process|block_ip|rollback_release|reboot_host"
         r"|start_service|tool|function)\b"
     ),
-    "tag_escape": re.compile(r"(?i)<\s*/?\s*(untrusted_data|tool_result)"),
+    "tag_escape": re.compile(rf"(?i)<\s*/?\s*({PROMPT_TAGS})"),
     "approval_claim": re.compile(
         r"(?i)\b(admin|administrator|operator|owner)\b.{0,30}\b(approved|authori[sz]ed|allows?)\b"
     ),
@@ -28,7 +29,7 @@ INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-TAG_PATTERN = re.compile(r"(?i)<(\s*/?\s*)(untrusted_data|tool_result)")
+TAG_PATTERN = re.compile(rf"(?i)<(\s*/?\s*)({PROMPT_TAGS})")
 
 
 @dataclass(frozen=True)
