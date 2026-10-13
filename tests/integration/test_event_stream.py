@@ -144,6 +144,9 @@ async def test_stream_closes_listener_when_client_disconnects(
         await task
     async with sessions() as session:
         listeners = await session.scalar(
-            text("SELECT count(*) FROM pg_stat_activity WHERE query ILIKE 'LISTEN%'")
+            text(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND query ILIKE 'LISTEN%'"
+            )
         )
     assert listeners == 0
