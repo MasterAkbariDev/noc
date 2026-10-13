@@ -94,3 +94,21 @@ class IncidentDetail(IncidentSummary):
     actions: list[ActionView]
     report_markdown: str | None
     diagnosis: DiagnosisView | None
+
+
+class TargetResourceView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    resource_id: str
+    kind: str
+    name: str
+
+
+class TargetView(BaseModel):
+    id: uuid.UUID
+    name: str
+    environment: str
+    automation_level: str
+    halted: bool
+    last_inventory_at: datetime | None
+    resources: list[TargetResourceView]
