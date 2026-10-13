@@ -1,0 +1,18 @@
+target: demo-1
+environment: lab
+listen:
+  host: 0.0.0.0
+  port: 9443
+tls:
+  cert_file: /etc/noc-sentinel/tls/server.pem
+  key_file: /etc/noc-sentinel/tls/server-key.pem
+  client_ca_file: /etc/noc-sentinel/tls/ca.pem
+key_files:
+  noc-worker-2026a: /etc/noc-sentinel/keys/noc-worker-2026a.key
+state_dir: /var/lib/noc-sentinel
+halt_file: /etc/noc-sentinel/HALT
+resources:
+  - id: svc:demo-shop
+    kind: systemd_unit
+    name: demo-shop.service
+    allowed_actions: [restart_service, start_service]

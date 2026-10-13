@@ -1,0 +1,65 @@
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Annotated, Any
+
+from fastapi import Depends, FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client.registry import CollectorRegistry
+
+from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
+from noc_sentinel.halt import is_halted
+from noc_sentinel.metrics import SentinelCollector
+from noc_sentinel.nonce_store import NonceStore
+from noc_sentinel.security import RequestVerifier
+from noc_sentinel.tools import Toolbox
+from noc_sentinel.tools.systemd import SystemctlRunner
+from noc_shared.resources import Inventory
+from noc_shared.signing import VerifiedRequest
+from noc_shared.tools import ToolCallRequest, ToolCallResponse
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def create_app(
+    config: SentinelConfig,
+    systemctl: SystemctlRunner,
+    nonce_store: NonceStore,
+    secrets: dict[str, bytes],
+    clock: Callable[[], datetime] = utc_now,
+) -> FastAPI:
+    app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
+    verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
+    toolbox = Toolbox(config, systemctl)
+    registry = CollectorRegistry()
+    registry.register(SentinelCollector(config, systemctl))
+    Signed = Annotated[VerifiedRequest, Depends(verifier)]
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/metrics")
+    def metrics() -> Response:
+        return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
+
+    @app.get("/v1/inventory")
+    def inventory(_: Signed) -> Inventory:
+        return Inventory(
+            target=config.target,
+            environment=config.environment,
+            sentinel_version=SENTINEL_VERSION,
+            halted=is_halted(config.halt_file),
+            resources=config.resources,
+        )
+
+    @app.post("/v1/tools/{tool_name}")
+    def call_tool(tool_name: str, request: ToolCallRequest, _: Signed) -> ToolCallResponse:
+        return toolbox.run(tool_name, request.args)
+
+    @app.get("/v1/tools")
+    def list_tools(_: Signed) -> dict[str, Any]:
+        return {"tools": toolbox.names()}
+
+    return app

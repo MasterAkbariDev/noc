@@ -1,0 +1,17 @@
+.venv/
+.tools/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.env
+deploy/pki/out/
+deploy/noc/keys/
+*.key
+*.pem
+node_modules/
+dist/
+.DS_Store
+.sentinel-state/
+.claude/worktrees/

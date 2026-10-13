@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: node
+    sample_limit: 2000
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/node.json]
+    scheme: https
+    tls_config:
+      ca_file: /etc/prometheus/pki/ca.pem
+      cert_file: /etc/prometheus/pki/prometheus.pem
+      key_file: /etc/prometheus/pki/prometheus-key.pem
+
+  - job_name: sentinel
+    sample_limit: 500
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/sentinel.json]
+    scheme: https
+    tls_config:
+      ca_file: /etc/prometheus/pki/ca.pem
+      cert_file: /etc/prometheus/pki/prometheus.pem
+      key_file: /etc/prometheus/pki/prometheus-key.pem

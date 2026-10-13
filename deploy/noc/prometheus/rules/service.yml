@@ -1,0 +1,21 @@
+groups:
+  - name: service-alerts
+    rules:
+      - alert: ServiceDown
+        expr: noc_service_up == 0
+        for: 1m
+        keep_firing_for: 2m
+        labels:
+          severity: critical
+          category: service
+        annotations:
+          summary: "Registered service {{ $labels.resource }} on {{ $labels.target }} is not active"
+
+      - alert: SentinelDown
+        expr: up{job="sentinel"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          category: noc
+        annotations:
+          summary: "Sentinel on {{ $labels.target }} cannot be scraped"

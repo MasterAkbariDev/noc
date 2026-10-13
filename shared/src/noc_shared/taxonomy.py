@@ -1,0 +1,26 @@
+from enum import StrEnum
+
+
+class RootCauseCode(StrEnum):
+    CPU_RUNAWAY_PROCESS = "cpu_runaway_process"
+    MEMORY_LEAK = "memory_leak"
+    OOM_KILL_LOOP = "oom_kill_loop"
+    DISK_FULL_LOGS = "disk_full_logs"
+    DISK_FULL_DATA = "disk_full_data"
+    INODE_EXHAUSTION = "inode_exhaustion"
+    SERVICE_CRASHED = "service_crashed"
+    SERVICE_MISCONFIGURED = "service_misconfigured"
+    BAD_DEPLOY = "bad_deploy"
+    DEPENDENCY_DB_UNAVAILABLE = "dependency_db_unavailable"
+    DB_CONNECTION_EXHAUSTION = "db_connection_exhaustion"
+    UPSTREAM_LATENCY = "upstream_latency"
+    NETWORK_LATENCY = "network_latency"
+    NETWORK_PARTITION = "network_partition"
+    DNS_RESOLUTION_FAILURE = "dns_resolution_failure"
+    TLS_CERTIFICATE_INVALID = "tls_certificate_invalid"
+    CLOCK_SKEW = "clock_skew"
+    NOISY_NEIGHBOR = "noisy_neighbor"
+    BRUTE_FORCE_SSH = "brute_force_ssh"
+    SUSPICIOUS_PROCESS = "suspicious_process"
+    TRANSIENT_SPIKE = "transient_spike"
+    UNKNOWN = "unknown"

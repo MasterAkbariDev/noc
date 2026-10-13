@@ -1,0 +1,21 @@
+[project]
+name = "noc-sentinel"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "noc-shared",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pyyaml>=6.0",
+    "prometheus-client>=0.21",
+]
+
+[project.scripts]
+noc-sentinel = "noc_sentinel.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/noc_sentinel"]

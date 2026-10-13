@@ -1,0 +1,32 @@
+[Unit]
+Description=NOC sentinel (typed read tools for the Multi-Agent NOC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noc-sentinel
+Group=noc-sentinel
+SupplementaryGroups=systemd-journal
+ExecStart=/opt/noc-sentinel/bin/noc-sentinel --config /etc/noc-sentinel/config.yaml
+Restart=on-failure
+RestartSec=5
+StateDirectory=noc-sentinel
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=96M
+CPUQuota=20%
+TasksMax=32
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

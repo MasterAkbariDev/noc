@@ -1,0 +1,79 @@
+name: noc
+
+x-noc-app: &noc-app
+  build:
+    context: ../..
+    dockerfile: deploy/noc/Dockerfile
+  image: ${NOC_IMAGE:-noc:dev}
+  env_file: ../../.env
+  environment:
+    NOC_DATABASE_URL: postgresql+psycopg://noc:${POSTGRES_PASSWORD:-noc}@postgres:5432/noc
+    NOC_PROMETHEUS_URL: http://prometheus:9090
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  logging: &logging
+    driver: json-file
+    options: { max-size: 10m, max-file: "3" }
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: noc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-noc}
+      POSTGRES_DB: noc
+    command: >
+      postgres -c shared_buffers=128MB -c max_connections=30 -c work_mem=8MB
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noc -d noc"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+    restart: unless-stopped
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=3GB
+      - --web.enable-lifecycle
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    mem_limit: 384m
+    restart: unless-stopped
+    logging: *logging
+
+  migrate:
+    <<: *noc-app
+    command: ["noc", "db", "upgrade"]
+    restart: "no"
+
+  api:
+    <<: *noc-app
+    command: ["noc", "api", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["127.0.0.1:8000:8000"]
+    mem_limit: 256m
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *noc-app
+    command: ["noc", "worker"]
+    mem_limit: 512m
+    volumes:
+      - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  promdata:

@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: noc
+          POSTGRES_PASSWORD: noc
+          POSTGRES_DB: noc_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U noc" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: .venv/bin/ruff check .
+      - run: .venv/bin/ruff format --check .
+      - run: .venv/bin/python scripts/check_doc_links.py
+      - run: .venv/bin/mypy shared/src sentinel/src noc/src
+      - run: .venv/bin/pytest tests -q
+        env:
+          NOC_TEST_DATABASE_URL: postgresql+psycopg://noc:noc@localhost:5432/noc_test
+
+  prometheus-rules:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make rules-test

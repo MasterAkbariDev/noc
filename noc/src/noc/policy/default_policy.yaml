@@ -1,0 +1,70 @@
+version: "2026-10-skeleton-1"
+
+weights:
+  blast_radius: 5
+  irreversibility: 4
+  downtime: 5
+  uncertainty: 3
+  safe_max: 12
+  approval_max: 30
+
+protected_resources:
+  - "svc:ssh.service"
+  - "svc:sshd.service"
+  - "svc:noc-sentinel.service"
+  - "svc:systemd-journald.service"
+  - "svc:docker.service"
+
+actions:
+  wait_and_watch:
+    base_class: SAFE_ACTION
+    rung: 0
+    impact: { blast_radius: 0, irreversibility: 0, downtime: 0 }
+  start_service:
+    base_class: SAFE_ACTION
+    rung: 3
+    restart_class: true
+    impact: { blast_radius: 2, irreversibility: 0, downtime: 0 }
+  restart_service:
+    base_class: SAFE_ACTION
+    rung: 3
+    restart_class: true
+    impact: { blast_radius: 2, irreversibility: 1, downtime: 2 }
+  restart_container:
+    base_class: SAFE_ACTION
+    rung: 3
+    restart_class: true
+    impact: { blast_radius: 2, irreversibility: 1, downtime: 2 }
+  vacuum_journal:
+    base_class: SAFE_ACTION
+    rung: 1
+    impact: { blast_radius: 0, irreversibility: 1, downtime: 0 }
+  kill_process:
+    base_class: REQUIRES_APPROVAL
+    rung: 1
+    impact: { blast_radius: 1, irreversibility: 2, downtime: 1 }
+  block_ip:
+    base_class: REQUIRES_APPROVAL
+    rung: 1
+    containment: true
+    impact: { blast_radius: 1, irreversibility: 0, downtime: 0 }
+  rollback_release:
+    base_class: REQUIRES_APPROVAL
+    rung: 4
+    restart_class: true
+    needs_recovery_asset: true
+    impact: { blast_radius: 2, irreversibility: 2, downtime: 2 }
+  reboot_host:
+    base_class: BLOCKED
+    rung: 5
+    impact: { blast_radius: 4, irreversibility: 2, downtime: 4 }
+
+root_cause_actions:
+  service_crashed: [start_service, restart_service]
+  memory_leak: [restart_service, restart_container]
+  oom_kill_loop: [restart_service]
+  cpu_runaway_process: [kill_process, restart_service]
+  disk_full_logs: [vacuum_journal]
+  brute_force_ssh: [block_ip]
+  bad_deploy: [rollback_release]
+  transient_spike: [wait_and_watch]

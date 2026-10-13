@@ -1,0 +1,34 @@
+[project]
+name = "noc"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "noc-shared",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "psycopg[binary,pool]>=3.2",
+    "alembic>=1.14",
+    "httpx>=0.27",
+    "openai>=1.54",
+    "langgraph>=1.0,<2",
+    "langgraph-checkpoint-postgres>=3.0",
+    "aiolimiter>=1.1",
+    "tenacity>=9.0",
+    "typer>=0.13",
+    "structlog>=24.4",
+    "pyyaml>=6.0",
+    "prometheus-client>=0.21",
+]
+
+[project.scripts]
+noc = "noc.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/noc"]

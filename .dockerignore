@@ -1,0 +1,13 @@
+.venv
+.tools
+.git
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.env
+deploy/pki/out
+deploy/noc/keys
+docs
+tests
+frontend/node_modules

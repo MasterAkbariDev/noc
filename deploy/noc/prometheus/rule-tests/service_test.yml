@@ -1,0 +1,24 @@
+rule_files:
+  - ../rules/service.yml
+
+evaluation_interval: 15s
+
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'noc_service_up{target="demo-1", resource="svc:demo-shop"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 45s
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 105s
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: service
+              target: demo-1
+              resource: svc:demo-shop
+            exp_annotations:
+              summary: "Registered service svc:demo-shop on demo-1 is not active"
