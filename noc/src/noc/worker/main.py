@@ -3,7 +3,7 @@ import os
 import signal
 import socket
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
 
@@ -29,8 +29,12 @@ logger = structlog.get_logger(__name__)
 JOBS_FINISHED = Counter(
     "noc_jobs_finished_total", "Jobs finished by the worker", ["kind", "result"]
 )
+LOOP_ERRORS = Counter(
+    "noc_worker_loop_errors_total", "Unexpected errors caught in worker loops", ["loop"]
+)
 RETRY_DELAY_SECONDS = 30
 IDLE_SLEEP_SECONDS = 1.0
+ERROR_BACKOFF_SECONDS = 5.0
 
 
 def worker_identity() -> str:
@@ -58,7 +62,7 @@ class Worker:
         self._stopping.set()
 
     async def run(self) -> None:
-        loops: list[Awaitable[None]] = [self._ingest_loop(), self._job_loop()]
+        loops: list[Awaitable[None]] = [self.run_ingest_loop(), self._job_loop()]
         if self._settings.prometheus_targets_dir is not None:
             loops.append(self._file_sd_loop(self._settings.prometheus_targets_dir))
         await asyncio.gather(*loops)
@@ -69,20 +73,38 @@ class Worker:
         with suppress(TimeoutError):
             await asyncio.wait_for(self._stopping.wait(), seconds)
 
-    async def _ingest_loop(self) -> None:
+    async def _repeat(
+        self, name: str, step: Callable[[], Awaitable[object]], interval_seconds: float
+    ) -> None:
         while not self._stopping.is_set():
-            await self._ingestor.poll_once()
-            await self._sleep(self._settings.poll_interval_seconds)
+            try:
+                await step()
+            except Exception:
+                LOOP_ERRORS.labels(name).inc()
+                logger.exception("worker_loop_error", loop=name)
+            await self._sleep(interval_seconds)
+
+    async def run_ingest_loop(self) -> None:
+        await self._repeat("ingest", self._ingestor.poll_once, self._settings.poll_interval_seconds)
 
     async def _file_sd_loop(self, directory: Path) -> None:
-        while not self._stopping.is_set():
-            await refresh_file_sd(self._sessions, directory)
-            await self._sleep(self._settings.file_sd_interval_seconds)
+        await self._repeat(
+            "file_sd",
+            lambda: refresh_file_sd(self._sessions, directory),
+            self._settings.file_sd_interval_seconds,
+        )
 
     async def _job_loop(self) -> None:
         while not self._stopping.is_set():
             await self._slots.acquire()
-            job = await self._claim()
+            try:
+                job = await self._claim()
+            except Exception:
+                self._slots.release()
+                LOOP_ERRORS.labels("claim").inc()
+                logger.exception("worker_loop_error", loop="claim")
+                await self._sleep(ERROR_BACKOFF_SECONDS)
+                continue
             if job is None:
                 self._slots.release()
                 await self._sleep(IDLE_SLEEP_SECONDS)
