@@ -1,5 +1,6 @@
 import { Link, NavLink, Navigate, Route, Routes } from "react-router";
 import { useToken } from "./auth/token";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { TokenBar } from "./components/TokenBar";
 import { StreamConnectedContext, useEventStream } from "./live/useEventStream";
 import { IncidentDetailPage } from "./pages/IncidentDetailPage";
@@ -22,6 +23,7 @@ export function App() {
             <NavLink to="/incidents">Incidents</NavLink>
             <NavLink to="/targets">Targets</NavLink>
           </nav>
+          <ThemeToggle />
           <TokenBar />
         </header>
         <main>
