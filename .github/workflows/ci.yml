@@ -35,3 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make rules-test
+
+  pki:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make pki-test
+      - run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:stable deploy/pki/*.sh tests/pki/*.sh

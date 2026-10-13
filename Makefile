@@ -3,7 +3,7 @@ COMPOSE := docker compose -f deploy/noc/docker-compose.yml
 TEST_DB_NAME ?= noc_test
 TEST_DB := postgresql+psycopg://noc:noc@localhost:5432/$(TEST_DB_NAME)
 
-.PHONY: setup lint format typecheck test test-integration check db-up db-down migrate rules-test dev-key sentinel-dev api worker
+.PHONY: setup lint format typecheck test test-integration check db-up db-down migrate rules-test pki-test dev-key sentinel-dev api worker
 
 setup:
 	$(UV) sync
@@ -41,6 +41,9 @@ migrate: db-up
 
 rules-test:
 	docker run --rm -v "$(CURDIR)/deploy/noc/prometheus:/prom" -w /prom/rule-tests --entrypoint sh prom/prometheus:v3.10.0 -c 'promtool check rules /prom/rules/*.yml && promtool test rules *.yml'
+
+pki-test:
+	bash tests/pki/test_pki.sh
 
 dev-key:
 	mkdir -p deploy/noc/keys
