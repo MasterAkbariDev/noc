@@ -144,3 +144,22 @@ class ServiceLogs(BaseModel):
     unit: str
     lines: list[LogLine]
     truncated: bool
+
+
+class PathSize(BaseModel):
+    path: str
+    size_bytes: int
+
+
+class RootSize(BaseModel):
+    path: str
+    total_bytes: int | None
+    readable: bool
+    largest_children: list[PathSize]
+    largest_files: list[PathSize]
+
+
+class DirectorySizes(BaseModel):
+    roots: list[RootSize]
+    complete: bool
+    scanned_entries: int

@@ -14,6 +14,15 @@ halt_file: /etc/noc-sentinel/HALT
 actions:
   enabled: false
   max_per_resource_per_hour: 3
+disk_breakdown_roots:
+  - /var/log
+  - /var/lib/docker
+  - /var/cache
+  - /var/tmp
+  - /tmp
+  - /srv
+  - /opt
+  - /home
 resources:
   - id: svc:demo-shop
     kind: systemd_unit

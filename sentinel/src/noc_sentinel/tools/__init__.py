@@ -7,6 +7,7 @@ import psutil
 from pydantic import BaseModel, ValidationError
 
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
+from noc_sentinel.tools.disk_breakdown import DiskBreakdownReader
 from noc_sentinel.tools.host import HostReader
 from noc_sentinel.tools.journal import JournalReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
@@ -47,11 +48,13 @@ class Toolbox:
         systemctl: SystemctlRunner,
         host: HostReader,
         journal: JournalReader,
+        disk_breakdown: DiskBreakdownReader,
     ) -> None:
         self._config = config
         self._systemctl = systemctl
         self._host = host
         self._journal = journal
+        self._disk_breakdown = disk_breakdown
         self._tools: dict[str, ToolHandler] = {
             "get_service_status": self._get_service_status,
             "get_service_logs": self._get_service_logs,
@@ -59,6 +62,7 @@ class Toolbox:
             "get_memory_usage": self._get_memory_usage,
             "get_disk_usage": self._get_disk_usage,
             "get_top_processes": self._get_top_processes,
+            "get_directory_sizes": self._get_directory_sizes,
         }
 
     def names(self) -> list[str]:
@@ -128,3 +132,7 @@ class Toolbox:
         args = parse_args(TopProcessesArgs, raw_args)
         processes = self._host.processes(args.sort_by, args.limit)
         return TopProcesses(sort_by=args.sort_by, processes=processes).model_dump()
+
+    def _get_directory_sizes(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._disk_breakdown.directory_sizes(self._config.disk_breakdown_roots).model_dump()

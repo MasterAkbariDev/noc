@@ -9,6 +9,16 @@ from noc_shared.resources import ManagedResource, ResourceKind
 SENTINEL_VERSION = "0.1.0"
 CHAOS_TTL_CEILING_SECONDS = 900
 GIB_BYTES = 1024**3
+DEFAULT_DISK_BREAKDOWN_ROOTS = (
+    Path("/var/log"),
+    Path("/var/lib/docker"),
+    Path("/var/cache"),
+    Path("/var/tmp"),
+    Path("/tmp"),
+    Path("/srv"),
+    Path("/opt"),
+    Path("/home"),
+)
 
 
 class TlsConfig(BaseModel):
@@ -53,9 +63,19 @@ class SentinelConfig(BaseModel):
     actions: ActionsConfig = ActionsConfig()
     state_dir: Path = Path("/var/lib/noc-sentinel")
     halt_file: Path = Path("/etc/noc-sentinel/HALT")
+    disk_breakdown_roots: list[Path] = Field(
+        default_factory=lambda: list(DEFAULT_DISK_BREAKDOWN_ROOTS)
+    )
     max_skew_seconds: int = 30
     nonce_ttl_seconds: int = 300
     resources: list[ManagedResource] = Field(default_factory=list)
+
+    @field_validator("disk_breakdown_roots")
+    @classmethod
+    def roots_are_absolute(cls, roots: list[Path]) -> list[Path]:
+        if any(not root.is_absolute() for root in roots):
+            raise ValueError("disk_breakdown_roots must be absolute paths")
+        return roots
 
     @model_validator(mode="after")
     def check_chaos_key(self) -> Self:
