@@ -1,6 +1,6 @@
 # PKI scripts
 
-Creates the certificates that protect the NOC-to-sentinel and Prometheus-to-target links (`docs/SECURITY.md §3`). OpenSSL only, no other tools.
+Creates the certificates that protect the NOC-to-sentinel and Prometheus-to-target links. OpenSSL only, no other tools.
 
 | Script | What it does |
 |---|---|
@@ -61,7 +61,7 @@ Certificates expire after 90 days. Re-issue 21 days before expiry at the latest.
 
 4. Copy the new files to the target or client, then restart the service that reads them (`sudo systemctl restart noc-sentinel`, or `docker compose restart prometheus`). Keep the old files in `retired/` until the new certificate is confirmed working.
 
-The 21-day warning is the policy in `docs/SECURITY.md §3`. The check above is the manual form. Automated alerting is a separate task.
+Renew certificates at least 21 days before they expire. The check above is the manual form. Automated alerting is a separate task.
 
 ## Checks
 

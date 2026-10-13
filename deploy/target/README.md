@@ -1,6 +1,6 @@
 # Target installer
 
-`install.sh` puts node_exporter (and, with `--with-sentinel`, noc-sentinel) on an Ubuntu 24.04 target. The targets run live services (VPN, nginx, Docker, bots), so the installer is written to never disturb them. Read `docs/code/deploy-and-tests.md` ("Target installer") for the reason behind each rule.
+`install.sh` puts node_exporter (and, with `--with-sentinel`, noc-sentinel) on an Ubuntu 24.04 target. The targets run live services (VPN, nginx, Docker, bots), so the installer is written to never disturb them.
 
 ## What it changes
 

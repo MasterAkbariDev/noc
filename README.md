@@ -1,12 +1,25 @@
-# Multi-Agent Autonomous NOC
+# NOC
 
-A resource-efficient, multi-agent AI system that monitors Linux servers, detects incidents, investigates them with specialized LLM agents using **typed, policy-checked tools** (never a shell), proposes or executes safe remediations with human approval, verifies recovery, and writes incident reports.
+A small network operations center for a handful of Linux servers. Prometheus raises alerts, and a team of LLM agents investigates each incident using typed, read-only tools (no shell access). A deterministic policy engine decides what may be done, and the system writes an incident report.
 
-**Status (2026-10-13):** the **walking skeleton** is implemented and tested. One alert becomes one incident, the investigator agent calls a signed read tool on the target, a grounded diagnosis is stored, the policy engine decides (nothing can execute yet), and a report is written. It survives worker crashes. 102 tests pass. Next steps: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
+Built to run on small VPSes: the whole NOC fits in about 1 GB of RAM, and the agent on each monitored server uses under 100 MB. LLM access uses free-tier providers (Gemini, with Groq as a fallback) through one OpenAI-compatible adapter.
 
-## Quick start (development)
+## What's in here
 
-Requirements: Docker, and [uv](https://docs.astral.sh/uv/) (or the bundled `.tools/bin/uv`).
+| Path | Contents |
+|---|---|
+| `noc/` | The NOC: API, worker, alert ingestion, tool layer, policy engine, LLM layer, agents, LangGraph orchestration, reports, CLI |
+| `sentinel/` | The small agent that runs on each monitored server (mTLS + signed requests, read-only tools) |
+| `shared/` | Contracts shared by both (request signing, resource ids, tool envelopes) |
+| `frontend/` | Optional web panel (React + Vite), served by the NOC |
+| `deploy/` | Docker Compose and Prometheus config for the NOC; installer, systemd units and PKI scripts for targets |
+| `lab/demo-app/` | A small demo shop used to stage incidents |
+| `scenarios/` | Reproducible incident scenarios |
+| `tests/` | Unit and integration tests |
+
+## Development
+
+Requirements: Docker and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 make setup
@@ -20,50 +33,14 @@ cp .env.example .env
 make check
 ```
 
-```bash
-make migrate
-```
-
-```bash
-make api
-```
-
-`make check` runs lint, strict type checking and all tests (it starts Postgres in Docker). The full NOC stack (Postgres, Prometheus, migrate, API, worker) runs with:
+`make check` runs lint, strict type checking and the test suite (Postgres runs in Docker). Run the full stack with:
 
 ```bash
 docker compose -f deploy/noc/docker-compose.yml up -d
 ```
 
-No LLM key is needed for development: `NOC_LLM_MODE=replay` answers from recorded cassettes. To use the free-tier providers, set `GEMINI_API_KEY` / `GROQ_API_KEY` and `NOC_LLM_MODE=live` (see `noc/src/noc/llm/providers.yaml`).
+The terminal is the main interface (`noc --help`); the web panel is optional.
 
-## Start here
+## Configuration
 
-1. [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md): goals, principles, stack summary, deliberate deviations from the brief
-2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): components, diagrams, resource budget, repo layout, DB schema
-3. [`docs/code/README.md`](docs/code/README.md): **how the code works**, file by file, with a presentation script
-4. [`TASKS.md`](TASKS.md): the roadmap; [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md): the next task cards
-5. [`CLAUDE.md`](CLAUDE.md): rules for anyone (human or AI agent) changing the code
-
-Design review: [Review summary](docs/DESIGN_REVIEW_2026-10.md) · [Production remediation](docs/PRODUCTION_REMEDIATION.md) · [Detection rules](docs/DETECTION_RULES.md)
-
-Further reading: [Technology decisions](docs/TECHNOLOGY_DECISIONS.md) · [ADRs](docs/DECISIONS.md) · [Agents](docs/AGENTS.md) · [Tools](docs/TOOLS.md) · [Security](docs/SECURITY.md) · [Incident lifecycle](docs/INCIDENT_LIFECYCLE.md) · [Evaluation](docs/EVALUATION.md) · [Demo scenarios](docs/DEMO_SCENARIOS.md)
-
-## Repository layout
-
-| Path | Contents |
-|---|---|
-| `shared/` | `noc_shared`: contracts shared by NOC and sentinel (signing, resource ids, tool envelopes, taxonomy) |
-| `sentinel/` | `noc_sentinel`: the small agent on each monitored server |
-| `noc/` | `noc`: API, worker, detection, tools, policy, LLM layer, agents, LangGraph orchestration, reports, CLI |
-| `deploy/` | Docker Compose + Prometheus config for the NOC; systemd unit and config for targets |
-| `tests/` | Unit and integration tests |
-| `docs/` | Design documents, and `docs/code/` explaining the code |
-
-## Footprint targets
-
-| Host | Budget |
-|---|---|
-| NOC: recommended 2 vCPU / 4 GB / 30 GB (`standard-4g`) | core stack ≈ 1.1–1.7 GB RAM, ≈ 20 GB disk |
-| NOC: minimum 1 vCPU / 2 GB / 18 GB (`small-2g`) | ≈ 0.8–1.3 GB RAM, ≈ 12 GB disk |
-| Target (1–2 GB) | node_exporter + noc-sentinel < 100 MB RAM, < 2 % CPU |
-| LLM | **$0**: Gemini free tier (primary), Groq free tier (fallback), offline replay for demos |
+All settings use the `NOC_` prefix; see `.env.example`. LLM keys go in `GEMINI_API_KEYS` / `GROQ_API_KEYS`, one per line inside double quotes. Without keys, `NOC_LLM_MODE=replay` answers from recorded responses.
