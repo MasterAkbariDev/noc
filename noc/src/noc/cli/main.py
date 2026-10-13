@@ -33,6 +33,7 @@ from noc.store.targets import (
 )
 from noc.tools.sentinel_client import SentinelDirectory, build_sentinel_http
 from noc.tools.spec import TargetRef
+from noc.worker.all_in_one import run_all_in_one
 from noc.worker.main import run_worker
 from noc_shared.taxonomy import RootCauseCode
 
@@ -75,6 +76,12 @@ def api(host: str = "127.0.0.1", port: int = 8000) -> None:
 def worker() -> None:
     configure_logging()
     asyncio.run(run_worker(get_settings()))
+
+
+@app.command("all-in-one")
+def all_in_one(host: str = "127.0.0.1", port: int = 8000) -> None:
+    configure_logging()
+    asyncio.run(run_all_in_one(get_settings(), host, port))
 
 
 def alembic_config() -> Config:

@@ -152,7 +152,18 @@ class Worker:
                 )
 
 
-async def run_worker(settings: Settings) -> None:
+async def run_logged(worker: Worker) -> None:
+    logger.info("worker_started", identity=worker_identity())
+    await worker.run()
+    logger.info("worker_stopped", identity=worker_identity())
+
+
+async def stop_on(shutdown: asyncio.Event, worker: Worker) -> None:
+    await shutdown.wait()
+    worker.stop()
+
+
+async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) -> None:
     start_http_server(settings.worker_metrics_port)
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
@@ -173,9 +184,13 @@ async def run_worker(settings: Settings) -> None:
         source = PrometheusAlertSource(prometheus_http, settings.prometheus_url)
         ingestor = AlertIngestor(source, sessions, settings.missing_polls_to_resolve)
         worker = Worker(settings, sessions, graph, ingestor)
-        loop = asyncio.get_running_loop()
-        for signum in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(signum, worker.stop)
-        logger.info("worker_started", identity=worker_identity())
-        await worker.run()
+        if shutdown is None:
+            loop = asyncio.get_running_loop()
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(signum, worker.stop)
+            await run_logged(worker)
+        else:
+            watcher = asyncio.create_task(stop_on(shutdown, worker))
+            await run_logged(worker)
+            watcher.cancel()
     await engine.dispose()

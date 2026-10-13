@@ -1,0 +1,80 @@
+name: noc-single
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 5m, max-file: "2" }
+
+x-noc-app: &noc-app
+  image: ${NOC_IMAGE:-noc:dev}
+  network_mode: host
+  env_file: ../../.env
+  environment:
+    NOC_DATABASE_URL: postgresql+psycopg://noc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@127.0.0.1:5432/noc
+    NOC_PROMETHEUS_URL: http://127.0.0.1:9090
+    NOC_PROMETHEUS_TARGETS_DIR: /var/lib/noc/prometheus-targets
+    NOC_MAX_CONCURRENT_INCIDENTS: "1"
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    network_mode: host
+    environment:
+      POSTGRES_USER: noc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: noc
+    command: >
+      postgres -c listen_addresses=127.0.0.1 -c shared_buffers=32MB -c max_connections=25
+      -c work_mem=4MB -c maintenance_work_mem=32MB -c effective_cache_size=256MB
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U noc -d noc"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.listen-address=127.0.0.1:9090
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ${NOC_PKI_DIR:-./pki}:/etc/prometheus/pki:ro
+      - promtargets:/etc/prometheus/targets:ro
+      - promdata:/prometheus
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *logging
+
+  migrate:
+    <<: *noc-app
+    command: ["noc", "db", "upgrade"]
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  noc:
+    <<: *noc-app
+    command: ["noc", "all-in-one", "--host", "127.0.0.1", "--port", "8000"]
+    volumes:
+      - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
+      - ${NOC_PKI_DIR:-./pki}:/etc/noc/pki:ro
+      - promtargets:/var/lib/noc/prometheus-targets
+    mem_limit: 448m
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  promdata:
+  promtargets:
