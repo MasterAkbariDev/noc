@@ -7,6 +7,7 @@ import { IncidentDetailPage } from "./pages/IncidentDetailPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { TargetsPage } from "./pages/TargetsPage";
 import { TracePage } from "./pages/TracePage";
+import { UiKitPage } from "./pages/UiKitPage";
 
 export function App() {
   const { token } = useToken();
@@ -33,6 +34,7 @@ export function App() {
             <Route path="/incidents/:id" element={<IncidentDetailPage />} />
             <Route path="/incidents/:id/trace" element={<TracePage />} />
             <Route path="/targets" element={<TargetsPage />} />
+            {import.meta.env.DEV && <Route path="/__ui" element={<UiKitPage />} />}
             <Route path="*" element={<p>Page not found.</p>} />
           </Routes>
         </main>

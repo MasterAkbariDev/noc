@@ -4,7 +4,9 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import { TokenProvider } from "./auth/token";
+import { Toaster, TooltipProvider } from "./ui";
 import "./styles.css";
+import "./legacy.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1 } },
@@ -18,11 +20,15 @@ if (rootElement === null) {
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <TokenProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </TokenProvider>
+      <TooltipProvider>
+        <Toaster>
+          <TokenProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </TokenProvider>
+        </Toaster>
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

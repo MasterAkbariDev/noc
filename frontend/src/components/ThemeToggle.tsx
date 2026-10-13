@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "../ui/Button";
 
 export const THEME_STORAGE_KEY = "noc.theme";
 
@@ -54,17 +55,22 @@ export function ThemeToggle() {
   }
 
   return (
-    <div className="theme-toggle" role="group" aria-label="Theme">
-      {THEMES.map((option) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={theme === option}
-          onClick={() => choose(option)}
-        >
-          {THEME_LABELS[option]}
-        </button>
-      ))}
+    <div role="group" aria-label="Theme" className="inline-flex flex-wrap gap-1">
+      {THEMES.map((option) => {
+        const pressed = theme === option;
+        return (
+          <Button
+            key={option}
+            size="sm"
+            variant={pressed ? "secondary" : "ghost"}
+            aria-pressed={pressed}
+            className={pressed ? "border-accent font-semibold text-accent" : undefined}
+            onClick={() => choose(option)}
+          >
+            {THEME_LABELS[option]}
+          </Button>
+        );
+      })}
     </div>
   );
 }
