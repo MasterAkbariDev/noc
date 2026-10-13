@@ -38,7 +38,7 @@ def sentinel_config(tmp_path: Path, environment: str = "lab") -> SentinelConfig:
                 id=DEMO_SHOP,
                 kind=ResourceKind.SYSTEMD_UNIT,
                 name="demo-shop.service",
-                allowed_actions=("restart_service", "start_service"),
+                allowed_actions=("restart_service", "start_service", "chaos_service_down"),
             ),
             ManagedResource(id="ctr:demo-db", kind=ResourceKind.CONTAINER, name="demo-db"),
         ],

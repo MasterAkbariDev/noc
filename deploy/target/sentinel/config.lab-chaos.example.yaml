@@ -20,4 +20,4 @@ resources:
   - id: svc:demo-shop
     kind: systemd_unit
     name: demo-shop.service
-    allowed_actions: [restart_service, start_service]
+    allowed_actions: [restart_service, start_service, chaos_service_down]

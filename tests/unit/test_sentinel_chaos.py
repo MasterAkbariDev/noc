@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from noc_sentinel.app import create_app
 from noc_sentinel.config import ChaosConfig, SentinelConfig
 from noc_sentinel.nonce_store import NonceStore
+from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.signing import sign_request
 from tests.support.builders import DEMO_SHOP, KEY_ID, SECRET, FakeSystemctl, sentinel_config
 
@@ -155,6 +156,17 @@ def test_unregistered_resource_is_not_found(tmp_path: Path) -> None:
 def test_registered_resource_of_another_kind_is_refused(tmp_path: Path) -> None:
     harness = build(tmp_path)
     response = send(harness, "POST", START, {"resource_id": "ctr:demo-db", "ttl_seconds": 60})
+    assert response.status_code == 403
+    assert harness.runner.calls == []
+
+
+def test_unit_without_chaos_opt_in_is_refused(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    read_only = ManagedResource(
+        id="svc:ssh", kind=ResourceKind.SYSTEMD_UNIT, name="ssh.service", allowed_actions=()
+    )
+    harness.config.resources.append(read_only)
+    response = send(harness, "POST", START, {"resource_id": "svc:ssh", "ttl_seconds": 60})
     assert response.status_code == 403
     assert harness.runner.calls == []
 

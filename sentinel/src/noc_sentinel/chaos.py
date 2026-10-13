@@ -18,6 +18,7 @@ from noc_shared.signing import VerifiedRequest
 SYSTEMCTL_PATH = "/usr/bin/systemctl"
 SYSTEMD_RUN_PATH = "/usr/bin/systemd-run"
 RESTORE_UNIT_PREFIX = "noc-chaos-restore-"
+CHAOS_ACTION = "chaos_service_down"
 CHAOS_TIMEOUT_SECONDS = 10
 
 
@@ -161,7 +162,10 @@ class ServiceDownChaos:
         resource = self._config.resource(resource_id)
         if resource is None:
             raise ChaosFailure(404, "NOT_FOUND")
-        if resource.kind != ResourceKind.SYSTEMD_UNIT:
+        if (
+            resource.kind != ResourceKind.SYSTEMD_UNIT
+            or CHAOS_ACTION not in resource.allowed_actions
+        ):
             raise ChaosFailure(403, "NOT_ALLOWED")
         return resource
 
