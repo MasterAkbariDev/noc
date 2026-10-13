@@ -41,6 +41,16 @@ docker compose -f deploy/noc/docker-compose.yml up -d
 
 The terminal is the main interface (`noc --help`); the web panel is optional.
 
+## Deployment
+
+Every push to `main` runs the checks, and if they pass, CI publishes `ghcr.io/masterakbaridev/noc:main` (plus a `sha-…` tag). On a server, set `NOC_IMAGE=ghcr.io/masterakbaridev/noc:main` in `/opt/noc/.env` and install the updater from `deploy/noc/auto-update/`. Every 5 minutes it pulls the image, redeploys when it changed, checks `/readyz`, and rolls back to the previous image if the new one isn't healthy. CI never gets SSH access to the servers.
+
+```bash
+install -m 0755 deploy/noc/auto-update/noc-update.sh /usr/local/bin/noc-update
+install -m 0644 deploy/noc/auto-update/noc-update.{service,timer} /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now noc-update.timer
+```
+
 ## Configuration
 
 All settings use the `NOC_` prefix; see `.env.example`. LLM keys go in `GEMINI_API_KEYS` / `GROQ_API_KEYS`, one per line inside double quotes. Without keys, `NOC_LLM_MODE=replay` answers from recorded responses.
