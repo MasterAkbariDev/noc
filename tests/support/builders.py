@@ -8,6 +8,14 @@ from noc.detection.alerts import PrometheusAlert
 from noc.tools.spec import TargetRef, ToolContext
 from noc_sentinel.config import SentinelConfig
 from noc_shared.resources import ManagedResource, ResourceKind
+from noc_shared.tools import (
+    CpuUsage,
+    DiskUsage,
+    MemoryUsage,
+    MountUsage,
+    ProcessInfo,
+    ProcessSort,
+)
 
 KEY_ID = "noc-test-key"
 SECRET = b"0123456789abcdef0123456789abcdef"
@@ -50,6 +58,65 @@ class FakeSystemctl:
             "ActiveEnterTimestamp": "",
             "MemoryCurrent": "[not set]",
         }
+
+
+class FakeHostReader:
+    def __init__(self, process_names: tuple[str, ...] = ("demo-shop",)) -> None:
+        self.process_names = process_names
+        self.process_calls: list[tuple[str, int]] = []
+
+    def cpu(self) -> CpuUsage:
+        return CpuUsage(
+            percent=37.5,
+            per_core_percent=[30.0, 45.0],
+            steal_percent=0.0,
+            iowait_percent=1.2,
+            load_1m=0.8,
+            load_5m=0.6,
+            load_15m=0.5,
+        )
+
+    def memory(self) -> MemoryUsage:
+        return MemoryUsage(
+            total_bytes=4_000_000_000,
+            used_bytes=1_500_000_000,
+            available_bytes=2_500_000_000,
+            cached_bytes=800_000_000,
+            swap_total_bytes=0,
+            swap_used_bytes=0,
+        )
+
+    def disks(self) -> DiskUsage:
+        return DiskUsage(
+            mounts=[
+                MountUsage(
+                    mountpoint="/",
+                    device="/dev/vda1",
+                    fstype="ext4",
+                    total_bytes=50_000_000_000,
+                    used_bytes=20_000_000_000,
+                    free_bytes=30_000_000_000,
+                    percent=40.0,
+                    inodes_total=3_000_000,
+                    inodes_used=300_000,
+                )
+            ]
+        )
+
+    def processes(self, sort_by: ProcessSort, limit: int) -> list[ProcessInfo]:
+        self.process_calls.append((sort_by, limit))
+        return [
+            ProcessInfo(
+                pid=100 + index,
+                name=name,
+                user="demo",
+                cpu_percent=float(10 - index),
+                rss_bytes=1_000_000 * (10 - index),
+                started_at="2026-10-13T09:00:00+00:00",
+                cmdline=f"/usr/bin/{name} --serve",
+            )
+            for index, name in enumerate(self.process_names)
+        ][:limit]
 
 
 def tool_context(agent: str = "investigator", data_policy: str = "full") -> ToolContext:

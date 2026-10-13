@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,3 +53,67 @@ class ServiceStatus(BaseModel):
     exec_main_status: int | None
     active_since: str | None
     memory_bytes: int | None
+
+
+class NoArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+ProcessSort = Literal["cpu", "memory"]
+
+
+class TopProcessesArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sort_by: ProcessSort = "cpu"
+    limit: int = Field(10, ge=1, le=15)
+
+
+class CpuUsage(BaseModel):
+    percent: float
+    per_core_percent: list[float]
+    steal_percent: float
+    iowait_percent: float
+    load_1m: float
+    load_5m: float
+    load_15m: float
+
+
+class MemoryUsage(BaseModel):
+    total_bytes: int
+    used_bytes: int
+    available_bytes: int
+    cached_bytes: int | None
+    swap_total_bytes: int
+    swap_used_bytes: int
+
+
+class MountUsage(BaseModel):
+    mountpoint: str
+    device: str
+    fstype: str
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    percent: float
+    inodes_total: int
+    inodes_used: int
+
+
+class DiskUsage(BaseModel):
+    mounts: list[MountUsage]
+
+
+class ProcessInfo(BaseModel):
+    pid: int
+    name: str
+    user: str
+    cpu_percent: float
+    rss_bytes: int
+    started_at: str
+    cmdline: str
+
+
+class TopProcesses(BaseModel):
+    sort_by: ProcessSort
+    processes: list[ProcessInfo]

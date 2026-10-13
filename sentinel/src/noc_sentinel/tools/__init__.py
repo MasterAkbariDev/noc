@@ -3,16 +3,21 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+import psutil
 from pydantic import BaseModel, ValidationError
 
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
+from noc_sentinel.tools.host import HostReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
 from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.tools import (
     GetServiceStatusArgs,
+    NoArgs,
     ToolCallResponse,
     ToolError,
     ToolErrorCode,
+    TopProcesses,
+    TopProcessesArgs,
 )
 
 RawArgs = dict[str, Any]
@@ -33,11 +38,18 @@ def parse_args[ArgsT: BaseModel](model: type[ArgsT], raw_args: RawArgs) -> ArgsT
 
 
 class Toolbox:
-    def __init__(self, config: SentinelConfig, systemctl: SystemctlRunner) -> None:
+    def __init__(
+        self, config: SentinelConfig, systemctl: SystemctlRunner, host: HostReader
+    ) -> None:
         self._config = config
         self._systemctl = systemctl
+        self._host = host
         self._tools: dict[str, ToolHandler] = {
             "get_service_status": self._get_service_status,
+            "get_cpu_usage": self._get_cpu_usage,
+            "get_memory_usage": self._get_memory_usage,
+            "get_disk_usage": self._get_disk_usage,
+            "get_top_processes": self._get_top_processes,
         }
 
     def names(self) -> list[str]:
@@ -62,7 +74,7 @@ class Toolbox:
             return handler(raw_args)
         except subprocess.TimeoutExpired as exc:
             raise ToolFailure(ToolErrorCode.TIMEOUT, "system call timed out") from exc
-        except (subprocess.CalledProcessError, OSError) as exc:
+        except (subprocess.CalledProcessError, OSError, psutil.Error) as exc:
             raise ToolFailure(ToolErrorCode.INTERNAL, type(exc).__name__) from exc
 
     def _registered(self, resource_id: str, kind: ResourceKind) -> ManagedResource:
@@ -77,3 +89,20 @@ class Toolbox:
         args = parse_args(GetServiceStatusArgs, raw_args)
         resource = self._registered(args.resource_id, ResourceKind.SYSTEMD_UNIT)
         return read_service_status(resource, self._systemctl).model_dump()
+
+    def _get_cpu_usage(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._host.cpu().model_dump()
+
+    def _get_memory_usage(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._host.memory().model_dump()
+
+    def _get_disk_usage(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._host.disks().model_dump()
+
+    def _get_top_processes(self, raw_args: RawArgs) -> dict[str, Any]:
+        args = parse_args(TopProcessesArgs, raw_args)
+        processes = self._host.processes(args.sort_by, args.limit)
+        return TopProcesses(sort_by=args.sort_by, processes=processes).model_dump()

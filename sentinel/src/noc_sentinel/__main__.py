@@ -9,6 +9,7 @@ import uvicorn
 from noc_sentinel.app import create_app
 from noc_sentinel.config import load_config
 from noc_sentinel.nonce_store import NonceStore
+from noc_sentinel.tools.host import PsutilHostReader
 from noc_sentinel.tools.systemd import SubprocessSystemctl
 
 
@@ -31,7 +32,13 @@ def main(argv: list[str] | None = None) -> None:
     config = load_config(arguments.config)
     config.state_dir.mkdir(parents=True, exist_ok=True)
     nonce_store = NonceStore(config.state_dir / "nonces.sqlite3", config.nonce_ttl_seconds)
-    app = create_app(config, SubprocessSystemctl(), nonce_store, config.load_secrets())
+    app = create_app(
+        config,
+        SubprocessSystemctl(),
+        nonce_store,
+        config.load_secrets(),
+        host=PsutilHostReader(),
+    )
 
     if config.tls is None:
         if not (arguments.insecure_loopback and is_loopback(config.listen.host)):
