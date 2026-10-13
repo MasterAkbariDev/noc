@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
@@ -37,5 +38,8 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/metrics")
     async def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    if settings.frontend_dist is not None and settings.frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
 
     return app

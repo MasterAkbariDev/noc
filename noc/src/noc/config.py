@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://noc:noc@localhost:5432/noc"
     prometheus_url: str = "http://localhost:9090"
     api_token: SecretStr | None = None
+    frontend_dist: Path | None = None
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2
