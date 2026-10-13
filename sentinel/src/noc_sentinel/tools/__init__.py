@@ -10,6 +10,7 @@ from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
 from noc_sentinel.tools.disk_breakdown import DiskBreakdownReader
 from noc_sentinel.tools.host import HostReader
 from noc_sentinel.tools.journal import JournalReader
+from noc_sentinel.tools.network import NetworkReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
 from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.tools import (
@@ -49,12 +50,14 @@ class Toolbox:
         host: HostReader,
         journal: JournalReader,
         disk_breakdown: DiskBreakdownReader,
+        network: NetworkReader,
     ) -> None:
         self._config = config
         self._systemctl = systemctl
         self._host = host
         self._journal = journal
         self._disk_breakdown = disk_breakdown
+        self._network = network
         self._tools: dict[str, ToolHandler] = {
             "get_service_status": self._get_service_status,
             "get_service_logs": self._get_service_logs,
@@ -63,6 +66,9 @@ class Toolbox:
             "get_disk_usage": self._get_disk_usage,
             "get_top_processes": self._get_top_processes,
             "get_directory_sizes": self._get_directory_sizes,
+            "get_listening_ports": self._get_listening_ports,
+            "get_network_stats": self._get_network_stats,
+            "get_connection_summary": self._get_connection_summary,
         }
 
     def names(self) -> list[str]:
@@ -136,3 +142,15 @@ class Toolbox:
     def _get_directory_sizes(self, raw_args: RawArgs) -> dict[str, Any]:
         parse_args(NoArgs, raw_args)
         return self._disk_breakdown.directory_sizes(self._config.disk_breakdown_roots).model_dump()
+
+    def _get_listening_ports(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._network.listening_ports().model_dump()
+
+    def _get_network_stats(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._network.stats().model_dump()
+
+    def _get_connection_summary(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return self._network.connections().model_dump()

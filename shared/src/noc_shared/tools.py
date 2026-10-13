@@ -163,3 +163,46 @@ class DirectorySizes(BaseModel):
     roots: list[RootSize]
     complete: bool
     scanned_entries: int
+
+
+SocketProto = Literal["tcp", "udp"]
+
+
+class ListeningPort(BaseModel):
+    proto: SocketProto
+    address: str
+    port: int
+    process: str | None
+
+
+class ListeningPorts(BaseModel):
+    ports: list[ListeningPort]
+    truncated: bool
+
+
+class InterfaceStats(BaseModel):
+    name: str
+    bytes_sent: int
+    bytes_recv: int
+    errors_in: int
+    errors_out: int
+    drops_in: int
+    drops_out: int
+
+
+class NetworkStats(BaseModel):
+    interfaces: list[InterfaceStats]
+    tcp_retransmitted_segments: int | None
+    tcp_out_segments: int | None
+    conntrack_count: int | None
+    conntrack_max: int | None
+
+
+class RemoteCount(BaseModel):
+    address: str
+    connections: int
+
+
+class ConnectionSummary(BaseModel):
+    by_state: dict[str, int]
+    top_remote_addresses: list[RemoteCount]

@@ -29,6 +29,7 @@ from noc_sentinel.tools import Toolbox
 from noc_sentinel.tools.disk_breakdown import DiskBreakdownReader, FilesystemDiskBreakdown
 from noc_sentinel.tools.host import HostReader, PsutilHostReader
 from noc_sentinel.tools.journal import JournalReader, SubprocessJournal
+from noc_sentinel.tools.network import NetworkReader, PsutilNetworkReader
 from noc_sentinel.tools.systemd import SystemctlRunner
 from noc_shared.resources import Inventory
 from noc_shared.signing import VerifiedRequest
@@ -50,6 +51,7 @@ def create_app(
     chaos_runner: ChaosRunner | None = None,
     action_runner: ActionRunner | None = None,
     disk_breakdown: DiskBreakdownReader | None = None,
+    network: NetworkReader | None = None,
 ) -> FastAPI:
     app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
     verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
@@ -59,6 +61,7 @@ def create_app(
         host if host is not None else PsutilHostReader(),
         journal if journal is not None else SubprocessJournal(),
         disk_breakdown if disk_breakdown is not None else FilesystemDiskBreakdown(),
+        network if network is not None else PsutilNetworkReader(),
     )
     chaos_mounted = config.environment == "lab" and config.chaos.enabled
     if chaos_mounted:

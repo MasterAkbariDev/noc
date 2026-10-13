@@ -177,6 +177,10 @@ def specialist_payload(ref: str, finding_id: str = "F1") -> dict[str, Any]:
     }
 
 
+def quiet_network_script() -> list[Any]:
+    return [answer("No network evidence collected."), answer({"findings": []})]
+
+
 def cite_latest_tool_result(finding_id: str = "F1") -> Callable[[LLMRequest], LLMResponse]:
     def respond(request: LLMRequest) -> LLMResponse:
         tool_outputs = [m.content or "" for m in request.messages if m.role is Role.TOOL]
@@ -221,6 +225,7 @@ async def test_service_down_fans_out_to_metrics_and_logs_then_diagnoses(
         {
             "metrics": ScriptedLLM(specialist_script()),
             "logs": ScriptedLLM(specialist_script()),
+            "network": ScriptedLLM(quiet_network_script()),
             "diagnosis": diagnosis,
         }
     )
@@ -230,7 +235,7 @@ async def test_service_down_fans_out_to_metrics_and_logs_then_diagnoses(
     assert await skeleton.scalar(select(Incident.root_cause_code)) == "service_crashed"
 
     succeeded = await skeleton.rows(select(AgentRun.agent).where(AgentRun.status == "succeeded"))
-    assert sorted(succeeded) == ["diagnosis", "logs", "metrics"]
+    assert sorted(succeeded) == ["diagnosis", "logs", "metrics", "network"]
 
     findings = await skeleton.rows(select(FindingRow).order_by(FindingRow.label))
     assert {(row.label, row.agent) for row in findings} == {("L1", "logs"), ("M1", "metrics")}
@@ -243,7 +248,7 @@ async def test_service_down_fans_out_to_metrics_and_logs_then_diagnoses(
     unavailable = await skeleton.rows(
         select(IncidentEvent.payload).where(IncidentEvent.type == "specialist_unavailable")
     )
-    assert unavailable == [{"specialist": "network"}]
+    assert unavailable == []
 
     request = diagnosis.requests[0]
     assert request.tools == []
@@ -267,6 +272,7 @@ async def test_specialists_run_concurrently(skeleton: MultiSkeleton) -> None:
         {
             "metrics": SlowFirstCall(ScriptedLLM(specialist_script()), 0.3),
             "logs": SlowFirstCall(ScriptedLLM(specialist_script("F1")), 0.3),
+            "network": ScriptedLLM(quiet_network_script()),
             "diagnosis": ScriptedLLM([answer(diagnosis_payload(["M1", "L1"]))]),
         }
     )
@@ -289,6 +295,7 @@ async def test_failed_specialist_does_not_block_diagnosis(skeleton: MultiSkeleto
         {
             "metrics": ScriptedLLM(specialist_script()),
             "logs": ScriptedLLM([unavailable_logs]),
+            "network": ScriptedLLM(quiet_network_script()),
             "diagnosis": diagnosis,
         }
     )
@@ -324,6 +331,7 @@ async def test_crash_in_diagnosis_resumes_without_rerunning_specialists(
                 {
                     "metrics": ScriptedLLM(specialist_script()),
                     "logs": ScriptedLLM(specialist_script()),
+                    "network": ScriptedLLM(quiet_network_script()),
                     "diagnosis": ScriptedLLM([crash]),
                 }
             ),
@@ -342,6 +350,7 @@ async def test_crash_in_diagnosis_resumes_without_rerunning_specialists(
             {
                 "metrics": ScriptedLLM([]),
                 "logs": ScriptedLLM([]),
+                "network": ScriptedLLM([]),
                 "diagnosis": ScriptedLLM([answer(diagnosis_payload(["M1", "L1"]))]),
             }
         ),
@@ -365,6 +374,7 @@ async def test_all_specialists_failing_on_the_llm_escalates_as_llm_unavailable(
         {
             "metrics": ScriptedLLM([unavailable_logs]),
             "logs": ScriptedLLM([unavailable_logs]),
+            "network": ScriptedLLM([unavailable_logs]),
             "diagnosis": diagnosis,
         }
     )
