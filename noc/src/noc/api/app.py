@@ -5,6 +5,7 @@ from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
+from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
@@ -21,6 +22,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(title="Multi-Agent NOC", version="0.1.0", lifespan=lifespan)
     app.include_router(incidents_router)
+    app.include_router(events_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
