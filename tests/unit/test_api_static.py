@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from noc.api.app import create_app
+from noc.api.spa import CONTENT_SECURITY_POLICY
 from noc.config import Settings
 
 
@@ -10,6 +11,13 @@ def make_dist(tmp_path: Path) -> Path:
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><title>NOC</title>", encoding="utf-8")
+    return dist
+
+
+def make_dist_with_asset(tmp_path: Path) -> Path:
+    dist = make_dist(tmp_path)
+    (dist / "assets").mkdir()
+    (dist / "assets" / "app.js").write_text("console.log('panel');", encoding="utf-8")
     return dist
 
 
@@ -48,3 +56,33 @@ def test_unknown_api_paths_and_missing_assets_stay_404(tmp_path: Path) -> None:
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/nope").status_code == 404
         assert client.get("/assets/missing.js").status_code == 404
+
+
+def test_asset_response_carries_csp_and_hardening_headers(tmp_path: Path) -> None:
+    settings = Settings(frontend_dist=make_dist_with_asset(tmp_path), _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/assets/app.js")
+        assert response.status_code == 200
+        assert response.headers["Content-Security-Policy"] == CONTENT_SECURITY_POLICY
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert "Cache-Control" not in response.headers
+
+
+def test_index_and_spa_fallback_carry_headers_and_no_cache(tmp_path: Path) -> None:
+    settings = Settings(frontend_dist=make_dist(tmp_path), _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        for path in ("/", "/incidents/3f2c"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert response.headers["Content-Security-Policy"] == CONTENT_SECURITY_POLICY
+            assert response.headers["Referrer-Policy"] == "no-referrer"
+            assert response.headers["Cache-Control"] == "no-cache"
+
+
+def test_api_routes_do_not_get_the_panel_csp(tmp_path: Path) -> None:
+    settings = Settings(frontend_dist=make_dist(tmp_path), _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        assert "Content-Security-Policy" not in response.headers
