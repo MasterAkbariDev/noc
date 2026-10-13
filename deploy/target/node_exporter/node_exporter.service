@@ -1,0 +1,34 @@
+[Unit]
+Description=Prometheus node_exporter (mTLS, trimmed collectors)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=node_exporter
+Group=node_exporter
+EnvironmentFile=/etc/node_exporter/node_exporter.env
+ExecStart=/usr/local/bin/node_exporter $NODE_EXPORTER_OPTS
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=64M
+CPUQuota=20%
+TasksMax=32
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

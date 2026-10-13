@@ -3,7 +3,7 @@ COMPOSE := docker compose -f deploy/noc/docker-compose.yml
 TEST_DB_NAME ?= noc_test
 TEST_DB := postgresql+psycopg://noc:noc@localhost:5432/$(TEST_DB_NAME)
 
-.PHONY: setup lint format typecheck test test-integration check db-up db-down migrate rules-test pki-test dev-key sentinel-dev api worker
+.PHONY: setup lint format typecheck test test-integration check db-up db-down migrate rules-test pki-test dev-key sentinel-dev sentinel-wheels api worker
 
 setup:
 	$(UV) sync
@@ -44,6 +44,10 @@ rules-test:
 
 pki-test:
 	bash tests/pki/test_pki.sh
+
+sentinel-wheels:
+	$(UV) build --package noc-shared --out-dir dist
+	$(UV) build --package noc-sentinel --out-dir dist
 
 dev-key:
 	mkdir -p deploy/noc/keys
