@@ -1,4 +1,6 @@
 import hashlib
+import logging
+import re
 import secrets
 import time
 from collections.abc import Callable
@@ -40,3 +42,24 @@ class TicketStore:
         expired = [key for key, expires_at in self._expires_at.items() if expires_at <= now]
         for key in expired:
             del self._expires_at[key]
+
+
+TICKET_QUERY = re.compile(r"([?&]ticket=)[^&\s\"]*")
+REDACTED = "REDACTED"
+
+
+class TicketRedactionFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and any(isinstance(arg, str) for arg in args):
+            record.args = tuple(
+                TICKET_QUERY.sub(rf"\g<1>{REDACTED}", arg) if isinstance(arg, str) else arg
+                for arg in args
+            )
+        return True
+
+
+def redact_tickets_in_access_log() -> None:
+    access_log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, TicketRedactionFilter) for item in access_log.filters):
+        access_log.addFilter(TicketRedactionFilter())

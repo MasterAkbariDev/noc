@@ -1,4 +1,6 @@
-from noc.api.tickets import TicketStore
+import logging
+
+from noc.api.tickets import TicketRedactionFilter, TicketStore, redact_tickets_in_access_log
 
 
 class FakeClock:
@@ -44,3 +46,35 @@ def test_capacity_evicts_oldest_ticket() -> None:
 def test_tickets_are_unique() -> None:
     store = TicketStore(clock=FakeClock())
     assert len({store.issue() for _ in range(50)}) == 50
+
+
+def make_access_record(path: str) -> logging.LogRecord:
+    return logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", "GET", path, "1.1", 200),
+        None,
+    )
+
+
+def test_access_log_filter_redacts_the_ticket() -> None:
+    record = make_access_record("/api/events/stream?ticket=abc123_-XYZ&x=1")
+    TicketRedactionFilter().filter(record)
+    assert "abc123" not in record.getMessage()
+    assert "ticket=REDACTED&x=1" in record.getMessage()
+
+
+def test_access_log_filter_leaves_other_paths_alone() -> None:
+    record = make_access_record("/api/incidents?status=OPEN")
+    TicketRedactionFilter().filter(record)
+    assert "/api/incidents?status=OPEN" in record.getMessage()
+
+
+def test_redaction_is_installed_once() -> None:
+    redact_tickets_in_access_log()
+    redact_tickets_in_access_log()
+    filters = logging.getLogger("uvicorn.access").filters
+    assert sum(isinstance(item, TicketRedactionFilter) for item in filters) == 1

@@ -8,7 +8,7 @@ from sqlalchemy import text
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.spa import SinglePageApp
-from noc.api.tickets import TicketStore
+from noc.api.tickets import TicketStore, redact_tickets_in_access_log
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
@@ -23,6 +23,7 @@ def create_app(settings: Settings) -> FastAPI:
         yield
         await engine.dispose()
 
+    redact_tickets_in_access_log()
     app = FastAPI(title="Multi-Agent NOC", version="0.1.0", lifespan=lifespan)
     app.include_router(incidents_router)
     app.include_router(events_router)
