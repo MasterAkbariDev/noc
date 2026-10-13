@@ -51,7 +51,7 @@ class ActionResult(BaseModel):
 
 
 def compute_action_hash(
-    action_type: ActionType,
+    action_type: str,
     target: str,
     resource_id: str,
     params: ActionParams,

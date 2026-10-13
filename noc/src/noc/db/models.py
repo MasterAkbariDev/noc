@@ -271,6 +271,28 @@ class ActionRow(CreatedAt, Base):
     high_impact: Mapped[bool] = mapped_column(default=False)
     policy_version: Mapped[str] = mapped_column(String(48))
     action_hash: Mapped[str] = mapped_column(String(64))
+    rung: Mapped[int] = mapped_column(Integer, default=0)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    attempt_id: Mapped[uuid.UUID | None]
+    authorization: Mapped[str | None] = mapped_column(String(96))
+    approval_expires_at: Mapped[datetime | None]
+    dispatched_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+    result_code: Mapped[str | None] = mapped_column(String(48))
+    result: Mapped[Json | None] = mapped_column(JSONB)
+
+
+class Approval(CreatedAt, Base):
+    __tablename__ = "approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    action_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("actions.id"), unique=True)
+    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    decision: Mapped[str] = mapped_column(String(16))
+    decided_by: Mapped[str] = mapped_column(String(64))
+    comment: Mapped[str | None] = mapped_column(String(500))
+    action_hash: Mapped[str] = mapped_column(String(64))
+    policy_version: Mapped[str] = mapped_column(String(48))
 
 
 class Report(CreatedAt, Base):

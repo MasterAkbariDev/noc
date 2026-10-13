@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 ComponentStatus = Literal["ok", "degraded", "down", "unknown"]
 Verdict = Literal["ok", "degraded", "down"]
@@ -50,6 +50,14 @@ class FindingView(BaseModel):
 class ActionView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: uuid.UUID
+    action_hash: str
+    rung: int
+    authorization: str | None
+    approval_expires_at: datetime | None
+    dispatched_at: datetime | None
+    finished_at: datetime | None
+    result_code: str | None
     action_type: str
     resource_id: str
     status: str
@@ -287,3 +295,17 @@ class SystemHealth(BaseModel):
     checked_at: datetime
     components: list[ComponentHealth]
     stuck_incidents: list[StuckIncident]
+
+
+class ApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    action_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decided_by: str = Field(min_length=1, max_length=64)
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class ApprovalView(BaseModel):
+    approval_id: uuid.UUID
+    incident_status: str

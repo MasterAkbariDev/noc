@@ -1,12 +1,15 @@
 import json
 import ssl
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
 
 from noc.tools.spec import TargetRef
+from noc_shared.actions import ActionRequest, ActionResult
 from noc_shared.resources import Inventory
 from noc_shared.signing import sign_request
 from noc_shared.tools import ToolCallRequest, ToolCallResponse
@@ -24,6 +27,17 @@ class SentinelRejected(SentinelError):
     pass
 
 
+ActionReplyKind = Literal["result", "not_found", "unknown"]
+ACTION_REFUSAL_STATUSES = frozenset({403, 409, 422, 429})
+
+
+@dataclass(frozen=True)
+class ActionReply:
+    kind: ActionReplyKind
+    result: ActionResult | None = None
+    detail: str = ""
+
+
 class SentinelClient:
     def __init__(self, base_url: str, key_id: str, secret: bytes, http: httpx.AsyncClient) -> None:
         self._base_url = base_url.rstrip("/")
@@ -37,6 +51,30 @@ class SentinelClient:
         body = ToolCallRequest(args=args, incident_id=incident_id).model_dump_json().encode()
         payload = await self._send("POST", f"/v1/tools/{tool}", body, traceparent)
         return ToolCallResponse.model_validate(payload)
+
+    async def run_action(self, action_type: str, request: ActionRequest) -> ActionReply:
+        body = request.model_dump_json().encode()
+        return await self._action_call("POST", f"/v1/actions/{action_type}", body)
+
+    async def get_action(self, action_id: uuid.UUID) -> ActionReply:
+        return await self._action_call("GET", f"/v1/actions/{action_id}", b"")
+
+    async def _action_call(self, method: str, path: str, body: bytes) -> ActionReply:
+        url = self._base_url + path
+        signed = sign_request(self._key_id, self._secret, method, urlsplit(url).path, body)
+        headers = {**signed.as_dict(), "Content-Type": "application/json"}
+        try:
+            response = await self._http.request(method, url, content=body, headers=headers)
+        except httpx.TransportError as exc:
+            return ActionReply("unknown", detail=f"{type(exc).__name__}: {exc}"[:300])
+        if response.status_code == 200 or response.status_code in ACTION_REFUSAL_STATUSES:
+            try:
+                return ActionReply("result", ActionResult.model_validate_json(response.content))
+            except ValueError:
+                return ActionReply("unknown", detail=f"HTTP {response.status_code}: bad body")
+        if response.status_code == 404:
+            return ActionReply("not_found", detail=response.text[:200])
+        return ActionReply("unknown", detail=f"HTTP {response.status_code}: {response.text[:200]}")
 
     async def inventory(self) -> Inventory:
         return Inventory.model_validate(await self._send("GET", "/v1/inventory", b"", None))

@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 from noc.api.deps import get_session, require_token
 from noc.api.schemas import (
     ActionView,
+    ApprovalRequest,
+    ApprovalView,
     DiagnosisView,
     EventView,
     FindingView,
@@ -28,6 +30,7 @@ from noc.db.models import (
 )
 from noc.domain.incident_status import InvalidTransition
 from noc.store.incidents import IncidentResolution, close_incident
+from noc.store.remediation import ApprovalConflict, record_approval
 
 router = APIRouter(
     prefix="/api/incidents", tags=["incidents"], dependencies=[Depends(require_token)]
@@ -144,3 +147,27 @@ async def close_escalated_incident(
     target = await session.get_one(Target, incident.target_id)
     await session.commit()
     return summarize(incident, target.name)
+
+
+@router.post("/{incident_id}/actions/{action_id}/decision")
+async def decide_on_action(
+    incident_id: uuid.UUID, action_id: uuid.UUID, request: ApprovalRequest, session: Session
+) -> ApprovalView:
+    try:
+        recorded = await record_approval(
+            session,
+            incident_id,
+            action_id,
+            request.decision,
+            request.decided_by,
+            request.action_hash,
+            request.comment,
+        )
+    except LookupError as error:
+        raise HTTPException(404, "incident not found") from error
+    except ApprovalConflict as error:
+        raise HTTPException(409, str(error)) from error
+    await session.commit()
+    return ApprovalView(
+        approval_id=recorded.approval_id, incident_status=recorded.incident_status.value
+    )

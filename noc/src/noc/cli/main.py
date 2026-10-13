@@ -17,7 +17,7 @@ from noc.auth.roles import Role
 from noc.auth.users import create_user, list_users, reset_password, set_disabled, set_role
 from noc.config import PACKAGE_DIR, get_settings
 from noc.db.base import utc_now
-from noc.db.models import Incident, Report, ScenarioRun, Target, User
+from noc.db.models import ActionRow, Incident, Report, ScenarioRun, Target, User
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
 from noc.domain.incident_status import InvalidTransition
@@ -28,6 +28,7 @@ from noc.scenarios.chaos_client import ChaosError, build_chaos_client
 from noc.scenarios.definitions import ScenarioDefinition, load_scenarios
 from noc.scenarios.runner import PreconditionFailed, RunOutcome, ScenarioRunner
 from noc.store.incidents import IncidentResolution, close_incident
+from noc.store.remediation import ApprovalConflict, ApprovalDecision, record_approval
 from noc.store.targets import (
     add_target,
     apply_inventory,
@@ -321,6 +322,68 @@ def incidents_close(
             return f"{incident.id}: status={incident.status} root_cause={root_cause or '-'}"
 
     typer.echo(with_admin_sessions(work))
+
+
+def decide_from_cli(
+    incident_id: uuid.UUID,
+    action_id: uuid.UUID,
+    decision: ApprovalDecision,
+    action_hash: str,
+    decided_by: str,
+    comment: str | None,
+) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                recorded = await record_approval(
+                    session, incident_id, action_id, decision, decided_by, action_hash, comment
+                )
+            except (LookupError, ApprovalConflict) as error:
+                raise typer.BadParameter(str(error)) from error
+            return f"{decision}: approval={recorded.approval_id} status={recorded.incident_status}"
+
+    typer.echo(with_sessions(work))
+
+
+@incidents_app.command("approve")
+def incidents_approve(
+    incident_id: uuid.UUID,
+    action_id: uuid.UUID,
+    action_hash: Annotated[str, typer.Option("--hash", help="action_hash shown with the action")],
+    by: Annotated[str, typer.Option(help="Who approves, 1-64 characters")],
+    comment: Annotated[str | None, typer.Option(help="Optional note")] = None,
+) -> None:
+    decide_from_cli(incident_id, action_id, "approved", action_hash, by, comment)
+
+
+@incidents_app.command("reject")
+def incidents_reject(
+    incident_id: uuid.UUID,
+    action_id: uuid.UUID,
+    action_hash: Annotated[str, typer.Option("--hash", help="action_hash shown with the action")],
+    by: Annotated[str, typer.Option(help="Who rejects, 1-64 characters")],
+    comment: Annotated[str | None, typer.Option(help="Optional note")] = None,
+) -> None:
+    decide_from_cli(incident_id, action_id, "rejected", action_hash, by, comment)
+
+
+@incidents_app.command("actions")
+def incidents_actions(incident_id: uuid.UUID) -> None:
+    async def work(sessions: SessionFactory) -> list[str]:
+        async with sessions() as session:
+            rows = await session.scalars(
+                select(ActionRow)
+                .where(ActionRow.incident_id == incident_id)
+                .order_by(ActionRow.rung, ActionRow.action_type)
+            )
+            return [
+                f"{a.id}  {a.action_type:<16} {a.resource_id:<20} {a.status:<16} "
+                f"{a.permission_class:<18} hash={a.action_hash}"
+                for a in rows
+            ]
+
+    for line in with_sessions(work):
+        typer.echo(line)
 
 
 @audit_app.command("verify")

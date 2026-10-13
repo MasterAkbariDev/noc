@@ -13,6 +13,7 @@ from noc_shared.tools import (
 )
 
 INVESTIGATOR = "investigator"
+EXECUTOR = "executor"
 METRICS = "metrics"
 LOGS = "logs"
 NETWORK = "network"
@@ -74,7 +75,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "active/sub state, restart count, main process exit status, active since, memory."
             ),
             args_model=GetServiceStatusArgs,
-            agents=frozenset({INVESTIGATOR, METRICS, LOGS}),
+            agents=frozenset({INVESTIGATOR, METRICS, LOGS, EXECUTOR}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(

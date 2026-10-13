@@ -33,6 +33,10 @@ class Settings(BaseSettings):
 
     execution_enabled: bool = False
     automation_paused: bool = False
+    approval_ttl_seconds: int = 3600
+    verify_settle_seconds: float = 30.0
+    verify_timeout_seconds: float = 300.0
+    verify_poll_seconds: float = 15.0
     investigator_max_rounds: int = 3
     investigator_max_tool_calls: int = 8
     agent_mode: AgentMode = "single"

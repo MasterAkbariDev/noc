@@ -1,5 +1,3 @@
-import hashlib
-import json
 import uuid
 
 from sqlalchemy import func, select
@@ -27,25 +25,23 @@ from noc.policy.models import (
     SituationFacts,
     TargetFacts,
 )
+from noc_shared.actions import compute_action_hash
 from noc_shared.permissions import PermissionClass
 
+FIRST_ATTEMPT = 1
 IN_FLIGHT_STATUSES = ("dispatched", "executing", "outcome_unknown")
 EXECUTED_STATUSES = ("dispatched", "executing", "succeeded", "failed", "outcome_unknown")
 
 
-def action_hash(incident_id: uuid.UUID, target_id: uuid.UUID, candidate: ActionCandidate) -> str:
-    canonical = json.dumps(
-        {
-            "incident": str(incident_id),
-            "target": str(target_id),
-            "action": candidate.action_type,
-            "resource": candidate.resource_id,
-            "params": candidate.params,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
+def action_hash(incident_id: uuid.UUID, target_name: str, candidate: ActionCandidate) -> str:
+    return compute_action_hash(
+        candidate.action_type,
+        target_name,
+        candidate.resource_id,
+        dict(candidate.params),
+        incident_id,
+        FIRST_ATTEMPT,
     )
-    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 async def evidence_age_seconds(session: AsyncSession, incident_id: uuid.UUID) -> float:
@@ -158,12 +154,20 @@ async def decide_actions(
         )
         decision = evaluate_safely(inputs, policy.weights, policy.version)
         decisions.append(decision)
-        session.add(action_row(incident, candidate, decision))
+        definition = policy.actions.get(action_type)
+        rung = definition.rung if definition is not None else 0
+        session.add(action_row(incident, target.name, candidate, decision, rung))
     await session.flush()
     return decisions
 
 
-def action_row(incident: Incident, candidate: ActionCandidate, decision: Decision) -> ActionRow:
+def action_row(
+    incident: Incident,
+    target_name: str,
+    candidate: ActionCandidate,
+    decision: Decision,
+    rung: int,
+) -> ActionRow:
     return ActionRow(
         incident_id=incident.id,
         target_id=incident.target_id,
@@ -179,7 +183,8 @@ def action_row(incident: Incident, candidate: ActionCandidate, decision: Decisio
         impact_score=decision.impact.score,
         high_impact=decision.high_impact,
         policy_version=decision.policy_version,
-        action_hash=action_hash(incident.id, incident.target_id, candidate),
+        action_hash=action_hash(incident.id, target_name, candidate),
+        rung=rung,
     )
 
 
@@ -188,3 +193,32 @@ async def decisions_exist(session: AsyncSession, incident_id: uuid.UUID) -> bool
         select(ActionRow.id).where(ActionRow.incident_id == incident_id).limit(1)
     )
     return found is not None
+
+
+async def reevaluate_action(
+    session: AsyncSession,
+    incident: Incident,
+    diagnosis: DiagnosisRow,
+    action: ActionRow,
+    policy: PolicyDocument,
+    execution_enabled: bool,
+    automation_paused: bool,
+) -> Decision:
+    target = await session.get_one(Target, incident.target_id)
+    resource = await session.get(ManagedResourceRow, (incident.target_id, action.resource_id))
+    candidate = ActionCandidate(
+        action_type=action.action_type,
+        resource_id=action.resource_id,
+        params=dict(action.params),
+        evidence_refs=await supporting_refs(session, incident.id),
+    )
+    inputs = PolicyInputs(
+        candidate=candidate,
+        definition=policy.actions.get(action.action_type),
+        target=target_facts(target),
+        resource=resource_facts(resource, action.resource_id, policy),
+        situation=await situation_facts(
+            session, incident, diagnosis, action.action_type, execution_enabled, automation_paused
+        ),
+    )
+    return evaluate_safely(inputs, policy.weights, policy.version)

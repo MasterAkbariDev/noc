@@ -180,18 +180,18 @@ def render_report(data: ReportData) -> str:
             )
     lines += [
         "",
-        "## Policy decisions (no action was executed)",
+        actions_heading(data.actions),
         *table(
-            ["Action", "Resource", "Class", "Eligible", "Impact", "Gates failed", "Reasons"],
+            ["Action", "Resource", "Class", "Status", "Authorized by", "Result", "Gates failed"],
             [
                 [
                     a.action_type,
                     a.resource_id or "-",
                     a.permission_class,
-                    "yes" if a.eligible else "no",
-                    str(a.impact_score),
+                    a.status or "-",
+                    a.authorization or "-",
+                    a.result_code or ("ok" if a.status == "succeeded" else "-"),
                     ", ".join(a.gate_failures) or "-",
-                    ", ".join(a.reasons) or "-",
                 ]
                 for a in data.actions
             ],
@@ -210,6 +210,15 @@ def render_report(data: ReportData) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+EXECUTED_ACTION_STATUSES = frozenset({"dispatched", "succeeded", "failed", "outcome_unknown"})
+
+
+def actions_heading(actions: list[ActionRow]) -> str:
+    if any(action.status in EXECUTED_ACTION_STATUSES for action in actions):
+        return "## Actions"
+    return "## Policy decisions (no action was executed)"
 
 
 def compact(payload: dict[str, object]) -> str:

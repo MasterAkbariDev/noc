@@ -16,6 +16,7 @@ from noc.store.briefs import all_alerts_resolved, load_investigation_input
 from noc.store.decisions import decide_actions, decisions_exist
 from noc.store.incidents import add_event, lock_incident, transition
 from noc.store.investigations import new_agent_run, save_investigation
+from noc.store.remediation import plan_remediation
 
 logger = structlog.get_logger(__name__)
 
@@ -157,6 +158,9 @@ class IncidentNodes:
                     settings.automation_paused,
                 )
             await transition(session, incident, IncidentStatus.PLANNED, POLICY)
+            planned = await plan_remediation(session, incident, settings.approval_ttl_seconds)
+            if planned != "none":
+                return {"outcome": planned}
             eligible = await session.scalar(
                 select(ActionRow.id)
                 .where(ActionRow.incident_id == incident_id, ActionRow.eligible.is_(True))
@@ -188,3 +192,16 @@ class IncidentNodes:
 
 def route_after_begin(state: IncidentState) -> str:
     return "report" if state.get("outcome") == "self_resolved" else "investigate"
+
+
+def route_after_decide(state: IncidentState) -> str:
+    outcome = state.get("outcome")
+    if outcome == "remediate":
+        return "execute"
+    if outcome == "awaiting_approval":
+        return "wait"
+    return "report"
+
+
+def route_after_execute(state: IncidentState) -> str:
+    return "verify" if state.get("outcome") == "verify" else "report"

@@ -23,10 +23,16 @@ from noc.domain.incident_status import EscalationReason
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
-from noc.orchestration.graph import IncidentGraph, build_incident_graph, run_incident
+from noc.orchestration.graph import (
+    IncidentGraph,
+    build_incident_graph,
+    build_remediation_graph,
+    run_incident,
+)
 from noc.orchestration.runtime import build_runtime
 from noc.store.incidents import escalate_abandoned
 from noc.store.investigations import fail_orphaned_runs
+from noc.store.remediation import REMEDIATE_JOB, expire_approvals
 from noc.tools.sentinel_client import build_sentinel_http
 from noc.worker.heartbeat import PollStatus, write_heartbeat
 
@@ -56,10 +62,12 @@ class Worker:
         sessions: SessionFactory,
         graph: IncidentGraph,
         ingestor: AlertIngestor,
+        remediation_graph: IncidentGraph | None = None,
     ) -> None:
         self._settings = settings
         self._sessions = sessions
         self._graph = graph
+        self._remediation_graph = remediation_graph
         self._ingestor = ingestor
         self._identity = worker_identity()
         self._started_at = utc_now()
@@ -133,6 +141,9 @@ class Worker:
     async def sweep_orphans_once(self) -> int:
         async with transaction(self._sessions) as session:
             failed = await fail_orphaned_runs(session, INVESTIGATE_JOB)
+            expired = await expire_approvals(session)
+        if expired:
+            logger.warning("approvals_expired", count=expired)
         if failed:
             logger.warning("orphaned_agent_runs_failed", count=failed)
         return failed
@@ -166,13 +177,25 @@ class Worker:
     async def _claim(self) -> ClaimedJob | None:
         async with transaction(self._sessions) as session:
             return await queue.claim(
-                session, self._identity, [INVESTIGATE_JOB], self._settings.job_lease_seconds
+                session, self._identity, self._job_kinds(), self._settings.job_lease_seconds
             )
+
+    def _job_kinds(self) -> list[str]:
+        if self._remediation_graph is None:
+            return [INVESTIGATE_JOB]
+        return [INVESTIGATE_JOB, REMEDIATE_JOB]
+
+    async def _run_job(self, job: ClaimedJob) -> None:
+        incident_id = uuid.UUID(job.payload["incident_id"])
+        if job.kind == REMEDIATE_JOB and self._remediation_graph is not None:
+            await run_incident(self._remediation_graph, incident_id, job.payload["action_id"])
+            return
+        await run_incident(self._graph, incident_id)
 
     async def _handle(self, job: ClaimedJob) -> None:
         heartbeat = asyncio.create_task(self._heartbeat(job.id))
         try:
-            await run_incident(self._graph, uuid.UUID(job.payload["incident_id"]))
+            await self._run_job(job)
         except Exception as exc:
             logger.exception("job_failed", job_id=job.id, kind=job.kind)
             error = describe_error(exc)
@@ -239,9 +262,10 @@ async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) 
             prometheus_url=settings.prometheus_url,
         )
         graph = build_incident_graph(runtime, checkpointer)
+        remediation_graph = build_remediation_graph(runtime, checkpointer)
         source = PrometheusAlertSource(prometheus_http, settings.prometheus_url)
         ingestor = AlertIngestor(source, sessions, settings.missing_polls_to_resolve)
-        worker = Worker(settings, sessions, graph, ingestor)
+        worker = Worker(settings, sessions, graph, ingestor, remediation_graph)
         if shutdown is None:
             loop = asyncio.get_running_loop()
             for signum in (signal.SIGINT, signal.SIGTERM):

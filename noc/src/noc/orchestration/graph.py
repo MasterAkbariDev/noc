@@ -7,7 +7,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from noc.orchestration.multi_nodes import DIAGNOSE, SPECIALIST, MultiNodes, route_to_specialists
-from noc.orchestration.nodes import IncidentNodes, route_after_begin
+from noc.orchestration.nodes import (
+    IncidentNodes,
+    route_after_begin,
+    route_after_decide,
+    route_after_execute,
+)
+from noc.orchestration.remediation_nodes import RemediationNodes
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
 
@@ -27,14 +33,12 @@ def build_single_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any])
     graph.add_node("begin", nodes.begin)
     graph.add_node("investigate", nodes.investigate)
     graph.add_node("decide", nodes.decide)
-    graph.add_node("report", nodes.report)
     graph.add_edge(START, "begin")
     graph.add_conditional_edges(
         "begin", route_after_begin, {"investigate": "investigate", "report": "report"}
     )
     graph.add_edge("investigate", "decide")
-    graph.add_edge("decide", "report")
-    graph.add_edge("report", END)
+    add_remediation(graph, RemediationNodes(runtime), nodes)
     return graph.compile(checkpointer=checkpointer)
 
 
@@ -46,7 +50,6 @@ def build_multi_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) 
     graph.add_node(SPECIALIST, nodes.specialist)
     graph.add_node(DIAGNOSE, nodes.diagnose)
     graph.add_node("decide", nodes.decide)
-    graph.add_node("report", nodes.report)
     graph.add_edge(START, "begin")
     graph.add_conditional_edges(
         "begin", route_after_begin, {"investigate": PLAN, "report": "report"}
@@ -54,17 +57,54 @@ def build_multi_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) 
     graph.add_conditional_edges(PLAN, route_to_specialists, [SPECIALIST, DIAGNOSE])
     graph.add_edge(SPECIALIST, DIAGNOSE)
     graph.add_edge(DIAGNOSE, "decide")
-    graph.add_edge("decide", "report")
+    add_remediation(graph, RemediationNodes(runtime), nodes)
+    return graph.compile(checkpointer=checkpointer)
+
+
+def add_remediation(
+    graph: StateGraph[IncidentState, None, IncidentState, IncidentState],
+    remediation: RemediationNodes,
+    nodes: IncidentNodes,
+) -> None:
+    graph.add_node("execute", remediation.execute)
+    graph.add_node("verify", remediation.verify)
+    graph.add_node("report", nodes.report)
+    graph.add_conditional_edges(
+        "decide", route_after_decide, {"execute": "execute", "wait": END, "report": "report"}
+    )
+    graph.add_conditional_edges(
+        "execute", route_after_execute, {"verify": "verify", "report": "report"}
+    )
+    graph.add_edge("verify", "report")
+    graph.add_edge("report", END)
+
+
+def build_remediation_graph(
+    runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]
+) -> IncidentGraph:
+    remediation = RemediationNodes(runtime)
+    graph = StateGraph(IncidentState)
+    graph.add_node("execute", remediation.execute)
+    graph.add_node("verify", remediation.verify)
+    graph.add_node("report", IncidentNodes(runtime).report)
+    graph.add_edge(START, "execute")
+    graph.add_conditional_edges(
+        "execute", route_after_execute, {"verify": "verify", "report": "report"}
+    )
+    graph.add_edge("verify", "report")
     graph.add_edge("report", END)
     return graph.compile(checkpointer=checkpointer)
 
 
-def thread_config(incident_id: uuid.UUID) -> RunnableConfig:
-    return {"configurable": {"thread_id": str(incident_id)}}
+def thread_config(incident_id: uuid.UUID, suffix: str = "") -> RunnableConfig:
+    thread = str(incident_id) if not suffix else f"{incident_id}:{suffix}"
+    return {"configurable": {"thread_id": thread}}
 
 
-async def run_incident(graph: IncidentGraph, incident_id: uuid.UUID) -> dict[str, Any]:
-    config = thread_config(incident_id)
+async def run_incident(
+    graph: IncidentGraph, incident_id: uuid.UUID, suffix: str = ""
+) -> dict[str, Any]:
+    config = thread_config(incident_id, suffix)
     snapshot = await graph.aget_state(config)
     if snapshot.values and not snapshot.next:
         return dict(snapshot.values)

@@ -37,6 +37,7 @@ class Runtime:
     routing: RoutingTable
     specialists: dict[Specialist, SpecialistAgent]
     diagnoser: DiagnosisAgent
+    sentinels: SentinelDirectory
 
 
 def build_runtime(
@@ -78,4 +79,5 @@ def build_runtime(
         routing=load_routing(ROUTING_FILE),
         specialists=specialists,
         diagnoser=DiagnosisAgent(llm_client),
+        sentinels=sentinels,
     )

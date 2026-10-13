@@ -2,7 +2,15 @@ from typing import Literal, NotRequired, TypedDict
 
 from noc.agents.supervisor import Specialist
 
-Outcome = Literal["self_resolved", "escalated", "diagnosed"]
+Outcome = Literal[
+    "self_resolved",
+    "escalated",
+    "diagnosed",
+    "remediate",
+    "awaiting_approval",
+    "verify",
+    "resolved",
+]
 
 
 class IncidentState(TypedDict):
