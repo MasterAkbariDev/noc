@@ -23,7 +23,7 @@ from noc.tools.spec import ToolSpec
 
 ROUTING_FILE = Path(__file__).parent / "routing.yaml"
 SPECIALIST_PROMPTS = Path(specialist_module.__file__).parent / "prompts"
-IMPLEMENTED_SPECIALISTS: tuple[Specialist, ...] = ("metrics", "logs", "network")
+IMPLEMENTED_SPECIALISTS: tuple[Specialist, ...] = ("metrics", "logs", "network", "security")
 
 
 @dataclass(frozen=True)

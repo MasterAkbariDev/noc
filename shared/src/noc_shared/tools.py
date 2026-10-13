@@ -206,3 +206,36 @@ class RemoteCount(BaseModel):
 class ConnectionSummary(BaseModel):
     by_state: dict[str, int]
     top_remote_addresses: list[RemoteCount]
+
+
+class GetAuthEventsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    since_minutes: int = Field(60, ge=1, le=240)
+
+
+class AuthSource(BaseModel):
+    address: str
+    username: str
+    count: int
+    first_seen: str | None
+    last_seen: str | None
+
+
+class AuthEvents(BaseModel):
+    failed: list[AuthSource] = Field(max_length=20)
+    accepted: list[AuthSource] = Field(max_length=20)
+    sudo_events: int
+    invalid_user_attempts: int
+    truncated: bool
+
+
+class Session(BaseModel):
+    username: str
+    terminal: str | None
+    host: str | None
+    started_at: str
+
+
+class ActiveSessions(BaseModel):
+    sessions: list[Session] = Field(max_length=20)

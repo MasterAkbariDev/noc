@@ -7,6 +7,13 @@ import psutil
 from pydantic import BaseModel, ValidationError
 
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
+from noc_sentinel.tools.auth import (
+    AUTH_LINES_MAX,
+    AuthLogReader,
+    SessionReader,
+    active_sessions,
+    auth_events,
+)
 from noc_sentinel.tools.disk_breakdown import DiskBreakdownReader
 from noc_sentinel.tools.host import HostReader
 from noc_sentinel.tools.journal import JournalReader
@@ -14,6 +21,7 @@ from noc_sentinel.tools.network import NetworkReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
 from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.tools import (
+    GetAuthEventsArgs,
     GetServiceLogsArgs,
     GetServiceStatusArgs,
     NoArgs,
@@ -51,6 +59,8 @@ class Toolbox:
         journal: JournalReader,
         disk_breakdown: DiskBreakdownReader,
         network: NetworkReader,
+        auth_log: AuthLogReader,
+        sessions: SessionReader,
     ) -> None:
         self._config = config
         self._systemctl = systemctl
@@ -58,6 +68,8 @@ class Toolbox:
         self._journal = journal
         self._disk_breakdown = disk_breakdown
         self._network = network
+        self._auth_log = auth_log
+        self._sessions = sessions
         self._tools: dict[str, ToolHandler] = {
             "get_service_status": self._get_service_status,
             "get_service_logs": self._get_service_logs,
@@ -69,6 +81,8 @@ class Toolbox:
             "get_listening_ports": self._get_listening_ports,
             "get_network_stats": self._get_network_stats,
             "get_connection_summary": self._get_connection_summary,
+            "get_auth_events": self._get_auth_events,
+            "get_active_sessions": self._get_active_sessions,
         }
 
     def names(self) -> list[str]:
@@ -154,3 +168,13 @@ class Toolbox:
     def _get_connection_summary(self, raw_args: RawArgs) -> dict[str, Any]:
         parse_args(NoArgs, raw_args)
         return self._network.connections().model_dump()
+
+    def _get_auth_events(self, raw_args: RawArgs) -> dict[str, Any]:
+        args = parse_args(GetAuthEventsArgs, raw_args)
+        sshd_lines = self._auth_log.read("sshd", args.since_minutes, AUTH_LINES_MAX)
+        sudo_lines = self._auth_log.read("sudo", args.since_minutes, AUTH_LINES_MAX)
+        return auth_events(sshd_lines, sudo_lines).model_dump()
+
+    def _get_active_sessions(self, raw_args: RawArgs) -> dict[str, Any]:
+        parse_args(NoArgs, raw_args)
+        return active_sessions(self._sessions.sessions()).model_dump()
