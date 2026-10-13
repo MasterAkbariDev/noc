@@ -12,6 +12,7 @@ class IncidentSummary(BaseModel):
     title: str
     status: str
     severity: str
+    target: str
     opened_at: datetime
     root_cause_code: str | None
     confidence: float | None
@@ -38,6 +39,9 @@ class FindingView(BaseModel):
     evidence: list[dict[str, Any]]
     confidence: float
     suspected_injection: bool
+    evidence_strength: str
+    counter_evidence: list[str]
+    grounded: bool
 
 
 class ActionView(BaseModel):
@@ -51,12 +55,42 @@ class ActionView(BaseModel):
     gate_failures: list[str]
     reasons: list[str]
     impact_score: int
+    high_impact: bool
+    auto_executable: bool
+    policy_version: str
+
+
+class HypothesisView(BaseModel):
+    root_cause_code: str
+    description: str
+    confidence: float
+    supporting_findings: list[str]
+    contradicting_findings: list[str]
+    affected_resource_id: str | None
+
+
+class DiagnosisView(BaseModel):
+    primary_code: str
+    confidence: float
+    is_security_incident: bool
+    hypotheses: list[HypothesisView]
+    needs_more_info: list[str]
+    ungrounded_findings: int
 
 
 class IncidentDetail(IncidentSummary):
-    target: str
+    mode: str
+    root_cause_summary: str | None
+    resolution_note: str | None
+    investigation_started_at: datetime | None
+    diagnosed_at: datetime | None
+    plan_at: datetime | None
+    escalated_at: datetime | None
+    resolved_at: datetime | None
+    closed_at: datetime | None
     trace_id: str
     events: list[EventView]
     findings: list[FindingView]
     actions: list[ActionView]
     report_markdown: str | None
+    diagnosis: DiagnosisView | None
