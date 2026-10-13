@@ -106,3 +106,13 @@ Pass the same `--node-port` and `--sentinel-port` if you changed them from the d
 - Registered units can be restarted only once a polkit rule allows `noc-sentinel` to manage them. This installer does not write that rule yet, so `restart_service` fails with an authorization error until you add one.
 - The installer does not run `apt-get update`. If `python3-venv` is missing and apt has no index, run `sudo apt-get update` first.
 - The sha256 file comes from the same GitHub release as the tarball, so it proves the download matches that release and not that the release is genuine. Pin the hash in the script if you need stronger assurance.
+
+## Single-host (staging) install
+
+When the NOC runs on the same machine, bind both services to loopback so no new port is exposed:
+
+```bash
+sudo ./install.sh --dry-run --noc-ip 127.0.0.1 --listen-address 127.0.0.1 --pki-dir /root/noc-pki --with-sentinel --key-file /root/noc-keys/noc-worker.key --wheel-dir /root/noc-dist
+```
+
+Issue the target's server certificate with `127.0.0.1` in its SANs (`deploy/pki/issue-server.sh <name> 127.0.0.1`).

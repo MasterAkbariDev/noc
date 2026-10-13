@@ -36,6 +36,7 @@ KEY_ID=noc-worker
 ENVIRONMENT=prod
 WHEEL_DIR=
 NODE_PORT=9100
+LISTEN_ADDRESS=0.0.0.0
 SENTINEL_PORT=9444
 REGISTER_UNITS=()
 SEEN_IDS=
@@ -62,6 +63,7 @@ install options
   --node-port <port>           node_exporter port (default: 9100)
   --with-sentinel              also install noc-sentinel
   --sentinel-port <port>       sentinel port (default: 9444)
+  --listen-address <ip>        address both services bind to (default: 0.0.0.0; use 127.0.0.1 when the NOC runs on the same host)
   --key-file <file>            HMAC key shared with the NOC worker (required with --with-sentinel)
   --key-id <id>                key id the worker sends as X-NOC-Key-Id (default: noc-worker)
   --wheel-dir <dir>            directory with noc_shared-*.whl and noc_sentinel-*.whl (required with --with-sentinel)
@@ -100,6 +102,7 @@ parse_args() {
             --target-name) need_arg "$@"; TARGET_NAME="$2"; shift 2 ;;
             --node-port) need_arg "$@"; NODE_PORT="$2"; shift 2 ;;
             --sentinel-port) need_arg "$@"; SENTINEL_PORT="$2"; shift 2 ;;
+            --listen-address) need_arg "$@"; LISTEN_ADDRESS="$2"; shift 2 ;;
             --key-file) need_arg "$@"; KEY_FILE="$2"; shift 2 ;;
             --key-id) need_arg "$@"; KEY_ID="$2"; shift 2 ;;
             --wheel-dir) need_arg "$@"; WHEEL_DIR="$2"; shift 2 ;;
@@ -143,6 +146,9 @@ validate_register_unit() {
 validate_inputs() {
     if [[ ! "$NOC_IP" =~ $IPV4_RE && ! "$NOC_IP" =~ $IPV6_RE ]]; then
         die "--noc-ip is required and must be an IPv4 or IPv6 address"
+    fi
+    if [[ ! "$LISTEN_ADDRESS" =~ $IPV4_RE && ! "$LISTEN_ADDRESS" =~ $IPV6_RE ]]; then
+        die "--listen-address must be an IPv4 or IPv6 address"
     fi
     validate_port "--node-port" "$NODE_PORT"
     validate_port "--sentinel-port" "$SENTINEL_PORT"
@@ -382,8 +388,8 @@ install_node_binary() {
 }
 
 write_node_env() {
-    printf 'NODE_EXPORTER_OPTS=--web.config.file=%s/web-config.yml --web.listen-address=:%s %s\n' \
-        "$NODE_EXPORTER_CONF" "$NODE_PORT" "$NODE_EXPORTER_COLLECTORS"
+    printf 'NODE_EXPORTER_OPTS=--web.config.file=%s/web-config.yml --web.listen-address=%s:%s %s\n' \
+        "$NODE_EXPORTER_CONF" "$(listen_host)" "$NODE_PORT" "$NODE_EXPORTER_COLLECTORS"
 }
 
 activate_unit() {
@@ -459,7 +465,7 @@ ensure_sentinel_packages() {
 write_sentinel_config() {
     printf 'target: "%s"\n' "$TARGET_NAME"
     printf 'environment: "%s"\n' "$ENVIRONMENT"
-    printf 'listen:\n  host: "0.0.0.0"\n  port: %s\n' "$SENTINEL_PORT"
+    printf 'listen:\n  host: "%s"\n  port: %s\n' "$LISTEN_ADDRESS" "$SENTINEL_PORT"
     printf 'tls:\n  cert_file: "%s/tls/server.pem"\n  key_file: "%s/tls/server-key.pem"\n  client_ca_file: "%s/tls/ca.pem"\n' \
         "$SENTINEL_CONF" "$SENTINEL_CONF" "$SENTINEL_CONF"
     printf 'key_files:\n  "%s": "%s/keys/%s.key"\n' "$KEY_ID" "$SENTINEL_CONF" "$KEY_ID"
@@ -494,7 +500,23 @@ install_sentinel() {
     activate_unit "$SENTINEL_UNIT_NAME"
 }
 
+listen_host() {
+    if [[ "$LISTEN_ADDRESS" == *:* ]]; then
+        printf '[%s]' "$LISTEN_ADDRESS"
+    else
+        printf '%s' "$LISTEN_ADDRESS"
+    fi
+}
+
+is_loopback_listen() {
+    [[ "$LISTEN_ADDRESS" == 127.* || "$LISTEN_ADDRESS" == ::1 ]]
+}
+
 apply_firewall() {
+    if is_loopback_listen; then
+        printf 'firewall: services listen on %s only, no rule needed\n' "$LISTEN_ADDRESS"
+        return 0
+    fi
     local ports="$NODE_PORT"
     if ((WITH_SENTINEL)); then
         ports="$NODE_PORT and $SENTINEL_PORT"
