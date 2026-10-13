@@ -117,3 +117,30 @@ class ProcessInfo(BaseModel):
 class TopProcesses(BaseModel):
     sort_by: ProcessSort
     processes: list[ProcessInfo]
+
+
+JournalPriority = Literal["debug", "info", "warning", "err", "crit"]
+
+
+class GetServiceLogsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: ResourceId = Field(
+        description="Id of a registered systemd unit, e.g. svc:demo-shop"
+    )
+    since_minutes: int = Field(15, ge=1, le=60)
+    max_lines: int = Field(100, ge=1, le=200)
+    min_priority: JournalPriority = "warning"
+
+
+class LogLine(BaseModel):
+    ts: str | None
+    priority: int | None
+    message: str
+
+
+class ServiceLogs(BaseModel):
+    resource_id: str
+    unit: str
+    lines: list[LogLine]
+    truncated: bool

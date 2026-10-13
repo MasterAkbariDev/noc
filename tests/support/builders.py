@@ -11,6 +11,8 @@ from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.tools import (
     CpuUsage,
     DiskUsage,
+    JournalPriority,
+    LogLine,
     MemoryUsage,
     MountUsage,
     ProcessInfo,
@@ -117,6 +119,24 @@ class FakeHostReader:
             )
             for index, name in enumerate(self.process_names)
         ][:limit]
+
+
+class FakeJournal:
+    def __init__(self, lines: list[LogLine] | None = None) -> None:
+        self.lines = lines if lines is not None else [default_log_line()]
+        self.calls: list[tuple[str, int, int, JournalPriority]] = []
+
+    def read(
+        self, unit: str, since_minutes: int, max_lines: int, min_priority: JournalPriority
+    ) -> list[LogLine]:
+        self.calls.append((unit, since_minutes, max_lines, min_priority))
+        return self.lines[:max_lines]
+
+
+def default_log_line() -> LogLine:
+    return LogLine(
+        ts="2026-10-13T09:00:00+00:00", priority=4, message="demo-shop: upstream timeout"
+    )
 
 
 def tool_context(agent: str = "investigator", data_policy: str = "full") -> ToolContext:

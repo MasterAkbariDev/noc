@@ -13,6 +13,7 @@ from noc_sentinel.nonce_store import NonceStore
 from noc_sentinel.security import RequestVerifier
 from noc_sentinel.tools import Toolbox
 from noc_sentinel.tools.host import HostReader, PsutilHostReader
+from noc_sentinel.tools.journal import JournalReader, SubprocessJournal
 from noc_sentinel.tools.systemd import SystemctlRunner
 from noc_shared.resources import Inventory
 from noc_shared.signing import VerifiedRequest
@@ -30,10 +31,16 @@ def create_app(
     secrets: dict[str, bytes],
     clock: Callable[[], datetime] = utc_now,
     host: HostReader | None = None,
+    journal: JournalReader | None = None,
 ) -> FastAPI:
     app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
     verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
-    toolbox = Toolbox(config, systemctl, host if host is not None else PsutilHostReader())
+    toolbox = Toolbox(
+        config,
+        systemctl,
+        host if host is not None else PsutilHostReader(),
+        journal if journal is not None else SubprocessJournal(),
+    )
     registry = CollectorRegistry()
     registry.register(SentinelCollector(config, systemctl))
     Signed = Annotated[VerifiedRequest, Depends(verifier)]

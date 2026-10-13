@@ -10,6 +10,7 @@ from noc_sentinel.app import create_app
 from noc_sentinel.config import load_config
 from noc_sentinel.nonce_store import NonceStore
 from noc_sentinel.tools.host import PsutilHostReader
+from noc_sentinel.tools.journal import SubprocessJournal
 from noc_sentinel.tools.systemd import SubprocessSystemctl
 
 
@@ -38,6 +39,7 @@ def main(argv: list[str] | None = None) -> None:
         nonce_store,
         config.load_secrets(),
         host=PsutilHostReader(),
+        journal=SubprocessJournal(),
     )
 
     if config.tls is None:

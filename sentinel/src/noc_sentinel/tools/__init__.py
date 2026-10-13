@@ -8,11 +8,14 @@ from pydantic import BaseModel, ValidationError
 
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
 from noc_sentinel.tools.host import HostReader
+from noc_sentinel.tools.journal import JournalReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
 from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.tools import (
+    GetServiceLogsArgs,
     GetServiceStatusArgs,
     NoArgs,
+    ServiceLogs,
     ToolCallResponse,
     ToolError,
     ToolErrorCode,
@@ -39,13 +42,19 @@ def parse_args[ArgsT: BaseModel](model: type[ArgsT], raw_args: RawArgs) -> ArgsT
 
 class Toolbox:
     def __init__(
-        self, config: SentinelConfig, systemctl: SystemctlRunner, host: HostReader
+        self,
+        config: SentinelConfig,
+        systemctl: SystemctlRunner,
+        host: HostReader,
+        journal: JournalReader,
     ) -> None:
         self._config = config
         self._systemctl = systemctl
         self._host = host
+        self._journal = journal
         self._tools: dict[str, ToolHandler] = {
             "get_service_status": self._get_service_status,
+            "get_service_logs": self._get_service_logs,
             "get_cpu_usage": self._get_cpu_usage,
             "get_memory_usage": self._get_memory_usage,
             "get_disk_usage": self._get_disk_usage,
@@ -89,6 +98,19 @@ class Toolbox:
         args = parse_args(GetServiceStatusArgs, raw_args)
         resource = self._registered(args.resource_id, ResourceKind.SYSTEMD_UNIT)
         return read_service_status(resource, self._systemctl).model_dump()
+
+    def _get_service_logs(self, raw_args: RawArgs) -> dict[str, Any]:
+        args = parse_args(GetServiceLogsArgs, raw_args)
+        resource = self._registered(args.resource_id, ResourceKind.SYSTEMD_UNIT)
+        lines = self._journal.read(
+            resource.name, args.since_minutes, args.max_lines, args.min_priority
+        )
+        return ServiceLogs(
+            resource_id=resource.id,
+            unit=resource.name,
+            lines=lines,
+            truncated=len(lines) >= args.max_lines,
+        ).model_dump()
 
     def _get_cpu_usage(self, raw_args: RawArgs) -> dict[str, Any]:
         parse_args(NoArgs, raw_args)
