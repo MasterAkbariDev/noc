@@ -1,0 +1,23 @@
+[Unit]
+Description=Demo reports worker for the Multi-Agent NOC lab
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=demo
+Group=demo
+WorkingDirectory=/opt/demo-app
+EnvironmentFile=-/etc/demo-app/env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/demo-app/venv/bin/python -m demo_app.reports
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=Demo shop (FastAPI) for the Multi-Agent NOC lab
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=demo
+Group=demo
+WorkingDirectory=/opt/demo-app
+EnvironmentFile=-/etc/demo-app/env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/demo-app/venv/bin/uvicorn demo_app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+MemoryMax=600M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
