@@ -6,6 +6,7 @@
 
 - node_exporter 1.9.1 from the GitHub release, checked against that release's `sha256sums.txt`, into `/usr/local/bin/node_exporter`. Runs as user `node_exporter`, TLS with client certificates required, collectors trimmed, `MemoryMax=64M`. Config in `/etc/node_exporter/`, unit `node_exporter.service`.
 - With `--with-sentinel`: user `noc-sentinel`, a venv in `/opt/noc-sentinel` built from the two wheels, config `/etc/noc-sentinel/config.yaml` (root:noc-sentinel, 0640), TLS files and the HMAC key in `/etc/noc-sentinel/`, unit `noc-sentinel.service` (the unit in `sentinel/noc-sentinel.service`). The venv may get `python3-venv` from apt, and nothing else from apt.
+- With `--with-sentinel` and at least one registered unit that allows `start_service` or `restart_service`: the polkit rule `/etc/polkit-1/rules.d/50-noc-sentinel.rules` (root:root, 0644). It lets user `noc-sentinel` start or restart exactly those units. When no registered unit allows it, the file is removed. See "Polkit rule" below.
 - ufw rules only when ufw is already active: `allow from <noc-ip>` to the two ports, tagged `noc-node-exporter` and `noc-sentinel`.
 - It never runs `ufw enable`, never changes ufw default policies, never edits sshd, never restarts nginx, Docker or any other service, and never runs `apt upgrade`.
 
@@ -89,6 +90,32 @@ Run these on the target after the real run. Replace the names with yours.
 - [ ] `sudo ufw status` (only if ufw is active) lists the two `ALLOW` rules from the NOC IP with comments `noc-node-exporter` and `noc-sentinel`. Nothing else was added.
 - [ ] Other services still run: check `systemctl --failed` and your existing services.
 
+## Polkit rule
+
+The sentinel restarts registered units through systemd, which asks polkit for `org.freedesktop.systemd1.manage-units`. The installer writes `/etc/polkit-1/rules.d/50-noc-sentinel.rules` so that this permission is granted only when all three hold:
+
+- the subject is user `noc-sentinel`,
+- the verb is `start` or `restart`,
+- the unit is one of the registered units whose resource allows `start_service` or `restart_service`.
+
+Every other request gets `polkit.Result.NOT_HANDLED`, so polkit falls through to its default rules, which do not grant it to the service user. The unit list is read from the generated sentinel config with the sentinel venv's Python and `yaml.safe_load`. The config is never evaluated as shell. Every unit name is checked against `^[A-Za-z0-9@._-]{1,128}\.service$` before the file is written, and the installer refuses to write the file if one fails. The file is rewritten only when its content changes, and polkit picks up the change without a restart.
+
+Manual check on the target, after a real run with at least one `--register-unit`. Replace `demo-shop.service` with a registered unit you can restart:
+
+- [ ] The registered unit can be restarted by the sentinel user. This must succeed:
+
+  ```bash
+  sudo -u noc-sentinel systemctl restart demo-shop.service
+  ```
+
+- [ ] A unit that is not registered is refused. Use a name that does not exist, so nothing can be disturbed if the rule is wrong. It must fail with an authorization error (typically `Access denied`), not with `Unit ... not found`, which would mean the rule let the request through:
+
+  ```bash
+  sudo -u noc-sentinel systemctl restart not-registered-check.service
+  ```
+
+- [ ] The file is `root:root` with mode `0644`: `stat -c '%U:%G %a' /etc/polkit-1/rules.d/50-noc-sentinel.rules`.
+
 ## Firewall
 
 The installer adds rules only when ufw is active. If ufw is inactive or missing, it prints a warning and adds nothing. In that case the ports are reachable from anywhere unless your provider firewall restricts them. Restrict TCP 9100 and 9444 to the NOC IP in the provider's firewall.
@@ -99,11 +126,10 @@ The installer adds rules only when ufw is active. If ufw is inactive or missing,
 sudo deploy/target/install.sh --uninstall --noc-ip 203.0.113.10
 ```
 
-Pass the same `--node-port` and `--sentinel-port` if you changed them from the defaults. Uninstall stops and disables our two units, removes them, removes `/usr/local/bin/node_exporter`, `/etc/node_exporter`, `/etc/noc-sentinel` and `/opt/noc-sentinel`, removes the two users, and deletes the ufw rules for this NOC IP and these ports. It keeps `/var/lib/noc-sentinel` (the action store and nonce database) and the `python3-venv` package. Delete the state folder by hand when you no longer need it. Dry-run works for uninstall too.
+Pass the same `--node-port` and `--sentinel-port` if you changed them from the defaults. Uninstall stops and disables our two units, removes them, removes the polkit rule, removes `/usr/local/bin/node_exporter`, `/etc/node_exporter`, `/etc/noc-sentinel` and `/opt/noc-sentinel`, removes the two users, and deletes the ufw rules for this NOC IP and these ports. It keeps `/var/lib/noc-sentinel` (the action store and nonce database) and the `python3-venv` package. Delete the state folder by hand when you no longer need it. Dry-run works for uninstall too.
 
 ## Known gaps
 
-- Registered units can be restarted only once a polkit rule allows `noc-sentinel` to manage them. This installer does not write that rule yet, so `restart_service` fails with an authorization error until you add one.
 - The installer does not run `apt-get update`. If `python3-venv` is missing and apt has no index, run `sudo apt-get update` first.
 - The sha256 file comes from the same GitHub release as the tarball, so it proves the download matches that release and not that the release is genuine. Pin the hash in the script if you need stronger assurance.
 

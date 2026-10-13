@@ -16,6 +16,8 @@ SENTINEL_STATE=/var/lib/noc-sentinel
 SENTINEL_UNIT_NAME=noc-sentinel.service
 SENTINEL_UNIT=/etc/systemd/system/noc-sentinel.service
 SENTINEL_USER=noc-sentinel
+POLKIT_RULE=/etc/polkit-1/rules.d/50-noc-sentinel.rules
+POLKIT_UNIT_RE='^[A-Za-z0-9@._-]{1,128}\.service$'
 UFW_NODE_COMMENT=noc-node-exporter
 UFW_SENTINEL_COMMENT=noc-sentinel
 RESOURCE_RE='^[a-z][a-z0-9_-]{0,30}:[A-Za-z0-9@._-]{1,128}$'
@@ -483,6 +485,66 @@ write_sentinel_config() {
     done
 }
 
+allowed_unit_names() {
+    "$SENTINEL_VENV/bin/python" -c '
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = yaml.safe_load(handle)
+for resource in config.get("resources") or []:
+    if resource.get("kind") == "systemd_unit" and {"start_service", "restart_service"} & set(resource.get("allowed_actions") or []):
+        print(resource["name"])
+' "$1"
+}
+
+render_polkit_rule() {
+    local units_js="" unit
+    for unit in "$@"; do
+        units_js+="${units_js:+, }\"$unit\""
+    done
+    cat <<EOF
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "$SENTINEL_USER" &&
+        ["start", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+        [$units_js].indexOf(action.lookup("unit")) >= 0) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});
+EOF
+}
+
+remove_polkit_rule() {
+    if [[ -e "$POLKIT_RULE" ]]; then
+        run rm -f "$POLKIT_RULE"
+    fi
+}
+
+install_polkit_rule() {
+    local units_out line rule="$WORK/polkit.rules"
+    local units=()
+    if ((DRY_RUN)) && [[ ! -x "$SENTINEL_VENV/bin/python" ]]; then
+        printf '[dry-run] write %s for the registered units that allow start or restart\n' "$POLKIT_RULE"
+        return 0
+    fi
+    units_out=$(allowed_unit_names "$WORK/config.yaml") || die "cannot read the registered units from the sentinel config"
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        if [[ ! "$line" =~ $POLKIT_UNIT_RE ]]; then
+            die "refusing to write $POLKIT_RULE: invalid unit name in the sentinel config: $line"
+        fi
+        units+=("$line")
+    done <<<"$units_out"
+    if ((${#units[@]} == 0)); then
+        remove_polkit_rule
+        return 0
+    fi
+    render_polkit_rule "${units[@]}" >"$rule"
+    install_file "$rule" "$POLKIT_RULE" 0644 root:root
+}
+
 install_sentinel() {
     CHANGED=0
     ensure_user "$SENTINEL_USER" "$SENTINEL_STATE"
@@ -499,6 +561,7 @@ install_sentinel() {
     install_file "$WORK/config.yaml" "$SENTINEL_CONF/config.yaml" 0640 root:"$SENTINEL_USER"
     install_file "$SCRIPT_DIR/sentinel/noc-sentinel.service" "$SENTINEL_UNIT" 0644 root:root
     activate_unit "$SENTINEL_UNIT_NAME"
+    install_polkit_rule
 }
 
 listen_host() {
@@ -587,6 +650,7 @@ uninstall_all() {
     FIREWALL=$(ufw_state)
     remove_unit "$NODE_EXPORTER_UNIT_NAME" "$NODE_EXPORTER_UNIT"
     remove_unit "$SENTINEL_UNIT_NAME" "$SENTINEL_UNIT"
+    remove_polkit_rule
     run systemctl daemon-reload
     run rm -f "$NODE_EXPORTER_BIN"
     run rm -rf "$NODE_EXPORTER_CONF" "$SENTINEL_CONF" "$SENTINEL_VENV"
