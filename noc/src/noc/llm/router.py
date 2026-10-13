@@ -10,6 +10,7 @@ import structlog
 from noc.db.base import utc_now
 from noc.llm.client import (
     LLMUnavailable,
+    ProviderBadGeneration,
     ProviderKeyRejected,
     ProviderRateLimited,
     ProviderUnavailable,
@@ -30,6 +31,12 @@ RECOVERABLE = (
 )
 TRANSIENT = (ProviderUnavailable, TimeoutError)
 OVERLOAD_BACKOFF_SECONDS = (5.0, 15.0)
+
+
+def is_overload(error: Exception) -> bool:
+    return isinstance(error, TRANSIENT) and not isinstance(error, ProviderBadGeneration)
+
+
 COOLDOWN_SECONDS: dict[type[Exception], float] = {
     ProviderRateLimited: 60.0,
     QuotaExhausted: 600.0,
@@ -125,13 +132,19 @@ class RoutedLLM:
         self, request: LLMRequest, routes: list[Route], primary: str
     ) -> tuple[LLMResponse | None, bool]:
         only_transient = bool(routes)
+        overloaded: set[tuple[str, str]] = set()
         for route in routes:
+            model = (route.provider.name, route.budget.model)
+            if model in overloaded:
+                continue
             try:
                 wait_ms = await route.budget.acquire(self._deadline)
                 response = await route.provider.complete(request, route.budget.model)
             except RECOVERABLE as exc:
                 await self._record_failure(route, exc)
                 only_transient = only_transient and isinstance(exc, TRANSIENT)
+                if is_overload(exc):
+                    overloaded.add(model)
                 continue
             response.wait_ms = wait_ms
             response.fallback = route.provider.name != primary or route.degraded

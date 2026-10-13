@@ -64,14 +64,12 @@ async def llm_state(sessions: SessionFactory, gemini_keys: None) -> None:
             )
         )
         session.add(
-            LlmQuotaUsage(
-                provider=LABEL_ONE, model="gemini-flash-lite-latest", day=today, requests=7
-            )
+            LlmQuotaUsage(provider=LABEL_ONE, model="gemini-3.1-flash-lite", day=today, requests=7)
         )
         session.add(
             LlmQuotaUsage(
                 provider=LABEL_ONE,
-                model="gemini-flash-lite-latest",
+                model="gemini-3.1-flash-lite",
                 day=today - timedelta(days=1),
                 requests=500,
             )
@@ -118,11 +116,11 @@ async def test_configured_key_shows_state_error_and_daily_usage(
     assert key["models"] == [
         {
             "tier": "small",
-            "model": "gemini-flash-lite-latest",
+            "model": "gemini-3.1-flash-lite",
             "used_today": 7,
             "daily_limit": 800,
         },
-        {"tier": "strong", "model": "gemini-flash-latest", "used_today": 0, "daily_limit": 200},
+        {"tier": "strong", "model": "gemini-3.6-flash", "used_today": 0, "daily_limit": 200},
     ]
 
 

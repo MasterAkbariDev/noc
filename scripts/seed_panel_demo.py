@@ -421,20 +421,20 @@ async def populate_escalated(session: AsyncSession, target: Target, title: str) 
                 "metrics",
                 "small",
                 "gemini",
-                "gemini-flash-lite-latest",
+                "gemini-3.1-flash-lite",
                 1450,
                 210,
                 820,
                 0,
             ),
             llm_call(
-                incident, "metrics", "strong", "gemini", "gemini-flash-latest", 1980, 340, 1310, 0
+                incident, "metrics", "strong", "gemini", "gemini-3.6-flash", 1980, 340, 1310, 0
             ),
             llm_call(
-                incident, "logs", "small", "gemini", "gemini-flash-lite-latest", 1210, 190, 700, 0
+                incident, "logs", "small", "gemini", "gemini-3.1-flash-lite", 1210, 190, 700, 0
             ),
             llm_call(
-                incident, "logs", "strong", "gemini", "gemini-flash-latest", 2100, 420, 1490, 1200
+                incident, "logs", "strong", "gemini", "gemini-3.6-flash", 2100, 420, 1490, 1200
             ),
             llm_call(
                 incident, "security", "small", "groq", "llama-3.3-70b-versatile", 980, 140, 610, 0
@@ -546,7 +546,7 @@ async def populate_resolved(session: AsyncSession, target: Target, title: str) -
             "investigator",
             "small",
             "gemini",
-            "gemini-flash-lite-latest",
+            "gemini-3.1-flash-lite",
             900,
             160,
             640,

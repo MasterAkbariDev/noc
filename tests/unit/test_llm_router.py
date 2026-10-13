@@ -9,6 +9,7 @@ from noc.config import Settings
 from noc.db.session import SessionFactory
 from noc.llm.client import (
     LLMUnavailable,
+    ProviderBadGeneration,
     ProviderKeyRejected,
     ProviderRateLimited,
     ProviderUnavailable,
@@ -52,7 +53,8 @@ class FakeTime:
 
 
 def route(provider: StubProvider, label: str, per_day: int = 100, degraded: bool = False) -> Route:
-    budget = RequestBudget(label, f"{provider.name}-model", 600, per_day, "UTC", MemoryQuotaStore())
+    model = f"{provider.name}-{'small' if degraded else 'model'}"
+    budget = RequestBudget(label, model, 600, per_day, "UTC", MemoryQuotaStore())
     return Route(provider, budget, label, degraded)
 
 
@@ -212,6 +214,23 @@ async def test_a_degraded_model_is_used_when_the_real_one_is_overloaded() -> Non
     response = await routed(routes).complete(REQUEST)
     assert response.fallback is True
     assert smaller.calls == 1
+
+
+async def test_an_overloaded_model_skips_its_other_keys_in_the_same_pass() -> None:
+    hanging = [StubProvider("gemini", [TimeoutError()]) for _ in range(3)]
+    groq = StubProvider("groq")
+    routes = [*(route(p, f"g#{i}") for i, p in enumerate(hanging)), route(groq, "q#1")]
+    response = await routed(routes).complete(REQUEST)
+    assert response.provider == "groq"
+    assert [p.calls for p in hanging] == [1, 0, 0]
+
+
+async def test_a_broken_generation_still_tries_the_next_key() -> None:
+    broken = StubProvider("gemini", [ProviderBadGeneration("bad json")])
+    second = StubProvider("gemini")
+    response = await routed([route(broken, "g#1"), route(second, "g#2")]).complete(REQUEST)
+    assert response.provider == "gemini"
+    assert second.calls == 1
 
 
 def test_evaluation_mode_never_uses_a_degraded_model() -> None:
