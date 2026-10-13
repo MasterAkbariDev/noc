@@ -6,6 +6,7 @@ from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
+from noc.api.activity import router as activity_router
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.prometheus import PrometheusReader
@@ -45,6 +46,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(servers_router)
     app.include_router(system_llm_router)
     app.include_router(system_router)
+    app.include_router(activity_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

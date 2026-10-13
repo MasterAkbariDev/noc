@@ -347,3 +347,24 @@ class ServerDetail(ServerSummary):
     resources: list[TargetResourceView]
     services: list[ServiceState]
     recent_incidents: list[IncidentSummary]
+
+
+class ActivityEntry(BaseModel):
+    id: int
+    ts: datetime
+    actor: str
+    action: str
+    action_label: str
+    subject: str
+    summary: str
+    payload: dict[str, Any]
+
+
+class ActivityPage(BaseModel):
+    items: list[ActivityEntry]
+    next_before_id: int | None
+
+
+class ChainVerification(BaseModel):
+    ok: bool
+    broken_at: int | None
