@@ -3,7 +3,9 @@ import os
 import signal
 import socket
 import uuid
+from collections.abc import Awaitable
 from contextlib import suppress
+from pathlib import Path
 
 import httpx
 import structlog
@@ -14,6 +16,7 @@ from noc.config import Settings
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.alerts import PrometheusAlertSource
 from noc.detection.correlator import INVESTIGATE_JOB
+from noc.detection.file_sd import refresh_file_sd
 from noc.detection.ingest import AlertIngestor
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
@@ -55,7 +58,10 @@ class Worker:
         self._stopping.set()
 
     async def run(self) -> None:
-        await asyncio.gather(self._ingest_loop(), self._job_loop())
+        loops: list[Awaitable[None]] = [self._ingest_loop(), self._job_loop()]
+        if self._settings.prometheus_targets_dir is not None:
+            loops.append(self._file_sd_loop(self._settings.prometheus_targets_dir))
+        await asyncio.gather(*loops)
         if self._running:
             await asyncio.wait(self._running)
 
@@ -67,6 +73,11 @@ class Worker:
         while not self._stopping.is_set():
             await self._ingestor.poll_once()
             await self._sleep(self._settings.poll_interval_seconds)
+
+    async def _file_sd_loop(self, directory: Path) -> None:
+        while not self._stopping.is_set():
+            await refresh_file_sd(self._sessions, directory)
+            await self._sleep(self._settings.file_sd_interval_seconds)
 
     async def _job_loop(self) -> None:
         while not self._stopping.is_set():

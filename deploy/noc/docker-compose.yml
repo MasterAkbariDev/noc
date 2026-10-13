@@ -47,6 +47,7 @@ services:
     ports: ["127.0.0.1:9090:9090"]
     volumes:
       - ./prometheus:/etc/prometheus:ro
+      - promtargets:/etc/prometheus/targets:ro
       - promdata:/prometheus
     mem_limit: 384m
     restart: unless-stopped
@@ -69,11 +70,17 @@ services:
     <<: *noc-app
     command: ["noc", "worker"]
     mem_limit: 512m
+    environment:
+      NOC_DATABASE_URL: postgresql+psycopg://noc:${POSTGRES_PASSWORD:-noc}@postgres:5432/noc
+      NOC_PROMETHEUS_URL: http://prometheus:9090
+      NOC_PROMETHEUS_TARGETS_DIR: /var/lib/noc/prometheus-targets
     volumes:
       - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
+      - promtargets:/var/lib/noc/prometheus-targets
     depends_on:
       migrate: { condition: service_completed_successfully }
 
 volumes:
   pgdata:
   promdata:
+  promtargets:

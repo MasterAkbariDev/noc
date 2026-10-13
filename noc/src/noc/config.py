@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     max_concurrent_incidents: int = 2
     job_lease_seconds: int = 120
     worker_metrics_port: int = 9108
+    prometheus_targets_dir: Path | None = None
+    file_sd_interval_seconds: float = 60
 
     execution_enabled: bool = False
     automation_paused: bool = False
