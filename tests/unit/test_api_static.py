@@ -32,3 +32,19 @@ def test_no_static_mount_without_dist_dir(tmp_path: Path) -> None:
     with TestClient(create_app(settings)) as client:
         assert client.get("/").status_code == 404
         assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_dashboard_deep_links_fall_back_to_index(tmp_path: Path) -> None:
+    settings = Settings(frontend_dist=make_dist(tmp_path), _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        for path in ("/incidents", "/incidents/3f2c"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert "<title>NOC</title>" in response.text
+
+
+def test_unknown_api_paths_and_missing_assets_stay_404(tmp_path: Path) -> None:
+    settings = Settings(frontend_dist=make_dist(tmp_path), _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/nope").status_code == 404
+        assert client.get("/assets/missing.js").status_code == 404

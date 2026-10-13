@@ -2,12 +2,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
-from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
+from noc.api.spa import SinglePageApp
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
@@ -40,6 +40,6 @@ def create_app(settings: Settings) -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     if settings.frontend_dist is not None and settings.frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
+        app.mount("/", SinglePageApp(directory=settings.frontend_dist, html=True), name="frontend")
 
     return app
