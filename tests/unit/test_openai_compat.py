@@ -3,6 +3,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from noc.llm.client import (
+    ProviderBadGeneration,
     ProviderKeyRejected,
     ProviderRateLimited,
     ProviderRequestRejected,
@@ -147,8 +148,31 @@ async def test_provider_specific_tool_call_fields_are_kept_and_sent_back() -> No
     )
     response = await provider.complete(request(tools=[TOOL]), "m")
     assert response.tool_calls[0].provider_extra == {"extra_content": signature}
-    sent = build_arguments(request(messages=[response.as_assistant_message()], tools=[TOOL]), "m")
+    assert response.tool_calls[0].provider == "p"
+    history = request(messages=[response.as_assistant_message()], tools=[TOOL])
+    sent = build_arguments(history, "m", "p")
     assert sent["messages"][0]["tool_calls"][0]["extra_content"] == signature
+    elsewhere = build_arguments(history, "m", "groq")
+    assert "extra_content" not in elsewhere["messages"][0]["tool_calls"][0]
+
+
+def test_tool_calls_from_another_provider_get_the_placeholder_extra() -> None:
+    call = LlmToolCall(id="c1", name="get_host_overview", arguments="{}", provider="groq")
+    message = ChatMessage(role=Role.ASSISTANT, content=None, tool_calls=[call])
+    placeholder = {"extra_content": {"google": {"thought_signature": "skip"}}}
+    sent = build_arguments(request(messages=[message], tools=[TOOL]), "m", "gemini", placeholder)
+    assert sent["messages"][0]["tool_calls"][0]["extra_content"] == placeholder["extra_content"]
+
+
+async def test_a_broken_tool_call_from_the_model_is_retryable() -> None:
+    payload = {
+        "error": {
+            "message": "Failed to parse tool call arguments as JSON",
+            "code": "tool_use_failed",
+        }
+    }
+    with pytest.raises(ProviderBadGeneration):
+        await provider_answering(400, payload).complete(request(), "m")
 
 
 async def test_other_client_errors_become_llm_errors() -> None:

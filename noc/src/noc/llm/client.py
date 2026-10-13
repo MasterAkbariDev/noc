@@ -19,6 +19,10 @@ class ProviderUnavailable(LLMError):
     pass
 
 
+class ProviderBadGeneration(ProviderUnavailable):
+    pass
+
+
 class QuotaExhausted(LLMError):
     pass
 

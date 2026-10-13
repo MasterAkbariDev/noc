@@ -50,7 +50,8 @@ def build_routed_llm(settings: Settings, sessions: SessionFactory) -> RoutedLLM:
                 budget = RequestBudget(
                     label, limits.model, limits.rpm, limits.rpd, config.quota_timezone, quota_store
                 )
-                routes.append(Route(OpenAICompatProvider(name, client), budget, label, degraded))
+                provider = OpenAICompatProvider(name, client, config.foreign_tool_call_extra)
+                routes.append(Route(provider, budget, label, degraded))
         chains[tier] = routes
     return RoutedLLM(
         chains,

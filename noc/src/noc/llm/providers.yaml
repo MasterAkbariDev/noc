@@ -5,6 +5,8 @@ providers:
     api_keys_env: GEMINI_API_KEYS
     proxy_env: NOC_GEMINI_PROXY
     quota_timezone: America/Los_Angeles
+    foreign_tool_call_extra:
+      extra_content: { google: { thought_signature: skip_thought_signature_validator } }
     models:
       small: { model: gemini-flash-lite-latest, rpm: 12, rpd: 800 }
       strong: { model: gemini-flash-latest, rpm: 8, rpd: 200 }
@@ -15,7 +17,7 @@ providers:
     proxy_env: NOC_GROQ_PROXY
     quota_timezone: UTC
     models:
-      small: { model: openai/gpt-oss-20b, rpm: 25, rpd: 900 }
+      small: { model: openai/gpt-oss-120b, rpm: 25, rpd: 900 }
       strong: { model: openai/gpt-oss-120b, rpm: 25, rpd: 900 }
 
 chains:

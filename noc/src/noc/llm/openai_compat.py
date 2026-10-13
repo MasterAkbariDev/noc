@@ -5,6 +5,7 @@ import openai
 from openai import AsyncOpenAI
 
 from noc.llm.client import (
+    ProviderBadGeneration,
     ProviderKeyRejected,
     ProviderRateLimited,
     ProviderRequestRejected,
@@ -13,12 +14,20 @@ from noc.llm.client import (
 from noc.llm.types import ChatMessage, LLMRequest, LLMResponse, LlmToolCall, Role, Usage
 
 
-def to_openai_message(message: ChatMessage) -> dict[str, Any]:
+def tool_call_extra(
+    call: LlmToolCall, provider: str, foreign_extra: dict[str, Any]
+) -> dict[str, Any]:
+    return call.provider_extra if call.provider == provider else foreign_extra
+
+
+def to_openai_message(
+    message: ChatMessage, provider: str = "", foreign_extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"role": message.role.value, "content": message.content}
     if message.role is Role.ASSISTANT and message.tool_calls:
         payload["tool_calls"] = [
             {
-                **call.provider_extra,
+                **tool_call_extra(call, provider, foreign_extra or {}),
                 "id": call.id,
                 "type": "function",
                 "function": {"name": call.name, "arguments": call.arguments},
@@ -30,10 +39,16 @@ def to_openai_message(message: ChatMessage) -> dict[str, Any]:
     return payload
 
 
-def build_arguments(request: LLMRequest, model: str) -> dict[str, Any]:
+def build_arguments(
+    request: LLMRequest,
+    model: str,
+    provider: str = "",
+    foreign_extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    messages = [to_openai_message(message, provider, foreign_extra) for message in request.messages]
     arguments: dict[str, Any] = {
         "model": model,
-        "messages": [to_openai_message(message) for message in request.messages],
+        "messages": messages,
         "temperature": request.temperature,
     }
     if request.tools:
@@ -53,6 +68,7 @@ def build_arguments(request: LLMRequest, model: str) -> dict[str, Any]:
 
 
 INVALID_KEY_MARKERS = ("api key not valid", "invalid api key", "api_key_invalid")
+BAD_GENERATION_MARKERS = ("tool_use_failed", "failed to parse tool call")
 
 
 def is_invalid_key_message(message: str) -> bool:
@@ -60,16 +76,24 @@ def is_invalid_key_message(message: str) -> bool:
     return any(marker in lowered for marker in INVALID_KEY_MARKERS)
 
 
+def is_bad_generation_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in BAD_GENERATION_MARKERS)
+
+
 class OpenAICompatProvider:
-    def __init__(self, name: str, client: AsyncOpenAI) -> None:
+    def __init__(
+        self, name: str, client: AsyncOpenAI, foreign_tool_call_extra: dict[str, Any] | None = None
+    ) -> None:
         self.name = name
         self._client = client
+        self._foreign_extra = foreign_tool_call_extra or {}
 
     async def complete(self, request: LLMRequest, model: str) -> LLMResponse:
         started = time.monotonic()
         try:
             completion = await self._client.chat.completions.create(
-                **build_arguments(request, model)
+                **build_arguments(request, model, self.name, self._foreign_extra)
             )
         except openai.RateLimitError as exc:
             raise ProviderRateLimited(f"{self.name}: rate limited") from exc
@@ -82,6 +106,10 @@ class OpenAICompatProvider:
                 raise ProviderUnavailable(f"{self.name}: {exc.status_code}") from exc
             if is_invalid_key_message(str(exc)):
                 raise ProviderKeyRejected(f"{self.name}: key rejected ({exc.status_code})") from exc
+            if is_bad_generation_message(str(exc)):
+                raise ProviderBadGeneration(
+                    f"{self.name}: the model wrote a broken tool call"
+                ) from exc
             raise ProviderRequestRejected(
                 f"{self.name}: request rejected ({exc.status_code}): {exc.message[:300]}"
             ) from exc
@@ -92,6 +120,7 @@ class OpenAICompatProvider:
                 id=call.id,
                 name=call.function.name,
                 arguments=call.function.arguments,
+                provider=self.name,
                 provider_extra=dict(call.model_extra or {}),
             )
             for call in (choice.message.tool_calls or [])

@@ -3,7 +3,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast, get_args
+from typing import Any, cast, get_args
 
 import yaml
 from pydantic import BaseModel, Field
@@ -27,6 +27,7 @@ class ProviderConfig(BaseModel):
     api_keys_env: str | None = None
     proxy_env: str | None = None
     quota_timezone: str = "UTC"
+    foreign_tool_call_extra: dict[str, Any] = Field(default_factory=dict)
     models: dict[Tier, ModelLimits]
 
     def api_keys(self) -> list[str]:

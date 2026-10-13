@@ -17,6 +17,7 @@ class LlmToolCall(BaseModel):
     id: str
     name: str
     arguments: str
+    provider: str = ""
     provider_extra: dict[str, Any] = Field(default_factory=dict)
 
 
