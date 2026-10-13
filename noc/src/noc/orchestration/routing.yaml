@@ -1,0 +1,27 @@
+alerts:
+  HostCPUSaturated: {specialists: [metrics, logs]}
+  HostCPUStealHigh: {specialists: [metrics, logs]}
+  HostMemoryPressure: {specialists: [metrics, logs]}
+  HostMemoryExhaustionPredicted: {specialists: [metrics, logs]}
+  ResourceMemoryLeakSuspected: {specialists: [metrics, logs]}
+  OOMKillsDetected: {specialists: [metrics, logs]}
+  DiskAlmostFull: {specialists: [metrics, logs]}
+  DiskFillingFast: {specialists: [metrics, logs]}
+  InodesAlmostExhausted: {specialists: [metrics, logs]}
+
+  ServiceDown: {specialists: [metrics, logs, network]}
+  SentinelDown: {specialists: [metrics, logs, network]}
+  ContainerUnhealthy: {specialists: [metrics, logs, network]}
+  ContainerRestartLoop: {specialists: [metrics, logs, network]}
+  DBConnectionsHigh: {specialists: [metrics, logs, network]}
+  DBIdleInTransactionLong: {specialists: [metrics, logs, network]}
+  HighHTTPLatency: {specialists: [metrics, logs, network]}
+  DemoShopP95LatencyViolation: {specialists: [metrics, logs, network]}
+
+  ProbeFailed: {specialists: [network, metrics]}
+  CertExpiringSoon: {specialists: [network, metrics]}
+  NetworkLatencyHigh: {specialists: [network, metrics]}
+  TargetDown: {specialists: [network, metrics]}
+
+  SSHBruteForce: {specialists: [security, network, logs]}
+  SSHLoginFromNewSource: {specialists: [security, network, logs]}
