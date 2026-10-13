@@ -146,6 +146,8 @@ describe("useEventStream", () => {
       ["incidents"],
       ["incident", INCIDENT_ID],
       ["trace", INCIDENT_ID],
+      ["story", INCIDENT_ID],
+      ["overview"],
     ]);
   });
 

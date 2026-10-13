@@ -36,6 +36,8 @@ export function invalidateIncident(queryClient: QueryClient, incidentId: string)
   void queryClient.invalidateQueries({ queryKey: ["incidents"] });
   void queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
   void queryClient.invalidateQueries({ queryKey: ["trace", incidentId] });
+  void queryClient.invalidateQueries({ queryKey: ["story", incidentId] });
+  void queryClient.invalidateQueries({ queryKey: ["overview"] });
 }
 
 export function useEventStream(token: string): boolean {

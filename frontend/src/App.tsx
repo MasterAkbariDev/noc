@@ -1,13 +1,22 @@
-import { Link, NavLink, Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useParams } from "react-router";
 import { useToken } from "./auth/token";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { TokenBar } from "./components/TokenBar";
 import { StreamConnectedContext, useEventStream } from "./live/useEventStream";
+import { ActivityPage } from "./pages/ActivityPage";
 import { IncidentDetailPage } from "./pages/IncidentDetailPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
-import { TargetsPage } from "./pages/TargetsPage";
-import { TracePage } from "./pages/TracePage";
+import { NotFoundPage } from "./pages/NotFoundPage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { ServerPage } from "./pages/ServerPage";
+import { ServersPage } from "./pages/ServersPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { SystemPage } from "./pages/SystemPage";
 import { UiKitPage } from "./pages/UiKitPage";
+import { AppShell } from "./shell/AppShell";
+
+function TraceRedirect() {
+  const { id = "" } = useParams();
+  return <Navigate to={`/incidents/${encodeURIComponent(id)}?tab=activity`} replace />;
+}
 
 export function App() {
   const { token } = useToken();
@@ -15,30 +24,22 @@ export function App() {
 
   return (
     <StreamConnectedContext.Provider value={connected}>
-      <div className="app">
-        <header className="app-header">
-          <Link to="/incidents" className="brand">
-            Multi-Agent NOC
-          </Link>
-          <nav className="app-nav" aria-label="Main">
-            <NavLink to="/incidents">Incidents</NavLink>
-            <NavLink to="/targets">Targets</NavLink>
-          </nav>
-          <ThemeToggle />
-          <TokenBar />
-        </header>
-        <main>
-          <Routes>
-            <Route path="/" element={<Navigate to="/incidents" replace />} />
-            <Route path="/incidents" element={<IncidentsPage />} />
-            <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-            <Route path="/incidents/:id/trace" element={<TracePage />} />
-            <Route path="/targets" element={<TargetsPage />} />
-            {import.meta.env.DEV && <Route path="/__ui" element={<UiKitPage />} />}
-            <Route path="*" element={<p>Page not found.</p>} />
-          </Routes>
-        </main>
-      </div>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<OverviewPage />} />
+          <Route path="/incidents" element={<IncidentsPage />} />
+          <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+          <Route path="/incidents/:id/trace" element={<TraceRedirect />} />
+          <Route path="/targets" element={<Navigate to="/servers" replace />} />
+          <Route path="/servers" element={<ServersPage />} />
+          <Route path="/servers/:id" element={<ServerPage />} />
+          <Route path="/system" element={<SystemPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          {import.meta.env.DEV && <Route path="/__ui" element={<UiKitPage />} />}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </AppShell>
     </StreamConnectedContext.Provider>
   );
 }

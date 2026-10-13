@@ -180,3 +180,248 @@ export const INCIDENT_STATUSES = [
   "ESCALATED",
   "CLOSED",
 ] as const;
+
+export type Role = "viewer" | "operator" | "admin";
+
+export type MeView = {
+  username: string;
+  role: Role;
+  via: "session" | "token";
+};
+
+export type UserView = {
+  id: string;
+  username: string;
+  role: Role;
+  disabled: boolean;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export type CreateUserBody = {
+  username: string;
+  password: string;
+  role: Role;
+};
+
+export type VerdictLevel = "ok" | "attention" | "degraded" | "down";
+
+export type Verdict = {
+  level: VerdictLevel;
+  sentence: string;
+};
+
+export type Kpis = {
+  open_incidents: number;
+  needs_you: number;
+  servers_up: number;
+  servers_total: number;
+  llm_keys_ok: number;
+  llm_keys_total: number;
+};
+
+export type AttentionItem = {
+  incident_id: string;
+  title: string;
+  target: string;
+  severity: string;
+  status: string;
+  status_label: string;
+  since: string;
+  summary: string;
+  advice: string;
+};
+
+export type ActivityItem = {
+  ts: string;
+  kind: "incident" | "audit";
+  text: string;
+  incident_id: string | null;
+  actor: string;
+};
+
+export type ServerStatus = "up" | "down" | "unknown";
+
+export type ServerMetrics = {
+  cpu_percent: number | null;
+  memory_percent: number | null;
+  disk_percent: number | null;
+  disk_mount: string | null;
+};
+
+export type ServerSummary = {
+  id: string;
+  name: string;
+  environment: string;
+  automation_level: string;
+  automation_label: string;
+  halted: boolean;
+  status: ServerStatus;
+  last_scrape_at: string | null;
+  metrics: ServerMetrics | null;
+  open_incidents: number;
+  worst_severity: string | null;
+  headline: string;
+};
+
+export type ServiceState = {
+  resource_id: string;
+  name: string;
+  up: boolean | null;
+};
+
+export type ServerDetail = ServerSummary & {
+  resources: TargetResource[];
+  services: ServiceState[];
+  recent_incidents: IncidentSummary[];
+  last_inventory_at: string | null;
+};
+
+export type Overview = {
+  verdict: Verdict;
+  kpis: Kpis;
+  needs_attention: AttentionItem[];
+  activity: ActivityItem[];
+  servers: ServerSummary[];
+};
+
+export type ComponentStatus = "ok" | "degraded" | "down" | "unknown";
+
+export type ComponentHealth = {
+  key: string;
+  label: string;
+  status: ComponentStatus;
+  summary: string;
+  details: Record<string, string>;
+  since: string | null;
+};
+
+export type StuckIncident = {
+  id: string;
+  title: string;
+  target: string;
+  status: string;
+  since: string;
+  job_status: string | null;
+  job_attempts: number | null;
+  job_last_error: string | null;
+};
+
+export type SystemHealth = {
+  verdict: "ok" | "degraded" | "down";
+  checked_at: string;
+  components: ComponentHealth[];
+  stuck_incidents: StuckIncident[];
+};
+
+export type LlmMode = "live" | "record" | "replay";
+
+export type LlmKeyState = "ok" | "cooling" | "rejected" | "unused";
+
+export type LlmModelUsage = {
+  tier: string;
+  model: string;
+  used_today: number;
+  daily_limit: number;
+};
+
+export type LlmKeyView = {
+  label: string;
+  provider: string;
+  state: LlmKeyState;
+  cooling_until: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  last_success_at: string | null;
+  models: LlmModelUsage[];
+};
+
+export type LlmStatus = {
+  mode: LlmMode;
+  keys: LlmKeyView[];
+};
+
+export type StepState = "done" | "current" | "pending" | "skipped" | "failed";
+
+export type StoryStep = {
+  key: string;
+  label: string;
+  state: StepState;
+  at: string | null;
+};
+
+export type StoryText = {
+  text: string;
+  technical: string | null;
+};
+
+export type StoryPoint = {
+  text: string;
+  agent: string;
+  label: string;
+  refs: string[];
+  grounded: boolean;
+};
+
+export type StoryFound = {
+  text: string;
+  root_cause_code: string | null;
+  root_cause_label: string | null;
+  confidence: number | null;
+  points: StoryPoint[];
+};
+
+export type StoryAction = {
+  action: string;
+  action_label: string;
+  verdict: string;
+  verdict_label: string;
+  reasons: string[];
+  technical: string[];
+};
+
+export type StoryDid = {
+  text: string;
+  considered: StoryAction[];
+};
+
+export type StoryAdvice = {
+  text: string;
+  steps: string[];
+};
+
+export type IncidentStory = {
+  id: string;
+  title: string;
+  target: string;
+  severity: string;
+  status: string;
+  status_label: string;
+  headline: string;
+  steps: StoryStep[];
+  what_happened: StoryText;
+  what_we_found: StoryFound;
+  what_we_did: StoryDid;
+  what_you_should_do: StoryAdvice;
+};
+
+export type ActivityEntry = {
+  id: number;
+  ts: string;
+  actor: string;
+  action: string;
+  action_label: string;
+  subject: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+};
+
+export type ActivityPage = {
+  items: ActivityEntry[];
+  next_before_id: number | null;
+};
+
+export type ActivityVerify = {
+  ok: boolean;
+  broken_at: number | null;
+};

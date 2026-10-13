@@ -1,5 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiPost, fetchStreamTicket, getIncident, listIncidents } from "./client";
+import {
+  ApiError,
+  apiPost,
+  createUser,
+  disableUser,
+  fetchStreamTicket,
+  getActivity,
+  getIncident,
+  getOverview,
+  getServer,
+  getStory,
+  listIncidents,
+  resetUserPassword,
+  setUserRole,
+} from "./client";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -99,5 +113,90 @@ describe("error handling", () => {
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(401);
+  });
+});
+
+describe("v2 read functions", () => {
+  it("reads the overview with the bearer token", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ verdict: { level: "ok", sentence: "ok" } }));
+
+    await getOverview("secret-token");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/overview");
+    expect(init?.method).toBe("GET");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
+  });
+
+  it("encodes the incident id in the story path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "a/b" }));
+
+    await getStory("t", "a/b");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents/a%2Fb/story");
+  });
+
+  it("encodes the server id in the server path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "srv" }));
+
+    await getServer("t", "srv 1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/servers/srv%201");
+  });
+
+  it("sends only the activity filters that are set", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [], next_before_id: null }));
+
+    await getActivity("t", { limit: 20, action: "login_failed" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/activity?limit=20&action=login_failed");
+  });
+
+  it("requests the plain activity list without a query when no filter is given", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [], next_before_id: null }));
+
+    await getActivity("t");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/activity");
+  });
+});
+
+describe("v2 user functions", () => {
+  it("creates a user with a JSON body", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
+
+    await createUser("t", { username: "bob", password: "long-enough-pw", role: "viewer" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/users");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ username: "bob", password: "long-enough-pw", role: "viewer" }));
+  });
+
+  it("changes a role on the user's own path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
+
+    await setUserRole("t", "u1", "operator");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/role");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ role: "operator" }));
+  });
+
+  it("disables a user with a POST to the disable path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
+
+    await disableUser("t", "u1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/disable");
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+  });
+
+  it("sends the new password under new_password", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
+
+    await resetUserPassword("t", "u1", "another-long-pw");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/password");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ new_password: "another-long-pw" }));
   });
 });
