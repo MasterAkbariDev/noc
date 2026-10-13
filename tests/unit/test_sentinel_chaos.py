@@ -2,12 +2,14 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+import noc_sentinel.chaos as chaos_module
 from noc_sentinel.app import create_app
 from noc_sentinel.config import ChaosConfig, SentinelConfig
 from noc_sentinel.nonce_store import NonceStore
@@ -24,6 +26,12 @@ STATUS = "/v1/chaos/status"
 UNIT = "demo-shop.service"
 RESTORE_TIMER = "noc-chaos-restore-demo-shop-service.timer"
 START_PAYLOAD = {"resource_id": DEMO_SHOP, "ttl_seconds": 300}
+CPU_START = "/v1/chaos/cpu-burn/start"
+CPU_STOP = "/v1/chaos/cpu-burn/stop"
+CPU_UNIT = "noc-chaos-cpu-burn"
+CPU_RESTORE_TIMER = "noc-chaos-restore-cpu-burn.timer"
+DISK_START = "/v1/chaos/disk-fill/start"
+DISK_STOP = "/v1/chaos/disk-fill/stop"
 
 
 class MutableClock:
@@ -52,11 +60,21 @@ class Harness:
     config: SentinelConfig
 
 
-def chaos_config(tmp_path: Path, environment: str = "lab", enabled: bool = True) -> SentinelConfig:
+def chaos_config(
+    tmp_path: Path,
+    environment: str = "lab",
+    enabled: bool = True,
+    disk_fill_dir: Path | None = None,
+) -> SentinelConfig:
     base = sentinel_config(tmp_path, environment)
     key_file = tmp_path / f"{CHAOS_KEY_ID}.key"
     key_file.write_bytes(CHAOS_SECRET)
-    chaos = ChaosConfig(enabled=enabled, key_id=CHAOS_KEY_ID, key_file=key_file)
+    chaos = ChaosConfig(
+        enabled=enabled,
+        key_id=CHAOS_KEY_ID,
+        key_file=key_file,
+        disk_fill_dir=disk_fill_dir,
+    )
     return base.model_copy(update={"chaos": chaos})
 
 
@@ -65,8 +83,9 @@ def build(
     environment: str = "lab",
     enabled: bool = True,
     runner: FakeChaosRunner | None = None,
+    disk_fill_dir: Path | None = None,
 ) -> Harness:
-    config = chaos_config(tmp_path, environment, enabled)
+    config = chaos_config(tmp_path, environment, enabled, disk_fill_dir)
     clock = MutableClock(NOW)
     chaos_runner = runner if runner is not None else FakeChaosRunner()
     store = NonceStore(tmp_path / "nonces.sqlite3", ttl_seconds=300)
@@ -292,3 +311,242 @@ def test_chaos_key_cannot_also_be_a_tool_key(tmp_path: Path) -> None:
 def test_chaos_ttl_ceiling_cannot_be_raised_in_config() -> None:
     with pytest.raises(ValidationError):
         ChaosConfig(max_ttl_seconds=901)
+
+
+def test_disk_fill_directory_must_be_absolute() -> None:
+    with pytest.raises(ValidationError):
+        ChaosConfig(disk_fill_dir=Path("relative/dir"))
+
+
+def fake_disk(monkeypatch: pytest.MonkeyPatch, total: int, used: int) -> None:
+    usage = SimpleNamespace(total=total, used=used, free=total - used)
+    monkeypatch.setattr(chaos_module.shutil, "disk_usage", lambda _path: usage)
+
+
+def fill_harness(tmp_path: Path) -> Harness:
+    fill_dir = tmp_path / "fill"
+    fill_dir.mkdir()
+    return build(tmp_path, disk_fill_dir=fill_dir)
+
+
+def test_cpu_burn_start_runs_the_fixed_argv_with_a_restore_timer(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_START, {"workers": 2, "ttl_seconds": 120})
+    assert response.status_code == 200
+    assert response.json()["scenario"] == "cpu-burn"
+    assert response.json()["unit"] == CPU_UNIT
+    assert harness.runner.calls == [
+        (
+            "/usr/bin/systemd-run",
+            "--unit=noc-chaos-restore-cpu-burn",
+            "--on-active=120",
+            "/usr/bin/systemctl",
+            "stop",
+            CPU_UNIT,
+        ),
+        (
+            "/usr/bin/systemd-run",
+            "--unit=noc-chaos-cpu-burn",
+            "--property=RuntimeMaxSec=120",
+            "--property=Nice=0",
+            "/bin/bash",
+            "-c",
+            "for i in $(seq 2); do (exec -a report-gen /usr/bin/yes > /dev/null) & done; wait",
+        ),
+    ]
+
+
+@pytest.mark.parametrize("workers", [0, 9])
+def test_cpu_burn_workers_outside_the_range_are_rejected(tmp_path: Path, workers: int) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_START, {"workers": workers, "ttl_seconds": 60})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_cpu_burn_rejects_a_non_integer_worker_count(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_START, {"workers": "2; rm -rf /", "ttl_seconds": 60})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_cpu_burn_ttl_above_the_maximum_is_rejected(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 901})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_cpu_burn_extra_field_is_rejected(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60, "command": "id"})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_cpu_burn_stop_stops_the_unit_and_removes_the_timer(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60})
+    response = send(harness, "POST", CPU_STOP, {})
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    assert harness.runner.calls[2:] == [
+        ("/usr/bin/systemctl", "stop", CPU_UNIT),
+        ("/usr/bin/systemctl", "stop", CPU_RESTORE_TIMER),
+    ]
+
+
+def test_cpu_burn_stop_without_active_cpu_burn_is_refused(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", CPU_STOP, {})
+    assert response.status_code == 409
+    assert harness.runner.calls == []
+
+
+def test_one_slot_is_shared_across_all_scenarios(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    assert send(harness, "POST", START, START_PAYLOAD).status_code == 200
+    assert send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60}).status_code == 409
+    assert send(harness, "POST", CPU_STOP, {}).status_code == 409
+    assert send(harness, "POST", STOP, {"resource_id": DEMO_SHOP}).status_code == 200
+    assert send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60}).status_code == 200
+
+
+def test_halt_file_refuses_cpu_burn_and_disk_fill(tmp_path: Path) -> None:
+    harness = fill_harness(tmp_path)
+    harness.config.halt_file.write_text("")
+    cpu = send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60})
+    disk = send(harness, "POST", DISK_START, {"target_percent": 80, "ttl_seconds": 60})
+    assert cpu.json()["detail"] == "HALTED"
+    assert disk.json()["detail"] == "HALTED"
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_without_a_configured_directory_is_not_configured(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", DISK_START, {"target_percent": 80, "ttl_seconds": 60})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "NOT_CONFIGURED"
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_start_allocates_up_to_the_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = fill_harness(tmp_path)
+    fake_disk(monkeypatch, total=10_000_000_000, used=2_000_000_000)
+    response = send(harness, "POST", DISK_START, {"target_percent": 60, "ttl_seconds": 300})
+    fill_path = str(harness.config.chaos.disk_fill_dir) + "/noc-chaos-fill.log"
+    assert response.status_code == 200
+    assert response.json()["scenario"] == "disk-fill"
+    assert harness.runner.calls == [
+        (
+            "/usr/bin/systemd-run",
+            "--unit=noc-chaos-restore-disk-fill",
+            "--on-active=300",
+            "/usr/bin/rm",
+            "-f",
+            fill_path,
+        ),
+        ("/usr/bin/fallocate", "-l", "4000000000", fill_path),
+    ]
+
+
+def test_disk_fill_respects_the_minimum_free_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = fill_harness(tmp_path)
+    fake_disk(monkeypatch, total=10_000_000_000, used=2_000_000_000)
+    harness.config.chaos.disk_fill_min_free_bytes = 9_500_000_000
+    response = send(harness, "POST", DISK_START, {"target_percent": 95, "ttl_seconds": 60})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "NOT_POSSIBLE"
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_is_not_possible_when_already_above_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = fill_harness(tmp_path)
+    fake_disk(monkeypatch, total=10_000_000_000, used=8_000_000_000)
+    response = send(harness, "POST", DISK_START, {"target_percent": 60, "ttl_seconds": 60})
+    assert response.json()["detail"] == "NOT_POSSIBLE"
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_stop_removes_the_file_and_the_timer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = fill_harness(tmp_path)
+    fake_disk(monkeypatch, total=10_000_000_000, used=2_000_000_000)
+    send(harness, "POST", DISK_START, {"target_percent": 60, "ttl_seconds": 300})
+    response = send(harness, "POST", DISK_STOP, {})
+    fill_path = str(harness.config.chaos.disk_fill_dir) + "/noc-chaos-fill.log"
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    assert harness.runner.calls[2:] == [
+        ("/usr/bin/rm", "-f", fill_path),
+        ("/usr/bin/systemctl", "stop", "noc-chaos-restore-disk-fill.timer"),
+    ]
+
+
+def test_disk_fill_failed_allocation_is_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fill_dir = tmp_path / "fill"
+    fill_dir.mkdir()
+    fill_path = str(fill_dir) + "/noc-chaos-fill.log"
+    failing = frozenset({("/usr/bin/fallocate", "-l", "4000000000", fill_path)})
+    harness = build(tmp_path, runner=FakeChaosRunner(failing=failing), disk_fill_dir=fill_dir)
+    fake_disk(monkeypatch, total=10_000_000_000, used=2_000_000_000)
+    response = send(harness, "POST", DISK_START, {"target_percent": 60, "ttl_seconds": 300})
+    assert response.status_code == 500
+    assert send(harness, "GET", STATUS).json()["active"] is False
+    assert harness.runner.calls[-2:] == [
+        ("/usr/bin/rm", "-f", fill_path),
+        ("/usr/bin/systemctl", "stop", "noc-chaos-restore-disk-fill.timer"),
+    ]
+
+
+@pytest.mark.parametrize("target", [49, 96])
+def test_disk_fill_target_outside_the_range_is_rejected(tmp_path: Path, target: int) -> None:
+    harness = fill_harness(tmp_path)
+    response = send(harness, "POST", DISK_START, {"target_percent": target, "ttl_seconds": 60})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_ttl_above_the_maximum_is_rejected(tmp_path: Path) -> None:
+    harness = fill_harness(tmp_path)
+    response = send(harness, "POST", DISK_START, {"target_percent": 60, "ttl_seconds": 901})
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_disk_fill_extra_field_is_rejected(tmp_path: Path) -> None:
+    harness = fill_harness(tmp_path)
+    response = send(
+        harness,
+        "POST",
+        DISK_START,
+        {"target_percent": 60, "ttl_seconds": 60, "path": "/etc/passwd"},
+    )
+    assert response.status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_status_reports_the_scenario_of_the_active_injection(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    assert send(harness, "GET", STATUS).json()["scenario"] is None
+    send(harness, "POST", CPU_START, {"workers": 1, "ttl_seconds": 60})
+    assert send(harness, "GET", STATUS).json()["scenario"] == "cpu-burn"
+
+
+def test_disk_fill_size_respects_space_reserved_for_root() -> None:
+    gib = 1024**3
+    total, used, reserved = 20 * gib, 9 * gib, gib
+    available = total - used - reserved
+    size = chaos_module.fill_bytes(total, used, available, 95, gib)
+    assert size == available - gib
+    assert chaos_module.fill_bytes(total, used, available, 50, gib) == gib

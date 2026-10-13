@@ -15,8 +15,8 @@ from noc_sentinel.actions import (
     build_actions_router,
 )
 from noc_sentinel.chaos import (
+    ChaosController,
     ChaosRunner,
-    ServiceDownChaos,
     SubprocessChaosRunner,
     build_chaos_router,
 )
@@ -62,7 +62,7 @@ def create_app(
         chaos_verifier = RequestVerifier(
             config.load_chaos_secrets(), nonce_store, clock, config.max_skew_seconds
         )
-        controller = ServiceDownChaos(
+        controller = ChaosController(
             config, chaos_runner if chaos_runner is not None else SubprocessChaosRunner(), clock
         )
         app.include_router(build_chaos_router(controller, chaos_verifier))

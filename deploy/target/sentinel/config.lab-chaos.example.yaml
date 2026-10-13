@@ -14,6 +14,8 @@ chaos:
   key_id: noc-scenarios-2026a
   key_file: /etc/noc-sentinel/keys/noc-scenarios-2026a.key
   max_ttl_seconds: 900
+  disk_fill_dir: /srv/demo-data
+  disk_fill_min_free_bytes: 104857600
 state_dir: /var/lib/noc-sentinel
 halt_file: /etc/noc-sentinel/HALT
 resources:

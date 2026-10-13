@@ -2,12 +2,13 @@ from pathlib import Path
 from typing import Self
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from noc_shared.resources import ManagedResource, ResourceKind
 
 SENTINEL_VERSION = "0.1.0"
 CHAOS_TTL_CEILING_SECONDS = 900
+GIB_BYTES = 1024**3
 
 
 class TlsConfig(BaseModel):
@@ -26,6 +27,15 @@ class ChaosConfig(BaseModel):
     key_id: str | None = None
     key_file: Path | None = None
     max_ttl_seconds: int = Field(CHAOS_TTL_CEILING_SECONDS, ge=1, le=CHAOS_TTL_CEILING_SECONDS)
+    disk_fill_dir: Path | None = None
+    disk_fill_min_free_bytes: int = Field(GIB_BYTES, ge=0)
+
+    @field_validator("disk_fill_dir")
+    @classmethod
+    def disk_fill_dir_is_absolute(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("chaos.disk_fill_dir must be an absolute path")
+        return value
 
 
 class ActionsConfig(BaseModel):
