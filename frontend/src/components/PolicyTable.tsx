@@ -27,7 +27,10 @@ export function PolicyTable({ actions }: { actions: ActionView[] }) {
               <td>{action.status}</td>
               <td>{action.permission_class}</td>
               <td>{action.eligible ? "yes" : "no"}</td>
-              <td>{action.impact_score}</td>
+              <td>
+                {action.impact_score}
+                {action.high_impact && <span className="badge badge-danger"> high impact</span>}
+              </td>
               <td>{action.gate_failures.join(", ") || "-"}</td>
               <td>{action.reasons.join(", ") || "-"}</td>
             </tr>

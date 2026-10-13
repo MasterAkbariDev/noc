@@ -64,6 +64,16 @@ describe("IncidentTable", () => {
     expect(document.title).not.toBe("pwned");
   });
 
+  it("shows the target and puts the full opened time in the title of the relative time", () => {
+    const { container } = renderTable(incidents);
+
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(within(rows[1]!).getByText("web-1")).toBeTruthy();
+    const opened = container.querySelector("time");
+    expect(opened?.getAttribute("datetime")).toBe("2026-10-12T10:00:00Z");
+    expect(opened?.getAttribute("title")).toBe(new Date("2026-10-12T10:00:00Z").toLocaleString());
+  });
+
   it("says so when there are no incidents", () => {
     renderTable([]);
 
