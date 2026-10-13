@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
 from noc.db.models import ManagedResourceRow, Target
-from noc.policy.models import AutomationLevel, Environment
+from noc.policy.models import AutomationLevel, Environment, ServiceProfile
 from noc_shared.resources import Inventory
 
 
@@ -68,3 +68,51 @@ async def apply_inventory(session: AsyncSession, target: Target, inventory: Inve
 
 async def find_target(session: AsyncSession, name: str) -> Target | None:
     return await session.scalar(select(Target).where(Target.name == name))
+
+
+async def get_target(session: AsyncSession, name: str) -> Target:
+    target = await find_target(session, name)
+    if target is None:
+        raise ValueError(f"unknown target {name}")
+    return target
+
+
+async def list_resources(session: AsyncSession, target: Target) -> list[ManagedResourceRow]:
+    rows = await session.scalars(
+        select(ManagedResourceRow)
+        .where(ManagedResourceRow.target_id == target.id)
+        .order_by(ManagedResourceRow.resource_id)
+    )
+    return list(rows)
+
+
+async def set_automation(session: AsyncSession, name: str, level: AutomationLevel) -> Target:
+    target = await get_target(session, name)
+    target.automation_level = level.value
+    await session.flush()
+    return target
+
+
+async def set_auto_actions(
+    session: AsyncSession, name: str, actions: list[str], known_actions: frozenset[str]
+) -> Target:
+    unknown = sorted(set(actions) - known_actions)
+    if unknown:
+        raise ValueError(f"actions not in the policy catalog: {', '.join(unknown)}")
+    target = await get_target(session, name)
+    target.auto_actions = list(actions)
+    await session.flush()
+    return target
+
+
+async def set_profile(
+    session: AsyncSession, name: str, resource_id: str, profile_json: str
+) -> ManagedResourceRow:
+    profile = ServiceProfile.model_validate_json(profile_json)
+    target = await get_target(session, name)
+    row = await session.get(ManagedResourceRow, (target.id, resource_id))
+    if row is None:
+        raise ValueError(f"unknown resource {resource_id} on target {name}")
+    row.profile = profile.model_dump(mode="json")
+    await session.flush()
+    return row

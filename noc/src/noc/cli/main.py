@@ -17,8 +17,18 @@ from noc.db.models import Incident, Report, Target
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
 from noc.logging import configure_logging
+from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment
-from noc.store.targets import add_target, apply_inventory, find_target
+from noc.store.targets import (
+    add_target,
+    apply_inventory,
+    find_target,
+    get_target,
+    list_resources,
+    set_auto_actions,
+    set_automation,
+    set_profile,
+)
 from noc.tools.sentinel_client import SentinelDirectory, build_sentinel_http
 from noc.tools.spec import TargetRef
 from noc.worker.main import run_worker
@@ -43,6 +53,13 @@ def with_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[ResultT]])
             await engine.dispose()
 
     return asyncio.run(runner())
+
+
+def with_admin_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[ResultT]]) -> ResultT:
+    try:
+        return with_sessions(work)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 @app.command()
@@ -153,6 +170,86 @@ def targets_render_sd(directory: Path) -> None:
 
     for path in with_sessions(work):
         typer.echo(f"wrote {path}")
+
+
+@targets_app.command("show")
+def targets_show(name: str) -> None:
+    async def work(sessions: SessionFactory) -> list[str]:
+        async with sessions() as session:
+            target = await get_target(session, name)
+            resources = await list_resources(session, target)
+            lines = [
+                f"name           {target.name}",
+                f"address        {target.address}",
+                f"sentinel       {target.sentinel_url}",
+                f"environment    {target.environment}",
+                f"automation     {target.automation_level}",
+                f"data policy    {target.llm_data_policy}",
+                f"hmac key       {target.hmac_key_id}",
+                f"auto actions   {', '.join(target.auto_actions) or '-'}",
+                f"halted         {target.halted}",
+                f"last inventory {target.last_inventory_at or '-'}",
+                "",
+                f"{'resource':<32} {'kind':<12} {'profile':<8} allowed actions",
+            ]
+            lines += [
+                f"{r.resource_id:<32} {r.kind:<12} {'yes' if r.profile else 'no':<8} "
+                f"{', '.join(r.allowed_actions) or '-'}"
+                for r in resources
+            ]
+            return lines
+
+    for line in with_admin_sessions(work):
+        typer.echo(line)
+
+
+@targets_app.command("set-automation")
+def targets_set_automation(name: str, level: AutomationLevel) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            target = await set_automation(session, name, level)
+            await append_audit(
+                session, "cli", "target_automation_set", name, {"level": level.value}
+            )
+            return f"{target.name}: automation={target.automation_level}"
+
+    typer.echo(with_admin_sessions(work))
+
+
+@targets_app.command("set-auto-actions")
+def targets_set_auto_actions(
+    name: str, actions: Annotated[list[str], typer.Argument(help="Policy action names")]
+) -> None:
+    known_actions = frozenset(load_policy(get_settings().policy_file).actions)
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            target = await set_auto_actions(session, name, actions, known_actions)
+            await append_audit(
+                session, "cli", "target_auto_actions_set", name, {"actions": list(actions)}
+            )
+            return f"{target.name}: auto actions={', '.join(target.auto_actions) or '-'}"
+
+    typer.echo(with_admin_sessions(work))
+
+
+@targets_app.command("set-profile")
+def targets_set_profile(name: str, resource_id: str, json_file: Path) -> None:
+    profile_json = json_file.read_text()
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            row = await set_profile(session, name, resource_id, profile_json)
+            await append_audit(
+                session,
+                "cli",
+                "target_profile_set",
+                name,
+                {"resource_id": resource_id, "profile": row.profile or {}},
+            )
+            return f"{name} {resource_id}: profile stored"
+
+    typer.echo(with_admin_sessions(work))
 
 
 @incidents_app.command("list")
