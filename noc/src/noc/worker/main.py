@@ -22,6 +22,7 @@ from noc.detection.ingest import AlertIngestor
 from noc.domain.incident_status import EscalationReason
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
+from noc.llm.client import describe_error
 from noc.orchestration.graph import IncidentGraph, build_incident_graph, run_incident
 from noc.orchestration.runtime import build_runtime
 from noc.store.incidents import escalate_abandoned
@@ -174,7 +175,7 @@ class Worker:
             await run_incident(self._graph, uuid.UUID(job.payload["incident_id"]))
         except Exception as exc:
             logger.exception("job_failed", job_id=job.id, kind=job.kind)
-            error = f"{type(exc).__name__}: {exc}"
+            error = describe_error(exc)
             async with transaction(self._sessions) as session:
                 await queue.fail(session, job.id, self._identity, error, RETRY_DELAY_SECONDS)
                 if await queue.is_dead(session, job.id):

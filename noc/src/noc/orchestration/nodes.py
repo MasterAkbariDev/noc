@@ -8,7 +8,7 @@ from noc.db.base import utc_now
 from noc.db.models import ActionRow, AgentRun, AlertEvent, DiagnosisRow, Incident, Report
 from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
-from noc.llm.client import LLMError, LLMUnavailable
+from noc.llm.client import LLMError, LLMUnavailable, describe_error
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
 from noc.reporting.builder import load_report_data, render_report
@@ -105,7 +105,7 @@ class IncidentNodes:
             run = await session.get_one(AgentRun, agent_run_id)
             run.status = "failed"
             run.ended_at = utc_now()
-            run.error = f"{type(error).__name__}: {error}"
+            run.error = describe_error(error)
             if IncidentStatus(incident.status) is IncidentStatus.INVESTIGATING:
                 await transition(session, incident, IncidentStatus.ESCALATED, SUPERVISOR, reason)
 

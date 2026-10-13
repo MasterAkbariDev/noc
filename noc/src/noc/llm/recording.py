@@ -3,7 +3,7 @@ import uuid
 from noc.db.models import LlmCall
 from noc.db.session import SessionFactory, transaction
 from noc.llm.cassette import request_key
-from noc.llm.client import LLMClient
+from noc.llm.client import LLMClient, describe_error
 from noc.llm.types import LLMRequest, LLMResponse
 
 
@@ -16,7 +16,7 @@ class RecordingLLM:
         try:
             response = await self._inner.complete(request)
         except Exception as exc:
-            await self._store(request, None, error=f"{type(exc).__name__}: {exc}")
+            await self._store(request, None, error=describe_error(exc))
             raise
         await self._store(request, response, error=None)
         return response

@@ -12,7 +12,7 @@ from noc.agents.supervisor import InvestigationPlan, plan_investigation
 from noc.db.models import AgentRun, AlertEvent, FindingRow, Incident, IncidentEvent
 from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
-from noc.llm.client import LLMError
+from noc.llm.client import LLMError, describe_error
 from noc.orchestration.nodes import (
     SUPERVISOR,
     IncidentNodes,
@@ -246,7 +246,7 @@ class MultiNodes(IncidentNodes):
         logger.warning("specialist_failed", specialist=name, error=str(error))
         async with transaction(self._sessions) as session:
             agent_run = await session.get_one(AgentRun, run_id)
-            mark_run_failed(agent_run, f"{type(error).__name__}: {error}")
+            mark_run_failed(agent_run, describe_error(error))
             await add_event(
                 session, incident_id, FAILED_EVENT, name, {"error": type(error).__name__}
             )

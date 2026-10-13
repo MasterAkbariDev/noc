@@ -45,3 +45,11 @@ class CassetteMiss(LLMError):
 
 class StructuredOutputError(LLMError):
     pass
+
+
+def describe_error(error: BaseException) -> str:
+    if not isinstance(error, LLMError):
+        return f"{type(error).__name__}: {error}"
+    status = getattr(error.__cause__, "status_code", None)
+    name = type(error).__name__
+    return f"{name} (HTTP {status})" if isinstance(status, int) else name
