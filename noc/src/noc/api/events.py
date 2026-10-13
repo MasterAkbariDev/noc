@@ -9,8 +9,9 @@ from fastapi.responses import StreamingResponse
 from psycopg import sql
 from pydantic import BaseModel
 
-from noc.api.deps import get_settings_dep, require_token
+from noc.api.deps import get_settings_dep, require_role, require_token
 from noc.api.tickets import TICKET_TTL_SECONDS, TicketStore
+from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.models import IncidentEvent
 from noc.db.session import SessionFactory
@@ -99,7 +100,7 @@ async def event_frames(settings: Settings, sessions: SessionFactory) -> AsyncIte
         await connection.close()
 
 
-@router.post("/ticket", dependencies=[Depends(require_token)])
+@router.post("/ticket", dependencies=[Depends(require_role(Role.VIEWER))])
 async def issue_stream_ticket(request: Request) -> StreamTicket:
     tickets: TicketStore = request.app.state.tickets
     return StreamTicket(ticket=tickets.issue(), expires_in=TICKET_TTL_SECONDS)

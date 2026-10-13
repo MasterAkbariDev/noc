@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     version: str = "dev"
     git_sha: str = "unknown"
     update_status_file: Path | None = None
+    session_cookie_secure: bool = True
+    session_idle_minutes: int = 60
+    session_absolute_hours: int = 12
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2

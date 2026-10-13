@@ -4,8 +4,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from noc.auth.roles import Role
+
 ComponentStatus = Literal["ok", "degraded", "down", "unknown"]
 Verdict = Literal["ok", "degraded", "down"]
+
+
+MAX_LOGIN_FIELD_LENGTH = 256
 
 
 class IncidentSummary(BaseModel):
@@ -368,3 +373,19 @@ class ActivityPage(BaseModel):
 class ChainVerification(BaseModel):
     ok: bool
     broken_at: int | None
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    new_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+
+
+class MeView(BaseModel):
+    username: str
+    role: Role
+    via: Literal["session", "token"]

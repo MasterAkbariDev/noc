@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from noc.audit.chain import append_audit
 from noc.auth.passwords import check_password_rules, hash_password, normalize_username
 from noc.auth.roles import Role
+from noc.auth.sessions import delete_user_sessions
 from noc.db.base import utc_now
 from noc.db.models import User
 
@@ -67,6 +68,8 @@ async def set_disabled(session: AsyncSession, username: str, disabled: bool, act
     user = await require_user(session, username)
     user.disabled = disabled
     await session.flush()
+    if disabled:
+        await delete_user_sessions(session, user.id)
     action = "user_disabled" if disabled else "user_enabled"
     await append_audit(session, actor, action, subject_for(user.username), {})
     return user
@@ -78,5 +81,6 @@ async def reset_password(session: AsyncSession, username: str, password: str, ac
     user.password_hash = hash_password(password)
     user.password_changed_at = utc_now()
     await session.flush()
+    await delete_user_sessions(session, user.id)
     await append_audit(session, actor, "user_password_reset", subject_for(user.username), {})
     return user

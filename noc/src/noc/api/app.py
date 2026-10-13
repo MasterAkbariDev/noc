@@ -7,6 +7,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
 from noc.api.activity import router as activity_router
+from noc.api.auth import router as auth_router
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.prometheus import PrometheusReader
@@ -38,6 +39,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     redact_tickets_in_access_log()
     app = FastAPI(title="Multi-Agent NOC", version="0.1.0", lifespan=lifespan)
+    app.include_router(auth_router)
     app.include_router(incidents_router)
     app.include_router(trace_router)
     app.include_router(story_router)
