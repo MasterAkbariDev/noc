@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from noc.tools.prometheus_tools import PrometheusClient, ResourceLookup, build_prometheus_tools
 from noc.tools.sentinel_client import SentinelDirectory, SentinelError
 from noc.tools.spec import ToolContext, ToolOutput, ToolSpec
 from noc_shared.permissions import PermissionClass
@@ -46,6 +47,10 @@ def sentinel_read_tool(
         handler=handler,
         untrusted_fields=untrusted_fields,
     )
+
+
+def build_metric_tools(client: PrometheusClient, resources: ResourceLookup) -> list[ToolSpec]:
+    return build_prometheus_tools(client, resources, frozenset({INVESTIGATOR}))
 
 
 def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:

@@ -179,7 +179,13 @@ async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) 
         sentinel_http,
     ):
         await checkpointer.setup()
-        runtime = build_runtime(settings, sessions, sentinel_http)
+        runtime = build_runtime(
+            settings,
+            sessions,
+            sentinel_http,
+            prometheus_http=prometheus_http,
+            prometheus_url=settings.prometheus_url,
+        )
         graph = build_incident_graph(runtime, checkpointer)
         source = PrometheusAlertSource(prometheus_http, settings.prometheus_url)
         ingestor = AlertIngestor(source, sessions, settings.missing_polls_to_resolve)
