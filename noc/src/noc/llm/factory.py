@@ -5,6 +5,7 @@ from noc.config import Settings
 from noc.db.session import SessionFactory
 from noc.llm.cassette import CassetteLLM
 from noc.llm.client import LLMClient
+from noc.llm.key_status import PostgresKeyStatus
 from noc.llm.openai_compat import OpenAICompatProvider
 from noc.llm.providers import ProviderConfig, key_label, load_providers
 from noc.llm.ratelimit import PostgresQuotaStore, RequestBudget
@@ -47,7 +48,12 @@ def build_routed_llm(settings: Settings, sessions: SessionFactory) -> RoutedLLM:
                 )
                 routes.append(Route(OpenAICompatProvider(name, client), budget, label))
         chains[tier] = routes
-    return RoutedLLM(chains, settings.llm_fallback_enabled, settings.llm_wait_deadline_seconds)
+    return RoutedLLM(
+        chains,
+        settings.llm_fallback_enabled,
+        settings.llm_wait_deadline_seconds,
+        key_status=PostgresKeyStatus(sessions),
+    )
 
 
 def build_llm(settings: Settings, sessions: SessionFactory) -> LLMClient:

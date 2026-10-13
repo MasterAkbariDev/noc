@@ -311,3 +311,16 @@ class ScenarioRun(Base):
     root_cause_match: Mapped[bool | None]
     error: Mapped[str | None] = mapped_column(Text)
     finished_at: Mapped[datetime | None]
+
+
+class LlmKeyStatus(Base):
+    __tablename__ = "llm_key_status"
+
+    label: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(16))
+    cooling_until: Mapped[datetime | None]
+    last_error: Mapped[str | None] = mapped_column(String(255))
+    last_error_at: Mapped[datetime | None]
+    last_success_at: Mapped[datetime | None]
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now)

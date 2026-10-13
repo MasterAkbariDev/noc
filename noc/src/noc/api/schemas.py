@@ -169,3 +169,26 @@ class IncidentTrace(BaseModel):
     agent_runs: list[AgentRunView]
     tool_calls: list[ToolCallView]
     llm_calls: list[LlmCallView]
+
+
+class LlmModelUsage(BaseModel):
+    tier: str
+    model: str
+    used_today: int
+    daily_limit: int
+
+
+class LlmKeyView(BaseModel):
+    label: str
+    provider: str
+    state: str
+    cooling_until: datetime | None
+    last_error: str | None
+    last_error_at: datetime | None
+    last_success_at: datetime | None
+    models: list[LlmModelUsage]
+
+
+class LlmStatus(BaseModel):
+    mode: str
+    keys: list[LlmKeyView]

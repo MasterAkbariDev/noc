@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import openai as openai_module
@@ -13,6 +15,7 @@ from noc.llm.client import (
 )
 from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
+from noc.llm.key_status import KeyStatusSink, RecordedState
 from noc.llm.providers import ProviderConfig, key_label
 from noc.llm.ratelimit import MemoryQuotaStore, RequestBudget
 from noc.llm.router import Route, RoutedLLM
@@ -260,3 +263,108 @@ async def test_rate_limits_are_not_retried_with_backoff() -> None:
     with pytest.raises(LLMUnavailable):
         await llm.complete(REQUEST)
     assert time.slept == []
+
+
+@dataclass(frozen=True)
+class Failure:
+    label: str
+    provider: str
+    state: RecordedState
+    cooling_until: datetime | None
+    error_name: str
+
+
+class RecordingSink:
+    def __init__(self) -> None:
+        self.successes: list[tuple[str, str]] = []
+        self.failures: list[Failure] = []
+
+    async def record_success(self, label: str, provider: str) -> None:
+        self.successes.append((label, provider))
+
+    async def record_failure(
+        self,
+        label: str,
+        provider: str,
+        state: RecordedState,
+        cooling_until: datetime | None,
+        error_name: str,
+    ) -> None:
+        self.failures.append(Failure(label, provider, state, cooling_until, error_name))
+
+
+class BrokenSink:
+    async def record_success(self, label: str, provider: str) -> None:
+        raise RuntimeError("status store is down")
+
+    async def record_failure(
+        self,
+        label: str,
+        provider: str,
+        state: RecordedState,
+        cooling_until: datetime | None,
+        error_name: str,
+    ) -> None:
+        raise RuntimeError("status store is down")
+
+
+def observed(routes: list[Route], sink: KeyStatusSink) -> RoutedLLM:
+    clock = FakeTime()
+    return RoutedLLM(
+        {"small": routes}, True, 5, clock=clock.clock, sleep=clock.sleep, key_status=sink
+    )
+
+
+async def test_successful_call_reports_its_key_as_ok() -> None:
+    sink = RecordingSink()
+    await observed([route(StubProvider("gemini"), "gemini#1")], sink).complete(REQUEST)
+    assert sink.successes == [("gemini#1", "gemini")]
+    assert sink.failures == []
+
+
+async def test_rejected_key_is_reported_as_rejected_with_only_its_class_name() -> None:
+    sink = RecordingSink()
+    bad = StubProvider("gemini", [ProviderKeyRejected("API key not valid: AIzaSecret123")])
+    good = StubProvider("gemini")
+    await observed([route(bad, "gemini#bad"), route(good, "gemini#ok")], sink).complete(REQUEST)
+    assert len(sink.failures) == 1
+    failure = sink.failures[0]
+    assert (failure.label, failure.provider, failure.state) == (
+        "gemini#bad",
+        "gemini",
+        "rejected",
+    )
+    assert failure.error_name == "ProviderKeyRejected"
+    assert failure.cooling_until is not None
+    assert failure.cooling_until > datetime.now(UTC) + timedelta(minutes=59)
+
+
+async def test_rate_limited_key_is_reported_as_cooling_for_one_minute() -> None:
+    sink = RecordingSink()
+    limited = StubProvider("gemini", [ProviderRateLimited("429 for key AIzaSecret123")])
+    other = StubProvider("gemini")
+    await observed([route(limited, "gemini#1"), route(other, "gemini#2")], sink).complete(REQUEST)
+    assert len(sink.failures) == 1
+    failure = sink.failures[0]
+    assert failure.state == "cooling"
+    assert failure.error_name == "ProviderRateLimited"
+    assert failure.cooling_until is not None
+    remaining = failure.cooling_until - datetime.now(UTC)
+    assert timedelta(seconds=50) < remaining <= timedelta(seconds=60)
+
+
+async def test_transient_error_is_reported_as_ok_without_a_cooldown() -> None:
+    sink = RecordingSink()
+    flaky = StubProvider("gemini", [ProviderUnavailable("503")])
+    other = StubProvider("gemini")
+    await observed([route(flaky, "gemini#1"), route(other, "gemini#2")], sink).complete(REQUEST)
+    assert sink.failures == [Failure("gemini#1", "gemini", "ok", None, "ProviderUnavailable")]
+
+
+async def test_a_failing_status_sink_never_fails_the_call() -> None:
+    gemini = StubProvider("gemini", [ProviderRateLimited("429")])
+    groq = StubProvider("groq")
+    llm = observed([route(gemini, "gemini#1"), route(groq, "groq#1")], BrokenSink())
+    response = await llm.complete(REQUEST)
+    assert response.provider == "groq"
+    assert response.fallback

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.spa import SinglePageApp
+from noc.api.system_llm import router as system_llm_router
 from noc.api.targets import router as targets_router
 from noc.api.tickets import TicketStore, redact_tickets_in_access_log
 from noc.api.trace import router as trace_router
@@ -31,6 +32,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(trace_router)
     app.include_router(events_router)
     app.include_router(targets_router)
+    app.include_router(system_llm_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

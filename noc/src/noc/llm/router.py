@@ -2,10 +2,12 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Protocol
 
 import structlog
 
+from noc.db.base import utc_now
 from noc.llm.client import (
     LLMUnavailable,
     ProviderKeyRejected,
@@ -13,6 +15,7 @@ from noc.llm.client import (
     ProviderUnavailable,
     QuotaExhausted,
 )
+from noc.llm.key_status import KeyStatusSink, NullKeyStatus, RecordedState
 from noc.llm.ratelimit import RequestBudget
 from noc.llm.types import LLMRequest, LLMResponse, Tier
 
@@ -47,6 +50,12 @@ class Route:
     label: str
 
 
+def recorded_state(error: Exception, cooldown: float | None) -> RecordedState:
+    if isinstance(error, ProviderKeyRejected):
+        return "rejected"
+    return "ok" if cooldown is None else "cooling"
+
+
 class KeyCooldowns:
     def __init__(self, clock: Callable[[], float]) -> None:
         self._clock = clock
@@ -70,12 +79,14 @@ class RoutedLLM:
         wait_deadline_seconds: float,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        key_status: KeyStatusSink | None = None,
     ) -> None:
         self._chains = chains
         self._fallback_enabled = fallback_enabled
         self._deadline = wait_deadline_seconds
         self._cooldowns = KeyCooldowns(clock)
         self._sleep = sleep
+        self._key_status: KeyStatusSink = key_status if key_status is not None else NullKeyStatus()
 
     def routes_for(self, tier: Tier) -> list[Route]:
         chain = self._chains.get(tier, [])
@@ -118,15 +129,18 @@ class RoutedLLM:
                 wait_ms = await route.budget.acquire(self._deadline)
                 response = await route.provider.complete(request, route.budget.model)
             except RECOVERABLE as exc:
-                self._record_failure(route, exc)
+                await self._record_failure(route, exc)
                 only_transient = only_transient and isinstance(exc, TRANSIENT)
                 continue
             response.wait_ms = wait_ms
             response.fallback = route.provider.name != primary
+            await self._notify_key_status(
+                route.label, self._key_status.record_success(route.label, route.provider.name)
+            )
             return response, only_transient
         return None, only_transient
 
-    def _record_failure(self, route: Route, error: Exception) -> None:
+    async def _record_failure(self, route: Route, error: Exception) -> None:
         cooldown = COOLDOWN_SECONDS.get(type(error))
         if cooldown is not None:
             self._cooldowns.cool(route.label, cooldown)
@@ -136,3 +150,20 @@ class RoutedLLM:
             error=type(error).__name__,
             cooldown_seconds=cooldown,
         )
+        cooling_until = None if cooldown is None else utc_now() + timedelta(seconds=cooldown)
+        await self._notify_key_status(
+            route.label,
+            self._key_status.record_failure(
+                route.label,
+                route.provider.name,
+                recorded_state(error, cooldown),
+                cooling_until,
+                type(error).__name__,
+            ),
+        )
+
+    async def _notify_key_status(self, label: str, report: Awaitable[None]) -> None:
+        try:
+            await report
+        except Exception as error:
+            logger.warning("llm_key_status_failed", route=label, error=type(error).__name__)
