@@ -1,0 +1,23 @@
+groups:
+  - name: host-recording
+    rules:
+      - record: host:cpu_utilization:ratio_rate2m
+        expr: 1 - avg by (target) (rate(node_cpu_seconds_total{job="node",mode="idle"}[2m]))
+      - record: host:cpu_steal:ratio_rate5m
+        expr: avg by (target) (rate(node_cpu_seconds_total{job="node",mode="steal"}[5m]))
+      - record: host:cpu_pressure_waiting:ratio_rate5m
+        expr: rate(node_pressure_cpu_waiting_seconds_total{job="node"}[5m])
+      - record: host:memory_pressure_stalled:ratio_rate5m
+        expr: rate(node_pressure_memory_stalled_seconds_total{job="node"}[5m])
+      - record: host:io_pressure_stalled:ratio_rate5m
+        expr: rate(node_pressure_io_stalled_seconds_total{job="node"}[5m])
+      - record: host:memory_available:ratio
+        expr: node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}
+      - record: host:fs_avail:ratio
+        expr: |
+          node_filesystem_avail_bytes{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs"}
+          / node_filesystem_size_bytes{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs"}
+      - record: host:fs_inodes_free:ratio
+        expr: |
+          node_filesystem_files_free{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs"}
+          / node_filesystem_files{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs"}

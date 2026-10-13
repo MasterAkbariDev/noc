@@ -1,0 +1,61 @@
+groups:
+  - name: host-alerts
+    rules:
+      - alert: HostCPUSaturated
+        expr: host:cpu_utilization:ratio_rate2m > 0.90 and on(target) host:cpu_pressure_waiting:ratio_rate5m > 0.20
+        for: 3m
+        keep_firing_for: 2m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "CPU on {{ $labels.target }} is saturated and tasks are waiting for CPU"
+
+      - alert: HostMemoryPressure
+        expr: host:memory_pressure_stalled:ratio_rate5m > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Memory on {{ $labels.target }} is stalling all tasks (memory pressure above 10%)"
+
+      - alert: DiskAlmostFull
+        expr: host:fs_avail:ratio < 0.10
+        for: 2m
+        keep_firing_for: 5m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.target }} has less than 10% free space"
+
+      - alert: DiskFillingFast
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs"}[1h], 4*3600) < 0
+          and host:fs_avail:ratio < 0.25
+        for: 10m
+        keep_firing_for: 10m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.target }} is predicted to fill within 4 hours"
+
+      - alert: InodesAlmostExhausted
+        expr: host:fs_inodes_free:ratio < 0.05
+        for: 2m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.target }} has less than 5% free inodes"
+
+      - alert: TargetDown
+        expr: up{job=~"node|sentinel"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: network
+        annotations:
+          summary: "Scrape target {{ $labels.target }} ({{ $labels.job }}) cannot be scraped"

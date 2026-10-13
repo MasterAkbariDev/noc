@@ -1,0 +1,166 @@
+rule_files:
+  - ../rules/recording.yml
+  - ../rules/host.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: HostCPUSaturated fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'node_cpu_seconds_total{job="node", target="demo-1", cpu="0", mode="idle"}'
+        values: "0+0.75x240"
+      - series: 'node_pressure_cpu_waiting_seconds_total{job="node", target="demo-1"}'
+        values: "0+3.75x240"
+    promql_expr_test:
+      - expr: host:cpu_utilization:ratio_rate2m
+        eval_time: 2m
+        exp_samples:
+          - labels: 'host:cpu_utilization:ratio_rate2m{target="demo-1"}'
+            value: 0.95
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HostCPUSaturated
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: HostCPUSaturated
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: resource
+              target: demo-1
+            exp_annotations:
+              summary: "CPU on demo-1 is saturated and tasks are waiting for CPU"
+
+  - name: HostCPUSaturated ignores a 60 s CPU spike
+    interval: 15s
+    input_series:
+      - series: 'node_cpu_seconds_total{job="node", target="demo-1", cpu="0", mode="idle"}'
+        values: "0+7.5x20 150x3 157.5+7.5x20"
+      - series: 'node_pressure_cpu_waiting_seconds_total{job="node", target="demo-1"}'
+        values: "0x20 30+30x3 120x20"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostCPUSaturated
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: HostCPUSaturated
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HostCPUSaturated
+        exp_alerts: []
+
+  - name: HostMemoryPressure fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'node_pressure_memory_stalled_seconds_total{job="node", target="demo-1"}'
+        values: "0+3x240"
+    alert_rule_test:
+      - eval_time: 3m30s
+        alertname: HostMemoryPressure
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: HostMemoryPressure
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: resource
+              job: node
+              target: demo-1
+            exp_annotations:
+              summary: "Memory on demo-1 is stalling all tasks (memory pressure above 10%)"
+
+  - name: DiskAlmostFull fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "5x60"
+      - series: 'node_filesystem_size_bytes{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "100x60"
+    alert_rule_test:
+      - eval_time: 100s
+        alertname: DiskAlmostFull
+        exp_alerts: []
+      - eval_time: 150s
+        alertname: DiskAlmostFull
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: resource
+              job: node
+              target: demo-1
+              device: /dev/sda1
+              fstype: ext4
+              mountpoint: /
+            exp_annotations:
+              summary: "Filesystem / on demo-1 has less than 10% free space"
+
+  - name: DiskFillingFast fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "20-0.15x120"
+      - series: 'node_filesystem_size_bytes{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "100x120"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DiskFillingFast
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DiskFillingFast
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: resource
+              job: node
+              target: demo-1
+              device: /dev/sda1
+              fstype: ext4
+              mountpoint: /
+            exp_annotations:
+              summary: "Filesystem / on demo-1 is predicted to fill within 4 hours"
+
+  - name: InodesAlmostExhausted fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'node_filesystem_files{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "1000x60"
+      - series: 'node_filesystem_files_free{job="node", target="demo-1", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: "20x60"
+    alert_rule_test:
+      - eval_time: 100s
+        alertname: InodesAlmostExhausted
+        exp_alerts: []
+      - eval_time: 150s
+        alertname: InodesAlmostExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: resource
+              job: node
+              target: demo-1
+              device: /dev/sda1
+              fstype: ext4
+              mountpoint: /
+            exp_annotations:
+              summary: "Filesystem / on demo-1 has less than 5% free inodes"
+
+  - name: TargetDown fires only after its for window
+    interval: 15s
+    input_series:
+      - series: 'up{job="node", target="demo-1"}'
+        values: "1 0x60"
+    alert_rule_test:
+      - eval_time: 60s
+        alertname: TargetDown
+        exp_alerts: []
+      - eval_time: 90s
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: network
+              job: node
+              target: demo-1
+            exp_annotations:
+              summary: "Scrape target demo-1 (node) cannot be scraped"
