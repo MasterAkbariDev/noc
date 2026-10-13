@@ -1,9 +1,11 @@
 import uuid
 from typing import Any
 
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from noc.audit.chain import append_audit
 from noc.db.base import utc_now
 from noc.db.models import Incident, IncidentEvent
 from noc.domain.incident_status import (
@@ -11,10 +13,17 @@ from noc.domain.incident_status import (
     TIMESTAMP_FIELD,
     EscalationReason,
     IncidentStatus,
+    InvalidTransition,
     ensure_transition,
 )
+from noc_shared.taxonomy import RootCauseCode
 
 EVENTS_CHANNEL = "incident_events"
+
+
+class IncidentResolution(BaseModel):
+    resolution_note: str = Field(min_length=1, max_length=2000)
+    corrected_root_cause_code: RootCauseCode | None = None
 
 
 async def add_event(
@@ -61,6 +70,30 @@ async def lock_incident(session: AsyncSession, incident_id: uuid.UUID) -> Incide
     )
     if incident is None:
         raise LookupError(f"incident {incident_id} not found")
+    return incident
+
+
+async def close_incident(
+    session: AsyncSession,
+    incident_id: uuid.UUID,
+    resolution: IncidentResolution,
+    actor: str,
+) -> Incident:
+    incident = await lock_incident(session, incident_id)
+    current = IncidentStatus(incident.status)
+    if current is not IncidentStatus.ESCALATED:
+        raise InvalidTransition(current, IncidentStatus.CLOSED)
+    await transition(session, incident, IncidentStatus.CLOSED, actor)
+    incident.resolution_note = resolution.resolution_note
+    code = resolution.corrected_root_cause_code
+    incident.corrected_root_cause_code = code.value if code is not None else None
+    await append_audit(
+        session,
+        actor,
+        "incident_closed",
+        str(incident.id),
+        {"corrected_root_cause_code": incident.corrected_root_cause_code},
+    )
     return incident
 
 

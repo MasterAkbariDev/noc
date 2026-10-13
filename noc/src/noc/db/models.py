@@ -91,6 +91,8 @@ class Incident(CreatedAt, Base):
     root_cause_summary: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float | None]
     tool_call_seq: Mapped[int] = mapped_column(Integer, default=0)
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    corrected_root_cause_code: Mapped[str | None] = mapped_column(String(64))
 
     target: Mapped[Target] = relationship()
 

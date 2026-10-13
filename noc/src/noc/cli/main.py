@@ -16,9 +16,11 @@ from noc.config import PACKAGE_DIR, get_settings
 from noc.db.models import Incident, Report, Target
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
+from noc.domain.incident_status import InvalidTransition
 from noc.logging import configure_logging
 from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment
+from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.targets import (
     add_target,
     apply_inventory,
@@ -32,6 +34,7 @@ from noc.store.targets import (
 from noc.tools.sentinel_client import SentinelDirectory, build_sentinel_http
 from noc.tools.spec import TargetRef
 from noc.worker.main import run_worker
+from noc_shared.taxonomy import RootCauseCode
 
 app = typer.Typer(help="Multi-Agent NOC command line", no_args_is_help=True)
 targets_app = typer.Typer(help="Manage monitored targets", no_args_is_help=True)
@@ -278,6 +281,26 @@ def incidents_report(incident_id: uuid.UUID) -> None:
             return markdown or "No report yet."
 
     typer.echo(with_sessions(work))
+
+
+@incidents_app.command("close")
+def incidents_close(
+    incident_id: uuid.UUID,
+    note: Annotated[str, typer.Option(help="Human resolution note, 1-2000 characters")],
+    root_cause: Annotated[
+        RootCauseCode | None, typer.Option(help="Corrected root cause code")
+    ] = None,
+) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        resolution = IncidentResolution(resolution_note=note, corrected_root_cause_code=root_cause)
+        async with transaction(sessions) as session:
+            try:
+                incident = await close_incident(session, incident_id, resolution, "cli")
+            except (LookupError, InvalidTransition) as error:
+                raise typer.BadParameter(str(error)) from error
+            return f"{incident.id}: status={incident.status} root_cause={root_cause or '-'}"
+
+    typer.echo(with_admin_sessions(work))
 
 
 @audit_app.command("verify")

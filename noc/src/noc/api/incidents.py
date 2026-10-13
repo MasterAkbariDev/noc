@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from noc.api.deps import get_session, require_token
 from noc.api.schemas import ActionView, EventView, FindingView, IncidentDetail, IncidentSummary
 from noc.db.models import ActionRow, FindingRow, Incident, IncidentEvent, Report, Target
+from noc.domain.incident_status import InvalidTransition
+from noc.store.incidents import IncidentResolution, close_incident
 
 router = APIRouter(
     prefix="/api/incidents", tags=["incidents"], dependencies=[Depends(require_token)]
@@ -63,3 +65,17 @@ async def get_report(incident_id: uuid.UUID, session: Session) -> str:
     if report is None:
         raise HTTPException(404, "report not ready")
     return report
+
+
+@router.post("/{incident_id}/close")
+async def close_escalated_incident(
+    incident_id: uuid.UUID, resolution: IncidentResolution, session: Session
+) -> IncidentSummary:
+    try:
+        incident = await close_incident(session, incident_id, resolution, "api")
+    except LookupError as error:
+        raise HTTPException(404, "incident not found") from error
+    except InvalidTransition as error:
+        raise HTTPException(409, str(error)) from error
+    await session.commit()
+    return IncidentSummary.model_validate(incident)
