@@ -47,13 +47,16 @@ def neutralize(text: str) -> str:
     return TAG_PATTERN.sub(r"[\1\2", text)
 
 
-def untrusted_lines(value: Any) -> list[str]:
+def raw_lines(value: Any) -> list[str]:
     items = value if isinstance(value, list) else [value]
-    lines = []
-    for item in items:
-        line = item if isinstance(item, str) else json.dumps(item, sort_keys=True, default=str)
-        lines.append(neutralize(line)[:MAX_UNTRUSTED_LINE_CHARS])
-    return lines
+    return [
+        item if isinstance(item, str) else json.dumps(item, sort_keys=True, default=str)
+        for item in items
+    ]
+
+
+def untrusted_lines(value: Any) -> list[str]:
+    return [neutralize(line)[:MAX_UNTRUSTED_LINE_CHARS] for line in raw_lines(value)]
 
 
 def render_tool_result(
@@ -74,10 +77,9 @@ def render_tool_result(
     for field_name in untrusted_fields:
         if field_name not in data:
             continue
-        lines = untrusted_lines(data[field_name])
-        for line in lines:
-            flags.update(scan_injection(line))
-        body = "\n".join(lines)
+        for raw_line in raw_lines(data[field_name]):
+            flags.update(scan_injection(raw_line))
+        body = "\n".join(untrusted_lines(data[field_name]))
         sections.append(
             f'<untrusted_data source="{tool}.{field_name}" ref="{ref}">\n{body}\n</untrusted_data>'
         )
