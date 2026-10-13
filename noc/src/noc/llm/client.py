@@ -27,6 +27,10 @@ class ProviderKeyRejected(LLMError):
     pass
 
 
+class ProviderRequestRejected(LLMError):
+    pass
+
+
 class LLMUnavailable(LLMError):
     pass
 

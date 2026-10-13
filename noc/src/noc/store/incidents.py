@@ -2,14 +2,15 @@ import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.audit.chain import append_audit
 from noc.db.base import utc_now
-from noc.db.models import Incident, IncidentEvent
+from noc.db.models import AgentRun, Incident, IncidentEvent
 from noc.domain.incident_status import (
     ACTIVE_STATUSES,
+    CLOSED_STATUSES,
     TIMESTAMP_FIELD,
     EscalationReason,
     IncidentStatus,
@@ -102,3 +103,28 @@ async def find_active_incident(session: AsyncSession, target_id: uuid.UUID) -> I
     return await session.scalar(
         select(Incident).where(Incident.target_id == target_id, Incident.status.in_(active_values))
     )
+
+
+ABANDONED_RUN_ERROR = "abandoned: the investigation job gave up"
+ABANDON_ACTOR = "worker"
+
+
+async def escalate_abandoned(
+    session: AsyncSession, incident_id: uuid.UUID, reason: EscalationReason, detail: str
+) -> bool:
+    incident = await lock_incident(session, incident_id)
+    current = IncidentStatus(incident.status)
+    if current in CLOSED_STATUSES or current is IncidentStatus.ESCALATED:
+        return False
+    await session.execute(
+        update(AgentRun)
+        .where(AgentRun.incident_id == incident_id, AgentRun.status == "running")
+        .values(status="failed", ended_at=utc_now(), error=ABANDONED_RUN_ERROR)
+    )
+    if current is IncidentStatus.NEW:
+        await transition(session, incident, IncidentStatus.INVESTIGATING, ABANDON_ACTOR)
+    await transition(session, incident, IncidentStatus.ESCALATED, ABANDON_ACTOR, reason)
+    await add_event(
+        session, incident_id, "investigation_abandoned", ABANDON_ACTOR, {"error": detail}
+    )
+    return True

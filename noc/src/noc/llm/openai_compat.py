@@ -4,7 +4,12 @@ from typing import Any
 import openai
 from openai import AsyncOpenAI
 
-from noc.llm.client import ProviderKeyRejected, ProviderRateLimited, ProviderUnavailable
+from noc.llm.client import (
+    ProviderKeyRejected,
+    ProviderRateLimited,
+    ProviderRequestRejected,
+    ProviderUnavailable,
+)
 from noc.llm.types import ChatMessage, LLMRequest, LLMResponse, LlmToolCall, Role, Usage
 
 
@@ -13,6 +18,7 @@ def to_openai_message(message: ChatMessage) -> dict[str, Any]:
     if message.role is Role.ASSISTANT and message.tool_calls:
         payload["tool_calls"] = [
             {
+                **call.provider_extra,
                 "id": call.id,
                 "type": "function",
                 "function": {"name": call.name, "arguments": call.arguments},
@@ -76,11 +82,18 @@ class OpenAICompatProvider:
                 raise ProviderUnavailable(f"{self.name}: {exc.status_code}") from exc
             if is_invalid_key_message(str(exc)):
                 raise ProviderKeyRejected(f"{self.name}: key rejected ({exc.status_code})") from exc
-            raise
+            raise ProviderRequestRejected(
+                f"{self.name}: request rejected ({exc.status_code}): {exc.message[:300]}"
+            ) from exc
 
         choice = completion.choices[0]
         tool_calls = [
-            LlmToolCall(id=call.id, name=call.function.name, arguments=call.function.arguments)
+            LlmToolCall(
+                id=call.id,
+                name=call.function.name,
+                arguments=call.function.arguments,
+                provider_extra=dict(call.model_extra or {}),
+            )
             for call in (choice.message.tool_calls or [])
             if call.type == "function"
         ]

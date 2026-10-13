@@ -2,7 +2,12 @@ import httpx2
 import pytest
 from openai import AsyncOpenAI
 
-from noc.llm.client import ProviderKeyRejected, ProviderRateLimited, ProviderUnavailable
+from noc.llm.client import (
+    ProviderKeyRejected,
+    ProviderRateLimited,
+    ProviderRequestRejected,
+    ProviderUnavailable,
+)
 from noc.llm.openai_compat import OpenAICompatProvider, build_arguments
 from noc.llm.types import (
     CallContext,
@@ -109,3 +114,44 @@ async def test_completion_is_parsed() -> None:
 async def test_bad_keys_are_classified_as_rejected(status: int, payload: dict[str, object]) -> None:
     with pytest.raises(ProviderKeyRejected):
         await provider_answering(status, payload).complete(request(), "m")
+
+
+async def test_provider_specific_tool_call_fields_are_kept_and_sent_back() -> None:
+    signature = {"google": {"thought_signature": "SIG-123"}}
+    provider = provider_answering(
+        200,
+        {
+            "id": "x",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "get_host_overview", "arguments": "{}"},
+                                "extra_content": signature,
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    response = await provider.complete(request(tools=[TOOL]), "m")
+    assert response.tool_calls[0].provider_extra == {"extra_content": signature}
+    sent = build_arguments(request(messages=[response.as_assistant_message()], tools=[TOOL]), "m")
+    assert sent["messages"][0]["tool_calls"][0]["extra_content"] == signature
+
+
+async def test_other_client_errors_become_llm_errors() -> None:
+    payload = {"error": {"message": "Function call is missing a thought_signature"}}
+    with pytest.raises(ProviderRequestRejected, match="thought_signature"):
+        await provider_answering(400, payload).complete(request(), "m")

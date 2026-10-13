@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,3 +112,8 @@ async def fail(
         "retry_delay": retry_delay_seconds,
     }
     return await changed_rows(session, FAIL_SQL, parameters) == 1
+
+
+async def is_dead(session: AsyncSession, job_id: int) -> bool:
+    status = await session.scalar(select(Job.status).where(Job.id == job_id))
+    return status == "dead"

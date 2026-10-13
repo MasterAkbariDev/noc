@@ -18,10 +18,12 @@ from noc.detection.alerts import PrometheusAlertSource
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.file_sd import refresh_file_sd
 from noc.detection.ingest import AlertIngestor
+from noc.domain.incident_status import EscalationReason
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.orchestration.graph import IncidentGraph, build_incident_graph, run_incident
 from noc.orchestration.runtime import build_runtime
+from noc.store.incidents import escalate_abandoned
 from noc.tools.sentinel_client import build_sentinel_http
 
 logger = structlog.get_logger(__name__)
@@ -125,14 +127,16 @@ class Worker:
             await run_incident(self._graph, uuid.UUID(job.payload["incident_id"]))
         except Exception as exc:
             logger.exception("job_failed", job_id=job.id, kind=job.kind)
+            error = f"{type(exc).__name__}: {exc}"
             async with transaction(self._sessions) as session:
-                await queue.fail(
-                    session,
-                    job.id,
-                    self._identity,
-                    f"{type(exc).__name__}: {exc}",
-                    RETRY_DELAY_SECONDS,
-                )
+                await queue.fail(session, job.id, self._identity, error, RETRY_DELAY_SECONDS)
+                if await queue.is_dead(session, job.id):
+                    await escalate_abandoned(
+                        session,
+                        uuid.UUID(job.payload["incident_id"]),
+                        EscalationReason.INVESTIGATION_FAILED,
+                        error[:500],
+                    )
             JOBS_FINISHED.labels(job.kind, "failed").inc()
         else:
             async with transaction(self._sessions) as session:
