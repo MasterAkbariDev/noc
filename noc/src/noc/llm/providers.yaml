@@ -15,7 +15,7 @@ providers:
     proxy_env: NOC_GROQ_PROXY
     quota_timezone: UTC
     models:
-      small: { model: llama-3.3-70b-versatile, rpm: 25, rpd: 900 }
+      small: { model: openai/gpt-oss-20b, rpm: 25, rpd: 900 }
       strong: { model: openai/gpt-oss-120b, rpm: 25, rpd: 900 }
 
 chains:
