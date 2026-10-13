@@ -9,7 +9,7 @@ from noc.audit.chain import append_audit
 from noc.db.base import utc_now
 from noc.db.models import Incident, IncidentEvent
 from noc.domain.incident_status import (
-    OPEN_STATUSES,
+    ACTIVE_STATUSES,
     TIMESTAMP_FIELD,
     EscalationReason,
     IncidentStatus,
@@ -97,8 +97,8 @@ async def close_incident(
     return incident
 
 
-async def find_open_incident(session: AsyncSession, target_id: uuid.UUID) -> Incident | None:
-    open_values = [status.value for status in OPEN_STATUSES]
+async def find_active_incident(session: AsyncSession, target_id: uuid.UUID) -> Incident | None:
+    active_values = [status.value for status in ACTIVE_STATUSES]
     return await session.scalar(
-        select(Incident).where(Incident.target_id == target_id, Incident.status.in_(open_values))
+        select(Incident).where(Incident.target_id == target_id, Incident.status.in_(active_values))
     )

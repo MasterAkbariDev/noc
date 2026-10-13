@@ -33,6 +33,7 @@ ALLOWED_TRANSITIONS: dict[IncidentStatus, frozenset[IncidentStatus]] = {
 
 CLOSED_STATUSES = frozenset({S.RESOLVED, S.SELF_RESOLVED, S.CLOSED})
 OPEN_STATUSES = frozenset(IncidentStatus) - CLOSED_STATUSES
+ACTIVE_STATUSES = OPEN_STATUSES - {S.ESCALATED}
 
 TIMESTAMP_FIELD: dict[IncidentStatus, str] = {
     S.INVESTIGATING: "investigation_started_at",

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from noc.audit.chain import append_audit
 from noc.db.base import new_id
-from noc.db.models import OPEN_INCIDENT_PREDICATE, Incident, ScenarioRun
+from noc.db.models import ACTIVE_INCIDENT_PREDICATE, Incident, ScenarioRun
 from noc.db.session import SessionFactory, transaction
 from noc.domain.incident_status import IncidentStatus
 from noc.scenarios.chaos_client import NOT_ACTIVE, ChaosClient, ChaosError
@@ -124,11 +124,11 @@ class ScenarioRunner:
             open_incidents = await session.scalar(
                 select(func.count())
                 .select_from(Incident)
-                .where(Incident.target_id == target.id, OPEN_INCIDENT_PREDICATE)
+                .where(Incident.target_id == target.id, ACTIVE_INCIDENT_PREDICATE)
             )
             target_id = target.id
         if open_incidents:
-            raise PreconditionFailed(f"target {target_name} has an open incident")
+            raise PreconditionFailed(f"target {target_name} has an active incident")
         state = await self._chaos.status()
         if state.active:
             raise PreconditionFailed(f"chaos already active on {state.resource_id}")

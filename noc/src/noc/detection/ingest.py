@@ -7,11 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
-from noc.db.models import AlertEvent
+from noc.db.models import AlertEvent, Incident
 from noc.db.session import SessionFactory, transaction
 from noc.detection.alerts import PrometheusAlert, PrometheusUnavailable
 from noc.detection.correlator import correlate
 from noc.detection.reconcile import OpenAlertState, plan_reconciliation
+from noc.domain.incident_status import CLOSED_STATUSES
 from noc.domain.severity import Severity
 
 logger = structlog.get_logger(__name__)
@@ -69,6 +70,7 @@ class AlertIngestor:
             row.last_seen_at = now
             row.missed_polls = 0
             row.value = alert.value
+        await recorrelate_orphans(session, [open_rows[a.fingerprint] for a in plan.still_firing])
 
         for fingerprint in plan.missed:
             open_rows[fingerprint].missed_polls += 1
@@ -82,6 +84,26 @@ class AlertIngestor:
             row = new_alert_event(alert, now)
             session.add(row)
             await session.flush()
+            await correlate(session, row)
+
+
+async def recorrelate_orphans(session: AsyncSession, rows: list[AlertEvent]) -> None:
+    incident_ids = {row.incident_id for row in rows if row.incident_id is not None}
+    closed_values = [status.value for status in CLOSED_STATUSES]
+    closed = (
+        set(
+            await session.scalars(
+                select(Incident.id).where(
+                    Incident.id.in_(incident_ids), Incident.status.in_(closed_values)
+                )
+            )
+        )
+        if incident_ids
+        else set()
+    )
+    for row in rows:
+        if row.incident_id is None or row.incident_id in closed:
+            row.incident_id = None
             await correlate(session, row)
 
 

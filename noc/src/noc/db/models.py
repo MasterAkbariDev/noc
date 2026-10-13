@@ -17,12 +17,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from noc.db.base import Base, CreatedAt, new_id, utc_now
-from noc.domain.incident_status import CLOSED_STATUSES
+from noc.domain.incident_status import ACTIVE_STATUSES
 
 Json = dict[str, Any]
 
-OPEN_INCIDENT_PREDICATE = text(
-    "status NOT IN (" + ", ".join(f"'{status.value}'" for status in sorted(CLOSED_STATUSES)) + ")"
+ACTIVE_INCIDENT_PREDICATE = text(
+    "status IN (" + ", ".join(f"'{status.value}'" for status in sorted(ACTIVE_STATUSES)) + ")"
 )
 
 
@@ -65,10 +65,10 @@ class Incident(CreatedAt, Base):
     __tablename__ = "incidents"
     __table_args__ = (
         Index(
-            "uq_incidents_one_open_per_target",
+            "uq_incidents_one_active_per_target",
             "target_id",
             unique=True,
-            postgresql_where=OPEN_INCIDENT_PREDICATE,
+            postgresql_where=ACTIVE_INCIDENT_PREDICATE,
         ),
     )
 

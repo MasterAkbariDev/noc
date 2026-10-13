@@ -106,3 +106,53 @@ async def test_unknown_targets_and_info_alerts_open_no_incident(
     await poller.poll_once()
     assert await count(sessions, Incident) == 0
     assert await count(sessions, AlertEvent) == 2
+
+
+async def set_status(sessions: SessionFactory, status: str) -> None:
+    async with transaction(sessions) as session:
+        incident = await session.scalar(select(Incident))
+        assert incident is not None
+        incident.status = status
+
+
+async def test_new_problem_on_an_escalated_target_opens_its_own_incident(
+    sessions: SessionFactory, ingestor: tuple[AlertIngestor, StaticAlertSource]
+) -> None:
+    poller, source = ingestor
+    source.alerts = [prometheus_alert(alertname="DiskFillingFast", severity="warning")]
+    await poller.poll_once()
+    await set_status(sessions, "ESCALATED")
+    source.alerts.append(prometheus_alert())
+    await poller.poll_once()
+    assert await count(sessions, Incident) == 2
+    assert await count(sessions, Job) == 2
+
+
+async def test_still_firing_alert_on_an_escalated_incident_opens_nothing_new(
+    sessions: SessionFactory, ingestor: tuple[AlertIngestor, StaticAlertSource]
+) -> None:
+    poller, source = ingestor
+    source.alerts = [prometheus_alert()]
+    await poller.poll_once()
+    await set_status(sessions, "ESCALATED")
+    for _ in range(3):
+        await poller.poll_once()
+    assert await count(sessions, Incident) == 1
+
+
+async def test_still_firing_alert_reopens_after_a_human_closes_the_incident(
+    sessions: SessionFactory, ingestor: tuple[AlertIngestor, StaticAlertSource]
+) -> None:
+    poller, source = ingestor
+    source.alerts = [prometheus_alert()]
+    await poller.poll_once()
+    await set_status(sessions, "CLOSED")
+    await poller.poll_once()
+    await poller.poll_once()
+    assert await count(sessions, Incident) == 2
+    async with sessions() as session:
+        newest = await session.scalar(select(Incident).order_by(Incident.opened_at.desc()))
+        alert = await session.scalar(select(AlertEvent))
+    assert newest is not None
+    assert alert is not None
+    assert alert.incident_id == newest.id

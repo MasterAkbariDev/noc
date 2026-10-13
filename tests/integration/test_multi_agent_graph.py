@@ -354,3 +354,23 @@ async def test_crash_in_diagnosis_resumes_without_rerunning_specialists(
     assert await skeleton.scalar(select(func.count()).select_from(Report)) == 1
     assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
     assert await skeleton.scalar(select(func.count()).select_from(LlmCall)) >= 5
+
+
+async def test_all_specialists_failing_on_the_llm_escalates_as_llm_unavailable(
+    skeleton: MultiSkeleton,
+) -> None:
+    incident_id = await skeleton.open_incident()
+    diagnosis = ScriptedLLM([])
+    llm = RoutedLLM(
+        {
+            "metrics": ScriptedLLM([unavailable_logs]),
+            "logs": ScriptedLLM([unavailable_logs]),
+            "diagnosis": diagnosis,
+        }
+    )
+    await skeleton.run(llm, incident_id)
+
+    assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
+    assert await skeleton.scalar(select(Incident.escalation_reason)) == "llm_unavailable"
+    assert diagnosis.requests == []
+    assert await skeleton.scalar(select(func.count()).select_from(Report)) == 1

@@ -11,7 +11,7 @@ from noc.agents.schemas import unknown_diagnosis
 from noc.agents.supervisor import InvestigationPlan, plan_investigation
 from noc.db.models import AgentRun, AlertEvent, FindingRow, Incident, IncidentEvent
 from noc.db.session import transaction
-from noc.domain.incident_status import IncidentStatus
+from noc.domain.incident_status import EscalationReason, IncidentStatus
 from noc.llm.client import LLMError
 from noc.orchestration.nodes import (
     SUPERVISOR,
@@ -44,6 +44,7 @@ FINISHED_EVENT = "specialist_finished"
 FAILED_EVENT = "specialist_failed"
 SPECIALIST_TASK = TypeAdapter(SpecialistTask)
 NO_FINDINGS = "No specialist produced a grounded finding."
+LLM_UNAVAILABLE_ERRORS = ("LLMUnavailable", "CassetteMiss")
 
 
 async def stored_plan(session: AsyncSession, incident_id: uuid.UUID) -> InvestigationPlan | None:
@@ -95,6 +96,26 @@ async def dropped_specialist_findings(session: AsyncSession, incident_id: uuid.U
         )
     )
     return sum(int(payload.get("dropped_findings", 0)) for payload in payloads)
+
+
+async def investigation_failure(
+    session: AsyncSession, incident_id: uuid.UUID
+) -> EscalationReason | None:
+    runs = list(
+        await session.scalars(
+            select(AgentRun).where(
+                AgentRun.incident_id == incident_id, AgentRun.agent != DIAGNOSIS_AGENT
+            )
+        )
+    )
+    if not runs or any(run.status == "succeeded" for run in runs):
+        return None
+    failed = [run for run in runs if run.status == "failed"]
+    if not failed:
+        return None
+    if all((run.error or "").startswith(LLM_UNAVAILABLE_ERRORS) for run in failed):
+        return EscalationReason.LLM_UNAVAILABLE
+    return EscalationReason.INVESTIGATION_FAILED
 
 
 async def grounded_findings(session: AsyncSession, incident_id: uuid.UUID) -> list[FindingView]:
@@ -188,6 +209,12 @@ class MultiNodes(IncidentNodes):
             findings = await grounded_findings(session, incident_id)
             dropped = await dropped_specialist_findings(session, incident_id)
             if not findings:
+                failure = await investigation_failure(session, incident_id)
+                if failure is not None:
+                    await transition(
+                        session, incident, IncidentStatus.ESCALATED, DIAGNOSIS_AGENT, failure
+                    )
+                    return {"outcome": "escalated"}
                 await persist_diagnosis(session, incident, unknown_diagnosis(NO_FINDINGS), dropped)
                 await transition(session, incident, IncidentStatus.DIAGNOSED, DIAGNOSIS_AGENT)
                 return {"outcome": "diagnosed"}

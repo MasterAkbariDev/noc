@@ -9,7 +9,7 @@ from noc.db.models import AlertEvent, Incident, Target
 from noc.domain.incident_status import IncidentStatus
 from noc.domain.severity import Severity
 from noc.jobs.queue import enqueue
-from noc.store.incidents import add_event, find_open_incident
+from noc.store.incidents import add_event, find_active_incident
 
 logger = structlog.get_logger(__name__)
 
@@ -51,7 +51,7 @@ async def correlate(session: AsyncSession, alert: AlertEvent) -> Correlation | N
         return None
 
     await lock_target(session, target.id)
-    incident = await find_open_incident(session, target.id)
+    incident = await find_active_incident(session, target.id)
     if incident is not None:
         alert.incident_id = incident.id
         incident.severity = Severity.highest(Severity.parse(incident.severity), severity).value

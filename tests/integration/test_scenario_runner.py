@@ -248,7 +248,7 @@ async def test_open_incident_blocks_injection(
 ) -> None:
     await insert_open_incident(sessions, target_id)
 
-    with pytest.raises(PreconditionFailed, match="open incident"):
+    with pytest.raises(PreconditionFailed, match="active incident"):
         await runner.run(scenario, TARGET, RESOURCE)
 
     assert chaos.starts == []
