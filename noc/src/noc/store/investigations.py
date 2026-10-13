@@ -2,7 +2,10 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from noc.agents.diagnosis import FindingView
 from noc.agents.investigator import InvestigationOutcome
+from noc.agents.loop import AgentStats
+from noc.agents.schemas import Diagnosis, Finding
 from noc.db.base import utc_now
 from noc.db.models import AgentRun, DiagnosisRow, FindingRow, Incident
 
@@ -15,16 +18,34 @@ async def save_investigation(
     outcome: InvestigationOutcome,
 ) -> DiagnosisRow:
     report = outcome.grounded.report
+    finish_run(agent_run, outcome.stats)
+    add_findings(session, incident.id, agent, report.findings)
+    return await persist_diagnosis(
+        session, incident, report.diagnosis, outcome.grounded.dropped_findings
+    )
+
+
+def finish_run(agent_run: AgentRun, stats: AgentStats) -> None:
     agent_run.status = "succeeded"
     agent_run.ended_at = utc_now()
-    agent_run.rounds = outcome.stats.rounds
-    agent_run.llm_calls = outcome.stats.llm_calls
-    agent_run.tool_calls = outcome.stats.tool_calls
+    agent_run.rounds = stats.rounds
+    agent_run.llm_calls = stats.llm_calls
+    agent_run.tool_calls = stats.tool_calls
 
-    for finding in report.findings:
+
+def mark_run_failed(agent_run: AgentRun, error: str) -> None:
+    agent_run.status = "failed"
+    agent_run.ended_at = utc_now()
+    agent_run.error = error
+
+
+def add_findings(
+    session: AsyncSession, incident_id: uuid.UUID, agent: str, findings: list[Finding]
+) -> None:
+    for finding in findings:
         session.add(
             FindingRow(
-                incident_id=incident.id,
+                incident_id=incident_id,
                 agent=agent,
                 label=finding.id,
                 category=finding.category.value,
@@ -39,25 +60,46 @@ async def save_investigation(
             )
         )
 
-    primary = report.diagnosis.primary()
-    diagnosis = DiagnosisRow(
+
+async def persist_diagnosis(
+    session: AsyncSession,
+    incident: Incident,
+    diagnosis: Diagnosis,
+    ungrounded_findings: int,
+) -> DiagnosisRow:
+    primary = diagnosis.primary()
+    row = DiagnosisRow(
         incident_id=incident.id,
         primary_code=primary.root_cause_code.value,
         confidence=primary.confidence,
-        is_security_incident=report.diagnosis.is_security_incident,
-        hypotheses=[
-            hypothesis.model_dump(mode="json") for hypothesis in report.diagnosis.hypotheses
-        ],
-        needs_more_info=report.diagnosis.needs_more_info,
-        ungrounded_findings=outcome.grounded.dropped_findings,
+        is_security_incident=diagnosis.is_security_incident,
+        hypotheses=[hypothesis.model_dump(mode="json") for hypothesis in diagnosis.hypotheses],
+        needs_more_info=diagnosis.needs_more_info,
+        ungrounded_findings=ungrounded_findings,
     )
-    session.add(diagnosis)
+    session.add(row)
     incident.root_cause_code = primary.root_cause_code.value
     incident.root_cause_summary = primary.description
     incident.confidence = primary.confidence
     await session.flush()
-    return diagnosis
+    return row
 
 
 def new_agent_run(incident_id: uuid.UUID, agent: str) -> AgentRun:
     return AgentRun(incident_id=incident_id, agent=agent, status="running")
+
+
+def finding_view(row: FindingRow) -> FindingView:
+    return FindingView.model_validate(
+        {
+            "label": row.label,
+            "category": row.category,
+            "severity": row.severity,
+            "summary": row.summary,
+            "evidence": row.evidence,
+            "evidence_strength": row.evidence_strength,
+            "counter_evidence": row.counter_evidence,
+            "confidence": row.confidence,
+            "suspected_injection": row.suspected_injection,
+        }
+    )

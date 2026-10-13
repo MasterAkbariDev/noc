@@ -6,14 +6,22 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from noc.orchestration.multi_nodes import DIAGNOSE, SPECIALIST, MultiNodes, route_to_specialists
 from noc.orchestration.nodes import IncidentNodes, route_after_begin
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
 
 IncidentGraph = CompiledStateGraph[IncidentState, None, IncidentState, IncidentState]
+PLAN = "plan"
 
 
 def build_incident_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
+    if runtime.settings.agent_mode == "multi":
+        return build_multi_graph(runtime, checkpointer)
+    return build_single_graph(runtime, checkpointer)
+
+
+def build_single_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
     nodes = IncidentNodes(runtime)
     graph = StateGraph(IncidentState)
     graph.add_node("begin", nodes.begin)
@@ -25,6 +33,27 @@ def build_incident_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any
         "begin", route_after_begin, {"investigate": "investigate", "report": "report"}
     )
     graph.add_edge("investigate", "decide")
+    graph.add_edge("decide", "report")
+    graph.add_edge("report", END)
+    return graph.compile(checkpointer=checkpointer)
+
+
+def build_multi_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
+    nodes = MultiNodes(runtime)
+    graph = StateGraph(IncidentState)
+    graph.add_node("begin", nodes.begin)
+    graph.add_node(PLAN, nodes.plan)
+    graph.add_node(SPECIALIST, nodes.specialist)
+    graph.add_node(DIAGNOSE, nodes.diagnose)
+    graph.add_node("decide", nodes.decide)
+    graph.add_node("report", nodes.report)
+    graph.add_edge(START, "begin")
+    graph.add_conditional_edges(
+        "begin", route_after_begin, {"investigate": PLAN, "report": "report"}
+    )
+    graph.add_conditional_edges(PLAN, route_to_specialists, [SPECIALIST, DIAGNOSE])
+    graph.add_edge(SPECIALIST, DIAGNOSE)
+    graph.add_edge(DIAGNOSE, "decide")
     graph.add_edge("decide", "report")
     graph.add_edge("report", END)
     return graph.compile(checkpointer=checkpointer)

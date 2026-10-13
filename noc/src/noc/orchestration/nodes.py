@@ -39,6 +39,14 @@ def affected_resource(diagnosis: DiagnosisRow, alerts: list[AlertEvent]) -> str 
     return next((alert.labels["resource"] for alert in alerts if "resource" in alert.labels), None)
 
 
+def escalation_reason_for(error: LLMError) -> EscalationReason:
+    return (
+        EscalationReason.LLM_UNAVAILABLE
+        if isinstance(error, LLMUnavailable)
+        else EscalationReason.INVESTIGATION_FAILED
+    )
+
+
 class IncidentNodes:
     def __init__(self, runtime: Runtime) -> None:
         self._runtime = runtime
@@ -70,12 +78,9 @@ class IncidentNodes:
         try:
             outcome = await investigator.investigate(prepared.brief, prepared.context)
         except LLMError as exc:
-            reason = (
-                EscalationReason.LLM_UNAVAILABLE
-                if isinstance(exc, LLMUnavailable)
-                else EscalationReason.INVESTIGATION_FAILED
+            await self._fail_investigation(
+                incident_id, agent_run.id, escalation_reason_for(exc), exc
             )
-            await self._fail_investigation(incident_id, agent_run.id, reason, exc)
             return {"outcome": "escalated"}
 
         async with transaction(self._sessions) as session:

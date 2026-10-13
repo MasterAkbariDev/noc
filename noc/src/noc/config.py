@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 LlmMode = Literal["live", "record", "replay"]
+AgentMode = Literal["single", "multi"]
 
 
 class Settings(BaseSettings):
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     automation_paused: bool = False
     investigator_max_rounds: int = 3
     investigator_max_tool_calls: int = 8
+    agent_mode: AgentMode = "single"
+    specialist_max_rounds: int = 3
+    specialist_max_tool_calls: int = 6
     policy_file: Path = PACKAGE_DIR / "policy" / "default_policy.yaml"
 
     llm_mode: LlmMode = "replay"
