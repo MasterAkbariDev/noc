@@ -453,10 +453,11 @@ ensure_sentinel_packages() {
         CHANGED=1
         return 0
     fi
-    out=$("$SENTINEL_VENV/bin/pip" install --no-input --upgrade "$shared" "$sentinel" 2>&1) || {
+    out=$(umask 022 && "$SENTINEL_VENV/bin/pip" install --no-input --upgrade "$shared" "$sentinel" 2>&1) || {
         printf '%s\n' "$out" >&2
         die "pip install of the sentinel wheels failed"
     }
+    chmod -R u=rwX,go=rX "$SENTINEL_VENV"
     case "$out" in
         *"Successfully installed"*) CHANGED=1 ;;
     esac
