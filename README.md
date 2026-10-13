@@ -2,7 +2,7 @@
 
 A small network operations center for a handful of Linux servers. Prometheus raises alerts, and a team of LLM agents investigates each incident using typed, read-only tools (no shell access). A deterministic policy engine decides what may be done, and the system writes an incident report.
 
-Built to run on small VPSes: the whole NOC fits in about 1 GB of RAM, and the agent on each monitored server uses under 100 MB. LLM access uses free-tier providers (Gemini, with Groq as a fallback) through one OpenAI-compatible adapter.
+Built to run on small VPSes: the whole NOC fits in about 1 GB of RAM, and the agent on each monitored server uses under 100 MB. LLM access uses free-tier providers (Groq first, Gemini with several rotating keys as the fallback) through one OpenAI-compatible adapter.
 
 ## What's in here
 

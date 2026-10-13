@@ -201,8 +201,8 @@ def test_factory_builds_one_route_per_key(monkeypatch: pytest.MonkeyPatch) -> No
     llm = build_routed_llm(Settings(_env_file=None), cast(SessionFactory, None))
     labels = [route.label for route in llm.routes_for("strong")]
     assert len(labels) == 5
-    assert [label.split("#")[0] for label in labels] == ["gemini"] * 2 + ["groq"] + ["gemini"] * 2
-    assert labels[3] == f"{labels[0]}/small"
+    assert [label.split("#")[0] for label in labels] == ["groq"] + ["gemini"] * 4
+    assert labels[3] == f"{labels[1]}/small"
 
 
 async def test_a_degraded_model_is_used_when_the_real_one_is_overloaded() -> None:
