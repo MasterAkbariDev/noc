@@ -11,6 +11,9 @@ key_files:
   noc-worker-2026a: /etc/noc-sentinel/keys/noc-worker-2026a.key
 state_dir: /var/lib/noc-sentinel
 halt_file: /etc/noc-sentinel/HALT
+actions:
+  enabled: false
+  max_per_resource_per_hour: 3
 resources:
   - id: svc:demo-shop
     kind: systemd_unit

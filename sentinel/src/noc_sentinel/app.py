@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -6,6 +7,13 @@ from fastapi import Depends, FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from prometheus_client.registry import CollectorRegistry
 
+from noc_sentinel.action_store import ActionStore
+from noc_sentinel.actions import (
+    ActionExecutor,
+    ActionRunner,
+    SubprocessActionRunner,
+    build_actions_router,
+)
 from noc_sentinel.chaos import (
     ChaosRunner,
     ServiceDownChaos,
@@ -39,6 +47,7 @@ def create_app(
     host: HostReader | None = None,
     journal: JournalReader | None = None,
     chaos_runner: ChaosRunner | None = None,
+    action_runner: ActionRunner | None = None,
 ) -> FastAPI:
     app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
     verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
@@ -57,6 +66,16 @@ def create_app(
             config, chaos_runner if chaos_runner is not None else SubprocessChaosRunner(), clock
         )
         app.include_router(build_chaos_router(controller, chaos_verifier))
+    if config.actions.enabled:
+        executor = ActionExecutor(
+            config,
+            systemctl,
+            action_runner if action_runner is not None else SubprocessActionRunner(),
+            ActionStore(config.state_dir / "actions.db"),
+            clock,
+            time.sleep,
+        )
+        app.include_router(build_actions_router(executor, verifier))
     registry = CollectorRegistry()
     registry.register(SentinelCollector(config, systemctl, chaos_enabled=chaos_mounted))
     Signed = Annotated[VerifiedRequest, Depends(verifier)]

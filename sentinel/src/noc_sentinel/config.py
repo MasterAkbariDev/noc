@@ -28,6 +28,11 @@ class ChaosConfig(BaseModel):
     max_ttl_seconds: int = Field(CHAOS_TTL_CEILING_SECONDS, ge=1, le=CHAOS_TTL_CEILING_SECONDS)
 
 
+class ActionsConfig(BaseModel):
+    enabled: bool = False
+    max_per_resource_per_hour: int = Field(3, ge=1)
+
+
 class SentinelConfig(BaseModel):
     target: str
     environment: str = Field(pattern="^(lab|prod)$")
@@ -35,6 +40,7 @@ class SentinelConfig(BaseModel):
     tls: TlsConfig | None = None
     key_files: dict[str, Path]
     chaos: ChaosConfig = ChaosConfig()
+    actions: ActionsConfig = ActionsConfig()
     state_dir: Path = Path("/var/lib/noc-sentinel")
     halt_file: Path = Path("/etc/noc-sentinel/HALT")
     max_skew_seconds: int = 30
