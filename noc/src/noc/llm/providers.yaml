@@ -2,6 +2,7 @@ providers:
   gemini:
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
     api_key_env: GEMINI_API_KEY
+    api_keys_env: GEMINI_API_KEYS
     quota_timezone: America/Los_Angeles
     models:
       small: { model: gemini-flash-lite-latest, rpm: 12, rpd: 800 }
@@ -9,6 +10,7 @@ providers:
   groq:
     base_url: https://api.groq.com/openai/v1
     api_key_env: GROQ_API_KEY
+    api_keys_env: GROQ_API_KEYS
     quota_timezone: UTC
     models:
       small: { model: llama-3.3-70b-versatile, rpm: 25, rpd: 900 }

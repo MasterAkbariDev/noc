@@ -2,7 +2,7 @@ import httpx2
 import pytest
 from openai import AsyncOpenAI
 
-from noc.llm.client import ProviderRateLimited, ProviderUnavailable
+from noc.llm.client import ProviderKeyRejected, ProviderRateLimited, ProviderUnavailable
 from noc.llm.openai_compat import OpenAICompatProvider, build_arguments
 from noc.llm.types import (
     CallContext,
@@ -97,3 +97,15 @@ async def test_completion_is_parsed() -> None:
     response = await provider.complete(request(tools=[TOOL]), "m")
     assert response.tool_calls[0].id == "c9"
     assert response.usage.tokens_in == 11
+
+
+@pytest.mark.parametrize(
+    ("status", "payload"),
+    [
+        (401, {"error": {"message": "Incorrect API key provided"}}),
+        (400, {"error": {"message": "API key not valid. Please pass a valid API key."}}),
+    ],
+)
+async def test_bad_keys_are_classified_as_rejected(status: int, payload: dict[str, object]) -> None:
+    with pytest.raises(ProviderKeyRejected):
+        await provider_answering(status, payload).complete(request(), "m")

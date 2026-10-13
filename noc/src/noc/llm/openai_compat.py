@@ -4,7 +4,7 @@ from typing import Any
 import openai
 from openai import AsyncOpenAI
 
-from noc.llm.client import ProviderRateLimited, ProviderUnavailable
+from noc.llm.client import ProviderKeyRejected, ProviderRateLimited, ProviderUnavailable
 from noc.llm.types import ChatMessage, LLMRequest, LLMResponse, LlmToolCall, Role, Usage
 
 
@@ -46,6 +46,14 @@ def build_arguments(request: LLMRequest, model: str) -> dict[str, Any]:
     return arguments
 
 
+INVALID_KEY_MARKERS = ("api key not valid", "invalid api key", "api_key_invalid")
+
+
+def is_invalid_key_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in INVALID_KEY_MARKERS)
+
+
 class OpenAICompatProvider:
     def __init__(self, name: str, client: AsyncOpenAI) -> None:
         self.name = name
@@ -58,12 +66,16 @@ class OpenAICompatProvider:
                 **build_arguments(request, model)
             )
         except openai.RateLimitError as exc:
-            raise ProviderRateLimited(f"{self.name}: {exc}") from exc
+            raise ProviderRateLimited(f"{self.name}: rate limited") from exc
+        except (openai.AuthenticationError, openai.PermissionDeniedError) as exc:
+            raise ProviderKeyRejected(f"{self.name}: key rejected ({exc.status_code})") from exc
         except (openai.APIConnectionError, openai.APITimeoutError) as exc:
             raise ProviderUnavailable(f"{self.name}: {exc}") from exc
         except openai.APIStatusError as exc:
             if exc.status_code >= 500:
                 raise ProviderUnavailable(f"{self.name}: {exc.status_code}") from exc
+            if is_invalid_key_message(str(exc)):
+                raise ProviderKeyRejected(f"{self.name}: key rejected ({exc.status_code})") from exc
             raise
 
         choice = completion.choices[0]

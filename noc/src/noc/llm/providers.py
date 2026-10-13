@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -13,14 +15,25 @@ class ModelLimits(BaseModel):
     rpd: int = Field(gt=0)
 
 
+KEY_SEPARATORS = re.compile(r"[\s,;]+")
+
+
 class ProviderConfig(BaseModel):
     base_url: str
     api_key_env: str
+    api_keys_env: str | None = None
     quota_timezone: str = "UTC"
     models: dict[Tier, ModelLimits]
 
-    def api_key(self) -> str | None:
-        return os.environ.get(self.api_key_env)
+    def api_keys(self) -> list[str]:
+        variables = [self.api_keys_env, self.api_key_env]
+        raw = " ".join(os.environ.get(name, "") for name in variables if name)
+        keys = [key for key in KEY_SEPARATORS.split(raw) if key]
+        return list(dict.fromkeys(keys))
+
+
+def key_label(provider: str, key: str) -> str:
+    return f"{provider}#{hashlib.sha256(key.encode()).hexdigest()[:8]}"
 
 
 class ProvidersDocument(BaseModel):

@@ -5,7 +5,7 @@ from noc.db.session import SessionFactory
 from noc.llm.cassette import CassetteLLM
 from noc.llm.client import LLMClient
 from noc.llm.openai_compat import OpenAICompatProvider
-from noc.llm.providers import load_providers
+from noc.llm.providers import key_label, load_providers
 from noc.llm.ratelimit import PostgresQuotaStore, RequestBudget
 from noc.llm.recording import RecordingLLM
 from noc.llm.redaction import RedactingLLM
@@ -21,15 +21,16 @@ def build_routed_llm(settings: Settings, sessions: SessionFactory) -> RoutedLLM:
         routes: list[Route] = []
         for name in provider_names:
             config = document.providers[name]
-            api_key = config.api_key()
-            if not api_key or tier not in config.models:
+            if tier not in config.models:
                 continue
             limits = config.models[tier]
-            client = AsyncOpenAI(base_url=config.base_url, api_key=api_key, max_retries=0)
-            budget = RequestBudget(
-                name, limits.model, limits.rpm, limits.rpd, config.quota_timezone, quota_store
-            )
-            routes.append(Route(OpenAICompatProvider(name, client), budget))
+            for api_key in config.api_keys():
+                label = key_label(name, api_key)
+                client = AsyncOpenAI(base_url=config.base_url, api_key=api_key, max_retries=0)
+                budget = RequestBudget(
+                    label, limits.model, limits.rpm, limits.rpd, config.quota_timezone, quota_store
+                )
+                routes.append(Route(OpenAICompatProvider(name, client), budget, label))
         chains[tier] = routes
     return RoutedLLM(chains, settings.llm_fallback_enabled, settings.llm_wait_deadline_seconds)
 

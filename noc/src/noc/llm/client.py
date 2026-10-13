@@ -23,6 +23,10 @@ class QuotaExhausted(LLMError):
     pass
 
 
+class ProviderKeyRejected(LLMError):
+    pass
+
+
 class LLMUnavailable(LLMError):
     pass
 
