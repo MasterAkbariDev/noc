@@ -6,17 +6,18 @@ import { FindingsList } from "../components/FindingsList";
 import { PolicyTable } from "../components/PolicyTable";
 import { StatusBadge } from "../components/StatusBadge";
 import { errorMessage, formatConfidence, formatTime } from "../components/format";
-import { REFRESH_INTERVAL_MS } from "./IncidentsPage";
+import { useLivePollInterval } from "../live/useEventStream";
 
 export function IncidentDetailPage() {
   const { token } = useToken();
   const { id = "" } = useParams();
+  const refetchInterval = useLivePollInterval();
 
   const query = useQuery({
     queryKey: ["incident", id, token],
     queryFn: () => getIncident(token, id),
     enabled: token !== "" && id !== "",
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval,
   });
 
   if (token === "") {

@@ -5,19 +5,19 @@ import { INCIDENT_STATUSES } from "../api/types";
 import { useToken } from "../auth/token";
 import { IncidentTable } from "../components/IncidentTable";
 import { errorMessage } from "../components/format";
-
-export const REFRESH_INTERVAL_MS = 5000;
+import { useLivePollInterval } from "../live/useEventStream";
 
 export function IncidentsPage() {
   const { token } = useToken();
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "";
+  const refetchInterval = useLivePollInterval();
 
   const query = useQuery({
     queryKey: ["incidents", status, token],
     queryFn: () => listIncidents(token, status || undefined),
     enabled: token !== "",
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval,
   });
 
   function changeStatus(next: string) {

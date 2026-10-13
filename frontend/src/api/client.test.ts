@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getIncident, listIncidents } from "./client";
+import { ApiError, apiPost, fetchStreamTicket, getIncident, listIncidents } from "./client";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -48,6 +48,46 @@ describe("getIncident", () => {
 
     expect(detail).toEqual({ id: "abc" });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents/abc");
+  });
+});
+
+describe("apiPost", () => {
+  it("sends the bearer token and the body as JSON", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+
+    const result = await apiPost("/api/example", "secret-token", { note: "done" });
+
+    expect(result).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/example");
+    expect(init?.method).toBe("POST");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer secret-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(init?.body).toBe(JSON.stringify({ note: "done" }));
+  });
+
+  it("turns a failed POST into an ApiError", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 409, statusText: "Conflict" }));
+
+    const failure = await apiPost("/api/example", "t", {}).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(409);
+  });
+});
+
+describe("fetchStreamTicket", () => {
+  it("posts with the bearer token and returns only the ticket string", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ticket: "one-time", expires_in: 30 }));
+
+    const ticket = await fetchStreamTicket("secret-token");
+
+    expect(ticket).toBe("one-time");
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/events/ticket");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
   });
 });
 
