@@ -309,3 +309,41 @@ class ApprovalRequest(BaseModel):
 class ApprovalView(BaseModel):
     approval_id: uuid.UUID
     incident_status: str
+
+
+ServerStatus = Literal["up", "down", "unknown"]
+
+
+class ServerMetrics(BaseModel):
+    cpu_percent: float | None
+    memory_percent: float | None
+    disk_percent: float | None
+    disk_mount: str | None
+
+
+class ServerSummary(BaseModel):
+    id: uuid.UUID
+    name: str
+    environment: str
+    automation_level: str
+    automation_label: str
+    halted: bool
+    status: ServerStatus
+    last_scrape_at: datetime | None
+    metrics: ServerMetrics | None
+    open_incidents: int
+    worst_severity: str | None
+    headline: str
+
+
+class ServiceState(BaseModel):
+    resource_id: str
+    name: str
+    up: bool | None
+
+
+class ServerDetail(ServerSummary):
+    last_inventory_at: datetime | None
+    resources: list[TargetResourceView]
+    services: list[ServiceState]
+    recent_incidents: list[IncidentSummary]

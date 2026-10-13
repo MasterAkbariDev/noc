@@ -9,6 +9,7 @@ from sqlalchemy import text
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.prometheus import PrometheusReader
+from noc.api.servers import router as servers_router
 from noc.api.spa import SinglePageApp
 from noc.api.story import router as story_router
 from noc.api.system import router as system_router
@@ -41,6 +42,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(story_router)
     app.include_router(events_router)
     app.include_router(targets_router)
+    app.include_router(servers_router)
     app.include_router(system_llm_router)
     app.include_router(system_router)
 
