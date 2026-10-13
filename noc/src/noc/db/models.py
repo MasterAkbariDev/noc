@@ -336,3 +336,15 @@ class User(CreatedAt, Base):
     disabled: Mapped[bool] = mapped_column(default=False)
     last_login_at: Mapped[datetime | None]
     password_changed_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    started_at: Mapped[datetime]
+    last_beat_at: Mapped[datetime]
+    last_poll_ok_at: Mapped[datetime | None]
+    last_poll_error: Mapped[str | None] = mapped_column(Text)
+    last_poll_error_at: Mapped[datetime | None]
+    version: Mapped[str] = mapped_column(String(64))

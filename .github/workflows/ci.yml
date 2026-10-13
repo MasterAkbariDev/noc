@@ -117,6 +117,9 @@ jobs:
         with:
           context: .
           file: deploy/noc/Dockerfile
+          build-args: |
+            VERSION=main
+            GIT_SHA=${{ github.sha }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

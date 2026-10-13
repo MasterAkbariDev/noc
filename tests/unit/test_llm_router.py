@@ -16,7 +16,7 @@ from noc.llm.client import (
 from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
 from noc.llm.key_status import KeyStatusSink, RecordedState
-from noc.llm.providers import ProviderConfig, key_label
+from noc.llm.providers import ChainEntry, ProviderConfig, key_label, parse_chain_entry
 from noc.llm.ratelimit import MemoryQuotaStore, RequestBudget
 from noc.llm.router import Route, RoutedLLM
 from noc.llm.types import CallContext, ChatMessage, LLMRequest, LLMResponse, Role
@@ -51,9 +51,9 @@ class FakeTime:
         self.now += seconds
 
 
-def route(provider: StubProvider, label: str, per_day: int = 100) -> Route:
+def route(provider: StubProvider, label: str, per_day: int = 100, degraded: bool = False) -> Route:
     budget = RequestBudget(label, f"{provider.name}-model", 600, per_day, "UTC", MemoryQuotaStore())
-    return Route(provider, budget, label)
+    return Route(provider, budget, label, degraded)
 
 
 def routed(routes: list[Route], fallback: bool = True, time: FakeTime | None = None) -> RoutedLLM:
@@ -200,8 +200,33 @@ def test_factory_builds_one_route_per_key(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("GROQ_API_KEYS", raising=False)
     llm = build_routed_llm(Settings(_env_file=None), cast(SessionFactory, None))
     labels = [route.label for route in llm.routes_for("strong")]
-    assert len(labels) == 3
-    assert [label.split("#")[0] for label in labels] == ["gemini", "gemini", "groq"]
+    assert len(labels) == 5
+    assert [label.split("#")[0] for label in labels] == ["gemini"] * 2 + ["groq"] + ["gemini"] * 2
+    assert labels[3] == f"{labels[0]}/small"
+
+
+async def test_a_degraded_model_is_used_when_the_real_one_is_overloaded() -> None:
+    overloaded = StubProvider("gemini", [ProviderUnavailable("503")])
+    smaller = StubProvider("gemini")
+    routes = [route(overloaded, "g#1"), route(smaller, "g#1/small", degraded=True)]
+    response = await routed(routes).complete(REQUEST)
+    assert response.fallback is True
+    assert smaller.calls == 1
+
+
+def test_evaluation_mode_never_uses_a_degraded_model() -> None:
+    routes = [
+        route(StubProvider("gemini"), "g#1"),
+        route(StubProvider("gemini"), "x", degraded=True),
+    ]
+    assert [r.label for r in routed(routes, fallback=False).routes_for("small")] == ["g#1"]
+
+
+def test_chain_entries_may_name_another_tier() -> None:
+    assert parse_chain_entry("gemini:small", "strong") == ChainEntry("gemini", "small")
+    assert parse_chain_entry("groq", "strong") == ChainEntry("groq", "strong")
+    with pytest.raises(ValueError, match="unknown tier"):
+        parse_chain_entry("gemini:huge", "strong")
 
 
 def test_proxy_is_read_per_provider(monkeypatch: pytest.MonkeyPatch) -> None:

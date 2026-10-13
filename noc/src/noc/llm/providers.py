@@ -1,7 +1,9 @@
 import hashlib
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import cast, get_args
 
 import yaml
 from pydantic import BaseModel, Field
@@ -15,6 +17,7 @@ class ModelLimits(BaseModel):
     rpd: int = Field(gt=0)
 
 
+TIERS: tuple[str, ...] = get_args(Tier)
 KEY_SEPARATORS = re.compile(r"[\s,;\"']+")
 
 
@@ -47,10 +50,24 @@ class ProvidersDocument(BaseModel):
     chains: dict[Tier, list[str]]
 
 
+@dataclass(frozen=True)
+class ChainEntry:
+    provider: str
+    model_tier: Tier
+
+
+def parse_chain_entry(entry: str, tier: Tier) -> ChainEntry:
+    provider, _, model_tier = entry.partition(":")
+    if model_tier and model_tier not in TIERS:
+        raise ValueError(f"chain {tier} entry {entry!r} names an unknown tier")
+    return ChainEntry(provider, cast(Tier, model_tier or tier))
+
+
 def load_providers(path: Path) -> ProvidersDocument:
     document = ProvidersDocument.model_validate(yaml.safe_load(path.read_text()))
     for tier, chain in document.chains.items():
-        missing = [name for name in chain if name not in document.providers]
+        entries = [parse_chain_entry(entry, tier) for entry in chain]
+        missing = [entry.provider for entry in entries if entry.provider not in document.providers]
         if missing:
             raise ValueError(f"chain {tier} references unknown providers {missing}")
     return document

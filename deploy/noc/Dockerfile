@@ -16,6 +16,9 @@ COPY noc noc
 RUN uv sync --frozen --no-dev --package noc --no-editable
 
 FROM python:3.12-slim
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ENV NOC_VERSION=${VERSION} NOC_GIT_SHA=${GIT_SHA}
 RUN useradd --system --uid 10001 noc \
     && install -d -o noc -g noc /var/lib/noc/prometheus-targets
 COPY --from=build /opt/venv /opt/venv

@@ -12,6 +12,7 @@ x-noc-app: &noc-app
     NOC_DATABASE_URL: postgresql+psycopg://noc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@127.0.0.1:5432/noc
     NOC_PROMETHEUS_URL: http://127.0.0.1:9090
     NOC_PROMETHEUS_TARGETS_DIR: /var/lib/noc/prometheus-targets
+    NOC_UPDATE_STATUS_FILE: /var/lib/noc-update/status.json
     NOC_MAX_CONCURRENT_INCIDENTS: "1"
   restart: unless-stopped
   logging: *logging
@@ -70,6 +71,7 @@ services:
       - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
       - ${NOC_PKI_DIR:-./pki}:/etc/noc/pki:ro
       - promtargets:/var/lib/noc/prometheus-targets
+      - /var/lib/noc-update:/var/lib/noc-update:ro
     mem_limit: 448m
     depends_on:
       migrate: { condition: service_completed_successfully }

@@ -18,12 +18,16 @@ class Settings(BaseSettings):
     prometheus_url: str = "http://localhost:9090"
     api_token: SecretStr | None = None
     frontend_dist: Path | None = None
+    version: str = "dev"
+    git_sha: str = "unknown"
+    update_status_file: Path | None = None
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2
     max_concurrent_incidents: int = 2
     job_lease_seconds: int = 120
     worker_metrics_port: int = 9108
+    worker_heartbeat_seconds: float = 15.0
     prometheus_targets_dir: Path | None = None
     file_sd_interval_seconds: float = 60
 

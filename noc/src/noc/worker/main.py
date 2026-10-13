@@ -13,6 +13,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from prometheus_client import Counter, start_http_server
 
 from noc.config import Settings
+from noc.db.base import utc_now
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.alerts import PrometheusAlertSource
 from noc.detection.correlator import INVESTIGATE_JOB
@@ -25,6 +26,7 @@ from noc.orchestration.graph import IncidentGraph, build_incident_graph, run_inc
 from noc.orchestration.runtime import build_runtime
 from noc.store.incidents import escalate_abandoned
 from noc.tools.sentinel_client import build_sentinel_http
+from noc.worker.heartbeat import PollStatus, write_heartbeat
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +39,7 @@ LOOP_ERRORS = Counter(
 RETRY_DELAY_SECONDS = 30
 IDLE_SLEEP_SECONDS = 1.0
 ERROR_BACKOFF_SECONDS = 5.0
+PROMETHEUS_POLL_FAILED = "Prometheus did not answer the alert poll"
 
 
 def worker_identity() -> str:
@@ -56,6 +59,8 @@ class Worker:
         self._graph = graph
         self._ingestor = ingestor
         self._identity = worker_identity()
+        self._started_at = utc_now()
+        self._poll = PollStatus()
         self._slots = asyncio.Semaphore(settings.max_concurrent_incidents)
         self._stopping = asyncio.Event()
         self._running: set[asyncio.Task[None]] = set()
@@ -64,7 +69,11 @@ class Worker:
         self._stopping.set()
 
     async def run(self) -> None:
-        loops: list[Awaitable[None]] = [self.run_ingest_loop(), self._job_loop()]
+        loops: list[Awaitable[None]] = [
+            self.run_ingest_loop(),
+            self.run_heartbeat_loop(),
+            self._job_loop(),
+        ]
         if self._settings.prometheus_targets_dir is not None:
             loops.append(self._file_sd_loop(self._settings.prometheus_targets_dir))
         await asyncio.gather(*loops)
@@ -87,7 +96,32 @@ class Worker:
             await self._sleep(interval_seconds)
 
     async def run_ingest_loop(self) -> None:
-        await self._repeat("ingest", self._ingestor.poll_once, self._settings.poll_interval_seconds)
+        await self._repeat("ingest", self._poll_alerts, self._settings.poll_interval_seconds)
+
+    async def _poll_alerts(self) -> None:
+        try:
+            polled = await self._ingestor.poll_once()
+        except Exception as exc:
+            self._poll.failed(utc_now(), type(exc).__name__)
+            raise
+        if polled:
+            self._poll.ok(utc_now())
+        else:
+            self._poll.failed(utc_now(), PROMETHEUS_POLL_FAILED)
+
+    async def run_heartbeat_loop(self) -> None:
+        await self._repeat("heartbeat", self.beat_once, self._settings.worker_heartbeat_seconds)
+
+    async def beat_once(self) -> None:
+        async with transaction(self._sessions) as session:
+            await write_heartbeat(
+                session,
+                self._identity,
+                self._started_at,
+                self._poll,
+                self._settings.version,
+                utc_now(),
+            )
 
     async def _file_sd_loop(self, directory: Path) -> None:
         await self._repeat(

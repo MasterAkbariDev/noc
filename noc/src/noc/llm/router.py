@@ -48,6 +48,7 @@ class Route:
     provider: ModelProvider
     budget: RequestBudget
     label: str
+    degraded: bool = False
 
 
 def recorded_state(error: Exception, cooldown: float | None) -> RecordedState:
@@ -93,7 +94,7 @@ class RoutedLLM:
         if self._fallback_enabled or not chain:
             return chain
         primary = chain[0].provider.name
-        return [route for route in chain if route.provider.name == primary]
+        return [route for route in chain if route.provider.name == primary and not route.degraded]
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         chain = self.routes_for(request.tier)
@@ -133,7 +134,7 @@ class RoutedLLM:
                 only_transient = only_transient and isinstance(exc, TRANSIENT)
                 continue
             response.wait_ms = wait_ms
-            response.fallback = route.provider.name != primary
+            response.fallback = route.provider.name != primary or route.degraded
             await self._notify_key_status(
                 route.label, self._key_status.record_success(route.label, route.provider.name)
             )

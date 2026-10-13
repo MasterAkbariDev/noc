@@ -20,4 +20,4 @@ providers:
 
 chains:
   small: [gemini, groq]
-  strong: [gemini, groq]
+  strong: [gemini, groq, "gemini:small"]

@@ -4,6 +4,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+ComponentStatus = Literal["ok", "degraded", "down", "unknown"]
+Verdict = Literal["ok", "degraded", "down"]
+
 
 class IncidentSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -257,3 +260,30 @@ class IncidentStory(BaseModel):
     what_we_found: StoryFound
     what_we_did: StoryDid
     what_you_should_do: StoryAdvice
+
+
+class ComponentHealth(BaseModel):
+    key: str
+    label: str
+    status: ComponentStatus
+    summary: str
+    details: dict[str, str]
+    since: datetime | None
+
+
+class StuckIncident(BaseModel):
+    id: uuid.UUID
+    title: str
+    target: str
+    status: str
+    since: datetime
+    job_status: str | None
+    job_attempts: int | None
+    job_last_error: str | None
+
+
+class SystemHealth(BaseModel):
+    verdict: Verdict
+    checked_at: datetime
+    components: list[ComponentHealth]
+    stuck_incidents: list[StuckIncident]

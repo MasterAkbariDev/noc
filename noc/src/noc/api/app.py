@@ -1,20 +1,25 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
+from noc.api.prometheus import PrometheusReader
 from noc.api.spa import SinglePageApp
 from noc.api.story import router as story_router
+from noc.api.system import router as system_router
 from noc.api.system_llm import router as system_llm_router
 from noc.api.targets import router as targets_router
 from noc.api.tickets import TicketStore, redact_tickets_in_access_log
 from noc.api.trace import router as trace_router
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
+
+PROMETHEUS_READ_TIMEOUT_SECONDS = 3.0
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -24,7 +29,9 @@ def create_app(settings: Settings) -> FastAPI:
         app.state.settings = settings
         app.state.sessions = create_session_factory(engine)
         app.state.tickets = TicketStore()
-        yield
+        async with httpx.AsyncClient(timeout=PROMETHEUS_READ_TIMEOUT_SECONDS) as prometheus_http:
+            app.state.prometheus = PrometheusReader(prometheus_http, settings.prometheus_url)
+            yield
         await engine.dispose()
 
     redact_tickets_in_access_log()
@@ -35,6 +42,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(events_router)
     app.include_router(targets_router)
     app.include_router(system_llm_router)
+    app.include_router(system_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

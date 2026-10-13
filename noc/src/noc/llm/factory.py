@@ -7,7 +7,7 @@ from noc.llm.cassette import CassetteLLM
 from noc.llm.client import LLMClient
 from noc.llm.key_status import PostgresKeyStatus
 from noc.llm.openai_compat import OpenAICompatProvider
-from noc.llm.providers import ProviderConfig, key_label, load_providers
+from noc.llm.providers import ProviderConfig, key_label, load_providers, parse_chain_entry
 from noc.llm.ratelimit import PostgresQuotaStore, RequestBudget
 from noc.llm.recording import RecordingLLM
 from noc.llm.redaction import RedactingLLM
@@ -35,18 +35,22 @@ def build_routed_llm(settings: Settings, sessions: SessionFactory) -> RoutedLLM:
     chains: dict[Tier, list[Route]] = {}
     for tier, provider_names in document.chains.items():
         routes: list[Route] = []
-        for name in provider_names:
+        for entry in (parse_chain_entry(name, tier) for name in provider_names):
+            name = entry.provider
             config = document.providers[name]
-            if tier not in config.models:
+            if entry.model_tier not in config.models:
                 continue
-            limits = config.models[tier]
+            limits = config.models[entry.model_tier]
+            degraded = entry.model_tier != tier
             for api_key in config.api_keys():
                 label = key_label(name, api_key)
+                if degraded:
+                    label = f"{label}/{entry.model_tier}"
                 client = openai_client(config, api_key, settings.llm_request_timeout_seconds)
                 budget = RequestBudget(
                     label, limits.model, limits.rpm, limits.rpd, config.quota_timezone, quota_store
                 )
-                routes.append(Route(OpenAICompatProvider(name, client), budget, label))
+                routes.append(Route(OpenAICompatProvider(name, client), budget, label, degraded))
         chains[tier] = routes
     return RoutedLLM(
         chains,
