@@ -1,0 +1,29 @@
+[Unit]
+Description=NOC LLM egress (local HTTP proxy to the LLM APIs only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noc-egress
+Group=noc-egress
+ExecStart=/usr/local/x-ui/bin/xray-linux-amd64 run -c /etc/noc-egress/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=96M
+CPUQuota=25%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

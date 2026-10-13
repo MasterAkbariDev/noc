@@ -22,6 +22,7 @@ class ProviderConfig(BaseModel):
     base_url: str
     api_key_env: str
     api_keys_env: str | None = None
+    proxy_env: str | None = None
     quota_timezone: str = "UTC"
     models: dict[Tier, ModelLimits]
 
@@ -30,6 +31,11 @@ class ProviderConfig(BaseModel):
         raw = " ".join(os.environ.get(name, "") for name in variables if name)
         keys = [key for key in KEY_SEPARATORS.split(raw) if key]
         return list(dict.fromkeys(keys))
+
+    def proxy_url(self) -> str | None:
+        if self.proxy_env is None:
+            return None
+        return os.environ.get(self.proxy_env, "").strip() or None
 
 
 def key_label(provider: str, key: str) -> str:

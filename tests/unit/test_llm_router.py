@@ -1,5 +1,6 @@
 from typing import cast
 
+import openai as openai_module
 import pytest
 
 from noc.config import Settings
@@ -9,7 +10,7 @@ from noc.llm.client import (
     ProviderKeyRejected,
     ProviderRateLimited,
 )
-from noc.llm.factory import build_routed_llm
+from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
 from noc.llm.providers import ProviderConfig, key_label
 from noc.llm.ratelimit import MemoryQuotaStore, RequestBudget
@@ -197,3 +198,30 @@ def test_factory_builds_one_route_per_key(monkeypatch: pytest.MonkeyPatch) -> No
     labels = [route.label for route in llm.routes_for("strong")]
     assert len(labels) == 3
     assert [label.split("#")[0] for label in labels] == ["gemini", "gemini", "groq"]
+
+
+def test_proxy_is_read_per_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_PROXY", " http://127.0.0.1:10950 ")
+    with_proxy = ProviderConfig(
+        base_url="https://x", api_key_env="K", proxy_env="TEST_PROXY", models={}
+    )
+    without = ProviderConfig(base_url="https://x", api_key_env="K", models={})
+    assert with_proxy.proxy_url() == "http://127.0.0.1:10950"
+    assert without.proxy_url() is None
+
+
+def test_gemini_client_is_built_with_its_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOC_GEMINI_PROXY", "http://127.0.0.1:10950")
+    created: list[dict[str, object]] = []
+    original = openai_module.DefaultAsyncHttpxClient
+
+    def spy(**kwargs: object) -> object:
+        created.append(kwargs)
+        return original()
+
+    monkeypatch.setattr(openai_module, "DefaultAsyncHttpxClient", spy)
+    config = ProviderConfig(
+        base_url="https://x", api_key_env="K", proxy_env="NOC_GEMINI_PROXY", models={}
+    )
+    openai_client(config, "key")
+    assert created == [{"proxy": "http://127.0.0.1:10950"}]
