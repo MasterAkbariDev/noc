@@ -1,0 +1,14 @@
+name: high-cpu
+description: Start two busy report-gen processes on the lab host; the NOC should find the runaway process and escalate, because kill_process needs approval and is not executable yet.
+injection:
+  type: cpu_burn
+  workers: 2
+  ttl_seconds: 900
+detection_timeout_seconds: 240
+outcome_timeout_seconds: 600
+ground_truth:
+  root_cause_code: cpu_runaway_process
+  resource_id: null
+  acceptable_actions:
+    - kill_process
+  expected_outcome: escalated

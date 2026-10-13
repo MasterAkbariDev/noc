@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -8,9 +8,10 @@ from noc_shared.resources import ResourceId
 from noc_shared.taxonomy import RootCauseCode
 
 SCENARIO_NAME_PATTERN = r"^[a-z0-9][a-z0-9-]*$"
+InjectionType = Literal["service_down", "cpu_burn", "disk_fill"]
 
 
-class Injection(BaseModel):
+class ServiceDownInjection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["service_down"]
@@ -18,11 +19,33 @@ class Injection(BaseModel):
     ttl_seconds: int = Field(ge=1)
 
 
+class CpuBurnInjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["cpu_burn"]
+    workers: int = Field(ge=1, le=8)
+    ttl_seconds: int = Field(ge=1)
+
+
+class DiskFillInjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["disk_fill"]
+    target_percent: int = Field(ge=50, le=95)
+    ttl_seconds: int = Field(ge=1)
+
+
+Injection = Annotated[
+    ServiceDownInjection | CpuBurnInjection | DiskFillInjection,
+    Field(discriminator="type"),
+]
+
+
 class GroundTruth(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     root_cause_code: RootCauseCode
-    resource_id: ResourceId
+    resource_id: ResourceId | None
     acceptable_actions: list[str]
     expected_outcome: Literal["escalated", "resolved", "self_resolved"]
 
@@ -41,9 +64,21 @@ class ScenarioDefinition(BaseModel):
     def check_timing_and_ground_truth(self) -> Self:
         if self.injection.ttl_seconds < self.detection_timeout_seconds:
             raise ValueError("injection ttl_seconds must cover detection_timeout_seconds")
-        if self.ground_truth.resource_id != self.injection.resource_id:
+        if isinstance(self.injection, ServiceDownInjection) and (
+            self.ground_truth.resource_id != self.injection.resource_id
+        ):
             raise ValueError("ground_truth resource_id must match the injected resource_id")
         return self
+
+
+def injection_summary(injection: Injection) -> str:
+    match injection:
+        case ServiceDownInjection():
+            return injection.resource_id
+        case CpuBurnInjection():
+            return f"workers={injection.workers}"
+        case DiskFillInjection():
+            return f"fill to {injection.target_percent}%"
 
 
 def parse_scenario(raw: dict[str, Any]) -> ScenarioDefinition:

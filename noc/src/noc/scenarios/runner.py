@@ -13,7 +13,14 @@ from noc.db.models import ACTIVE_INCIDENT_PREDICATE, Incident, ScenarioRun
 from noc.db.session import SessionFactory, transaction
 from noc.domain.incident_status import IncidentStatus
 from noc.scenarios.chaos_client import NOT_ACTIVE, ChaosClient, ChaosError
-from noc.scenarios.definitions import ScenarioDefinition
+from noc.scenarios.definitions import (
+    CpuBurnInjection,
+    DiskFillInjection,
+    Injection,
+    InjectionType,
+    ScenarioDefinition,
+    ServiceDownInjection,
+)
 from noc.store.targets import find_target
 
 logger = structlog.get_logger(__name__)
@@ -68,6 +75,14 @@ def snapshot_of(incident: Incident) -> IncidentSnapshot:
     )
 
 
+def run_resource(injection: Injection, target_name: str, resource_id: str | None) -> str:
+    match injection:
+        case ServiceDownInjection():
+            return resource_id or injection.resource_id
+        case CpuBurnInjection() | DiskFillInjection():
+            return f"host:{target_name}"
+
+
 class ScenarioRunner:
     def __init__(
         self,
@@ -84,37 +99,57 @@ class ScenarioRunner:
         self._poll_seconds = poll_seconds
 
     async def run(
-        self, scenario: ScenarioDefinition, target_name: str, resource_id: str
+        self, scenario: ScenarioDefinition, target_name: str, resource_id: str | None = None
     ) -> RunOutcome:
-        target_id = await self._check_preconditions(target_name, resource_id)
+        injection = scenario.injection
+        resource = run_resource(injection, target_name, resource_id)
+        target_id = await self._check_preconditions(target_name, resource)
         injected_at = self._clock()
-        run_id = await self._start_run(scenario, target_name, target_id, resource_id, injected_at)
+        run_id = await self._start_run(scenario, target_name, target_id, resource, injected_at)
         try:
-            await self._chaos.start_service_down(resource_id, scenario.injection.ttl_seconds)
+            await self._start_chaos(injection, resource)
             outcome = await self._observe(run_id, scenario, target_id, injected_at)
         except BaseException as error:
-            await self._stop_after_failure(resource_id)
+            await self._stop_after_failure(injection.type, resource)
             if isinstance(error, Exception):
                 await self._store(RunOutcome(run_id=run_id, status=FAILED), scenario, str(error))
             raise
-        await self.stop_injection(resource_id)
+        await self.stop_injection(injection.type, resource)
         await self._store(outcome, scenario, None)
         return outcome
 
-    async def _stop_after_failure(self, resource_id: str) -> None:
+    async def _start_chaos(self, injection: Injection, resource_id: str) -> None:
+        match injection:
+            case ServiceDownInjection():
+                await self._chaos.start_service_down(resource_id, injection.ttl_seconds)
+            case CpuBurnInjection():
+                await self._chaos.start_cpu_burn(injection.workers, injection.ttl_seconds)
+            case DiskFillInjection():
+                await self._chaos.start_disk_fill(injection.target_percent, injection.ttl_seconds)
+
+    async def _stop_after_failure(self, kind: InjectionType, resource_id: str) -> None:
         try:
-            await self.stop_injection(resource_id)
+            await self.stop_injection(kind, resource_id)
         except Exception:
             logger.exception("chaos_stop_failed_after_error", resource_id=resource_id)
 
-    async def stop_injection(self, resource_id: str) -> bool:
+    async def stop_injection(self, kind: InjectionType, resource_id: str) -> bool:
         try:
-            await self._chaos.stop_service_down(resource_id)
+            await self._stop_chaos(kind, resource_id)
         except ChaosError as error:
             if error.code == NOT_ACTIVE:
                 return False
             raise
         return True
+
+    async def _stop_chaos(self, kind: InjectionType, resource_id: str) -> None:
+        match kind:
+            case "service_down":
+                await self._chaos.stop_service_down(resource_id)
+            case "cpu_burn":
+                await self._chaos.stop_cpu_burn()
+            case "disk_fill":
+                await self._chaos.stop_disk_fill()
 
     async def _check_preconditions(self, target_name: str, resource_id: str) -> uuid.UUID:
         async with self._sessions() as session:

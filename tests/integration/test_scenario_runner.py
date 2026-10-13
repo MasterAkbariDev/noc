@@ -46,19 +46,49 @@ class FakeChaos:
         self.fail_stop = False
         self.starts: list[tuple[str, int]] = []
         self.stops: list[str] = []
+        self.events: list[str] = []
 
     async def status(self) -> ChaosState:
         return ChaosState(active=self.active)
 
     async def start_service_down(self, resource_id: str, ttl_seconds: int) -> ChaosState:
-        if self.fail_start:
-            raise ChaosError("INTERNAL")
+        self.events.append("start:service_down")
+        self._check_start()
         self.starts.append((resource_id, ttl_seconds))
-        self.active = True
-        return ChaosState(active=True, resource_id=resource_id)
+        return self._activate(resource_id)
 
     async def stop_service_down(self, resource_id: str) -> ChaosState:
         self.stops.append(resource_id)
+        self.events.append("stop:service_down")
+        return self._deactivate()
+
+    async def start_cpu_burn(self, workers: int, ttl_seconds: int) -> ChaosState:
+        self.events.append("start:cpu_burn")
+        self._check_start()
+        return self._activate("host:demo-1")
+
+    async def stop_cpu_burn(self) -> ChaosState:
+        self.events.append("stop:cpu_burn")
+        return self._deactivate()
+
+    async def start_disk_fill(self, target_percent: int, ttl_seconds: int) -> ChaosState:
+        self.events.append("start:disk_fill")
+        self._check_start()
+        return self._activate("host:demo-1")
+
+    async def stop_disk_fill(self) -> ChaosState:
+        self.events.append("stop:disk_fill")
+        return self._deactivate()
+
+    def _check_start(self) -> None:
+        if self.fail_start:
+            raise ChaosError("INTERNAL")
+
+    def _activate(self, resource_id: str) -> ChaosState:
+        self.active = True
+        return ChaosState(active=True, resource_id=resource_id)
+
+    def _deactivate(self) -> ChaosState:
         if self.fail_stop:
             raise ChaosError("INTERNAL")
         if not self.active:
@@ -342,3 +372,76 @@ async def test_original_error_survives_a_failing_stop(
     assert chaos.stops == [RESOURCE]
     [run] = await load_runs(sessions)
     assert run.error == "database went away"
+
+
+async def test_cpu_burn_runs_end_to_end_and_stops_the_burn(
+    runner: ScenarioRunner,
+    clock: FakeClock,
+    chaos: FakeChaos,
+    sessions: SessionFactory,
+    target_id: uuid.UUID,
+) -> None:
+    scenario = load_scenario(SCENARIOS_DIR / "high-cpu.yaml")
+    store: dict[str, uuid.UUID] = {}
+    script = Script(clock)
+    script.at(30, detects(sessions, target_id, store))
+    script.at(90, moves_to(sessions, store, "ESCALATED", "cpu_runaway_process"))
+
+    outcome = await runner.run(scenario, TARGET)
+
+    assert outcome.status == "completed"
+    assert outcome.detection_seconds == 30.0
+    assert outcome.root_cause_match is True
+    assert chaos.events == ["start:cpu_burn", "stop:cpu_burn"]
+    assert chaos.active is False
+    [run] = await load_runs(sessions)
+    assert run.scenario == "high-cpu"
+    assert run.resource_id == "host:demo-1"
+    assert run.ground_truth["resource_id"] is None
+
+
+async def test_disk_fill_failure_stops_the_fill(
+    runner: ScenarioRunner,
+    clock: FakeClock,
+    chaos: FakeChaos,
+    sessions: SessionFactory,
+    target_id: uuid.UUID,
+) -> None:
+    scenario = load_scenario(SCENARIOS_DIR / "disk-pressure.yaml")
+    store: dict[str, uuid.UUID] = {}
+    script = Script(clock)
+    script.at(30, detects(sessions, target_id, store))
+    script.at(60, raises("database went away"))
+
+    with pytest.raises(RuntimeError, match="database went away"):
+        await runner.run(scenario, TARGET)
+
+    assert chaos.events == ["start:disk_fill", "stop:disk_fill"]
+    assert chaos.active is False
+    [run] = await load_runs(sessions)
+    assert run.scenario == "disk-pressure"
+    assert run.status == "failed"
+
+
+async def test_failed_disk_fill_start_still_attempts_the_stop(
+    runner: ScenarioRunner,
+    chaos: FakeChaos,
+    sessions: SessionFactory,
+    target_id: uuid.UUID,
+) -> None:
+    scenario = load_scenario(SCENARIOS_DIR / "disk-pressure.yaml")
+    chaos.fail_start = True
+
+    with pytest.raises(ChaosError, match="INTERNAL"):
+        await runner.run(scenario, TARGET)
+
+    assert chaos.events == ["start:disk_fill", "stop:disk_fill"]
+    [run] = await load_runs(sessions)
+    assert run.status == "failed"
+
+
+async def test_stopping_an_idle_disk_fill_reports_nothing_active(
+    runner: ScenarioRunner, chaos: FakeChaos
+) -> None:
+    assert await runner.stop_injection("disk_fill", "host:demo-1") is False
+    assert chaos.events == ["stop:disk_fill"]

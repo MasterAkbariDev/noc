@@ -25,8 +25,8 @@ from noc.logging import configure_logging
 from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment
 from noc.scenarios.chaos_client import ChaosError, build_chaos_client
-from noc.scenarios.definitions import ScenarioDefinition, load_scenarios
-from noc.scenarios.runner import PreconditionFailed, RunOutcome, ScenarioRunner
+from noc.scenarios.definitions import ScenarioDefinition, injection_summary, load_scenarios
+from noc.scenarios.runner import PreconditionFailed, RunOutcome, ScenarioRunner, run_resource
 from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.remediation import ApprovalConflict, ApprovalDecision, record_approval
 from noc.store.targets import (
@@ -535,7 +535,7 @@ def scenario_list() -> None:
     for scenario in load_scenarios(get_settings().scenarios_dir).values():
         typer.echo(
             f"{scenario.name:<20} {scenario.injection.type:<14} "
-            f"{scenario.injection.resource_id:<20} {scenario.ground_truth.root_cause_code}"
+            f"{injection_summary(scenario.injection):<20} {scenario.ground_truth.root_cause_code}"
         )
 
 
@@ -544,16 +544,15 @@ def scenario_run(
     name: str,
     target: Annotated[str, typer.Option(help="Target name, e.g. demo-1")],
     resource: Annotated[
-        str | None, typer.Option(help="Resource to inject on (default: the scenario's own)")
+        str | None, typer.Option(help="Service to inject on (service-down only)")
     ] = None,
 ) -> None:
     scenario = scenario_named(name)
-    resource_id = resource or scenario.injection.resource_id
 
     async def work(sessions: SessionFactory) -> list[str]:
         runner = build_scenario_runner(sessions, await target_sentinel_url(sessions, target))
         try:
-            outcome = await runner.run(scenario, target, resource_id)
+            outcome = await runner.run(scenario, target, resource)
         except PreconditionFailed as error:
             raise typer.BadParameter(str(error)) from error
         return format_outcome(outcome)
@@ -593,12 +592,20 @@ def scenario_status(limit: int = 10) -> None:
 @scenario_app.command("stop")
 def scenario_stop(
     target: Annotated[str, typer.Option(help="Target name, e.g. demo-1")],
-    resource: Annotated[str, typer.Option(help="Resource whose injection should be restored")],
+    scenario: Annotated[
+        str, typer.Option(help="Scenario whose injection kind should be restored")
+    ] = "service-down",
+    resource: Annotated[
+        str | None, typer.Option(help="Service to restore (service_down only)")
+    ] = None,
 ) -> None:
+    definition = scenario_named(scenario)
+    resource_id = run_resource(definition.injection, target, resource)
+
     async def work(sessions: SessionFactory) -> str:
         runner = build_scenario_runner(sessions, await target_sentinel_url(sessions, target))
-        stopped = await runner.stop_injection(resource)
-        return f"{resource}: restored" if stopped else f"{resource}: nothing active"
+        stopped = await runner.stop_injection(definition.injection.type, resource_id)
+        return f"{resource_id}: restored" if stopped else f"{resource_id}: nothing active"
 
     try:
         message = with_admin_sessions(work)

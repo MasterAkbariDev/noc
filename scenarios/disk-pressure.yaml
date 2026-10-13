@@ -1,0 +1,14 @@
+name: disk-pressure
+description: Fill the lab data disk to 92 percent with one chaos file; the NOC should find the full disk and escalate, because vacuum_journal is not executable in the skeleton yet.
+injection:
+  type: disk_fill
+  target_percent: 92
+  ttl_seconds: 900
+detection_timeout_seconds: 240
+outcome_timeout_seconds: 600
+ground_truth:
+  root_cause_code: disk_full_logs
+  resource_id: null
+  acceptable_actions:
+    - vacuum_journal
+  expected_outcome: escalated

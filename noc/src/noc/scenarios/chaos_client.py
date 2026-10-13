@@ -15,6 +15,10 @@ from noc_shared.signing import sign_request
 CHAOS_PREFIX = "/v1/chaos"
 SERVICE_DOWN_START = f"{CHAOS_PREFIX}/service-down/start"
 SERVICE_DOWN_STOP = f"{CHAOS_PREFIX}/service-down/stop"
+CPU_BURN_START = f"{CHAOS_PREFIX}/cpu-burn/start"
+CPU_BURN_STOP = f"{CHAOS_PREFIX}/cpu-burn/stop"
+DISK_FILL_START = f"{CHAOS_PREFIX}/disk-fill/start"
+DISK_FILL_STOP = f"{CHAOS_PREFIX}/disk-fill/stop"
 CHAOS_STATUS = f"{CHAOS_PREFIX}/status"
 NOT_ACTIVE = "NOT_ACTIVE"
 
@@ -29,6 +33,7 @@ class ChaosState(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     active: bool
+    scenario: str | None = None
     resource_id: str | None = None
     expires_at: datetime | None = None
 
@@ -46,12 +51,38 @@ class ServiceDownStop(BaseModel):
     resource_id: ResourceId
 
 
+class CpuBurnStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workers: int = Field(ge=1, le=8)
+    ttl_seconds: int = Field(ge=1)
+
+
+class DiskFillStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_percent: int = Field(ge=50, le=95)
+    ttl_seconds: int = Field(ge=1)
+
+
+class EmptyStop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class ChaosClient(Protocol):
     async def status(self) -> ChaosState: ...
 
     async def start_service_down(self, resource_id: str, ttl_seconds: int) -> ChaosState: ...
 
     async def stop_service_down(self, resource_id: str) -> ChaosState: ...
+
+    async def start_cpu_burn(self, workers: int, ttl_seconds: int) -> ChaosState: ...
+
+    async def stop_cpu_burn(self) -> ChaosState: ...
+
+    async def start_disk_fill(self, target_percent: int, ttl_seconds: int) -> ChaosState: ...
+
+    async def stop_disk_fill(self) -> ChaosState: ...
 
 
 class SentinelChaosClient:
@@ -72,6 +103,26 @@ class SentinelChaosClient:
     async def stop_service_down(self, resource_id: str) -> ChaosState:
         body = ServiceDownStop(resource_id=resource_id)
         payload = await self._send("POST", SERVICE_DOWN_STOP, body.model_dump_json().encode())
+        return ChaosState.model_validate(payload)
+
+    async def start_cpu_burn(self, workers: int, ttl_seconds: int) -> ChaosState:
+        body = CpuBurnStart(workers=workers, ttl_seconds=ttl_seconds)
+        payload = await self._send("POST", CPU_BURN_START, body.model_dump_json().encode())
+        return ChaosState.model_validate(payload)
+
+    async def stop_cpu_burn(self) -> ChaosState:
+        return await self._stop(CPU_BURN_STOP)
+
+    async def start_disk_fill(self, target_percent: int, ttl_seconds: int) -> ChaosState:
+        body = DiskFillStart(target_percent=target_percent, ttl_seconds=ttl_seconds)
+        payload = await self._send("POST", DISK_FILL_START, body.model_dump_json().encode())
+        return ChaosState.model_validate(payload)
+
+    async def stop_disk_fill(self) -> ChaosState:
+        return await self._stop(DISK_FILL_STOP)
+
+    async def _stop(self, path: str) -> ChaosState:
+        payload = await self._send("POST", path, EmptyStop().model_dump_json().encode())
         return ChaosState.model_validate(payload)
 
     async def _send(self, method: str, path: str, body: bytes) -> dict[str, Any]:
