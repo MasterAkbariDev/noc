@@ -22,6 +22,7 @@ pytestmark = pytest.mark.integration
 
 TOKEN = "t"
 STREAM_PATH = "/api/events/stream"
+TICKET_PATH = "/api/events/ticket"
 
 
 @dataclass
@@ -47,27 +48,53 @@ class StreamProbe:
             return (await self.chunks.get()).decode()
 
 
-def stream_scope() -> dict[str, Any]:
+def request_scope(
+    method: str, path: str, headers: list[tuple[bytes, bytes]], query: str = ""
+) -> dict[str, Any]:
     return {
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
-        "method": "GET",
+        "method": method,
         "scheme": "http",
-        "path": STREAM_PATH,
-        "raw_path": STREAM_PATH.encode(),
-        "query_string": b"",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": query.encode(),
         "root_path": "",
-        "headers": [(b"authorization", f"Bearer {TOKEN}".encode())],
+        "headers": headers,
         "client": ("testclient", 50000),
         "server": ("testserver", 80),
     }
 
 
-async def open_stream(app: FastAPI) -> tuple[StreamProbe, asyncio.Task[None]]:
+def bearer_headers() -> list[tuple[bytes, bytes]]:
+    return [(b"authorization", f"Bearer {TOKEN}".encode())]
+
+
+def stream_scope() -> dict[str, Any]:
+    return request_scope("GET", STREAM_PATH, bearer_headers())
+
+
+async def open_stream(
+    app: FastAPI, scope: dict[str, Any] | None = None
+) -> tuple[StreamProbe, asyncio.Task[None]]:
     probe = StreamProbe()
-    task = asyncio.create_task(app(stream_scope(), probe.receive, probe.send))
+    task = asyncio.create_task(app(scope or stream_scope(), probe.receive, probe.send))
     return probe, task
+
+
+async def call_app(app: FastAPI, scope: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    probe = StreamProbe()
+    await asyncio.wait_for(app(scope, probe.receive, probe.send), timeout=5)
+    body = await probe.next_text(seconds=1) if not probe.chunks.empty() else "{}"
+    return probe.status[0], json.loads(body)
+
+
+async def issue_ticket(app: FastAPI) -> str:
+    status, body = await call_app(app, request_scope("POST", TICKET_PATH, bearer_headers()))
+    assert status == 200
+    ticket: str = body["ticket"]
+    return ticket
 
 
 @pytest.fixture
@@ -150,3 +177,52 @@ async def test_stream_closes_listener_when_client_disconnects(
             )
         )
     assert listeners == 0
+
+
+async def test_ticket_endpoint_requires_token(app: FastAPI) -> None:
+    status, _ = await call_app(app, request_scope("POST", TICKET_PATH, []))
+    assert status == 401
+
+
+async def test_ticket_endpoint_returns_ticket_and_ttl(app: FastAPI) -> None:
+    status, body = await call_app(app, request_scope("POST", TICKET_PATH, bearer_headers()))
+    assert status == 200
+    assert body["expires_in"] == 30
+    assert len(body["ticket"]) >= 40
+
+
+async def test_ticket_opens_stream_once(app: FastAPI) -> None:
+    ticket = await issue_ticket(app)
+    scope = request_scope("GET", STREAM_PATH, [], query=f"ticket={ticket}")
+    probe, task = await open_stream(app, scope)
+    try:
+        assert await probe.next_text(seconds=5) == ": connected\n\n"
+        assert probe.status == [200]
+    finally:
+        probe.disconnect.set()
+        await task
+
+    replay = StreamProbe()
+    await asyncio.wait_for(
+        app(
+            request_scope("GET", STREAM_PATH, [], query=f"ticket={ticket}"),
+            replay.receive,
+            replay.send,
+        ),
+        timeout=5,
+    )
+    assert replay.status == [401]
+
+
+async def test_api_token_in_query_is_not_accepted(app: FastAPI) -> None:
+    probe = StreamProbe()
+    scope = request_scope("GET", STREAM_PATH, [], query=f"token={TOKEN}")
+    await asyncio.wait_for(app(scope, probe.receive, probe.send), timeout=5)
+    assert probe.status == [401]
+
+
+async def test_unknown_ticket_is_rejected(app: FastAPI) -> None:
+    probe = StreamProbe()
+    scope = request_scope("GET", STREAM_PATH, [], query="ticket=made-up")
+    await asyncio.wait_for(app(scope, probe.receive, probe.send), timeout=5)
+    assert probe.status == [401]

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
 from noc.api.spa import SinglePageApp
+from noc.api.tickets import TicketStore
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
@@ -18,6 +19,7 @@ def create_app(settings: Settings) -> FastAPI:
         engine = create_engine(settings.database_url)
         app.state.settings = settings
         app.state.sessions = create_session_factory(engine)
+        app.state.tickets = TicketStore()
         yield
         await engine.dispose()
 

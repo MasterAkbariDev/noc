@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import psycopg
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 from psycopg import sql
 from pydantic import BaseModel
 
 from noc.api.deps import get_settings_dep, require_token
+from noc.api.tickets import TICKET_TTL_SECONDS, TicketStore
 from noc.config import Settings
 from noc.db.models import IncidentEvent
 from noc.db.session import SessionFactory
@@ -19,7 +20,7 @@ PING_SECONDS = 15.0
 PING_FRAME = ": ping\n\n"
 CONNECTED_FRAME = ": connected\n\n"
 
-router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[Depends(require_token)])
+router = APIRouter(prefix="/api/events", tags=["events"])
 
 
 class IncidentEventMessage(BaseModel):
@@ -29,6 +30,23 @@ class IncidentEventMessage(BaseModel):
     type: str
     actor: str
     payload: dict[str, Any]
+
+
+class StreamTicket(BaseModel):
+    ticket: str
+    expires_in: int
+
+
+def require_stream_access(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    authorization: Annotated[str | None, Header()] = None,
+    ticket: Annotated[str | None, Query()] = None,
+) -> None:
+    tickets: TicketStore = request.app.state.tickets
+    if ticket is not None and tickets.consume(ticket):
+        return
+    require_token(settings, authorization)
 
 
 def parse_notification(payload: str) -> tuple[uuid.UUID, int] | None:
@@ -81,7 +99,13 @@ async def event_frames(settings: Settings, sessions: SessionFactory) -> AsyncIte
         await connection.close()
 
 
-@router.get("/stream")
+@router.post("/ticket", dependencies=[Depends(require_token)])
+async def issue_stream_ticket(request: Request) -> StreamTicket:
+    tickets: TicketStore = request.app.state.tickets
+    return StreamTicket(ticket=tickets.issue(), expires_in=TICKET_TTL_SECONDS)
+
+
+@router.get("/stream", dependencies=[Depends(require_stream_access)])
 async def stream_events(
     settings: Annotated[Settings, Depends(get_settings_dep)],
     request: Request,
