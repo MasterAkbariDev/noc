@@ -10,7 +10,7 @@ alerts:
   InodesAlmostExhausted: {specialists: [metrics, logs]}
 
   ServiceDown: {specialists: [metrics, logs, network]}
-  SentinelDown: {specialists: [metrics, logs, network]}
+  SentinelDown: {specialists: [network, metrics]}
   ContainerUnhealthy: {specialists: [metrics, logs, network]}
   ContainerRestartLoop: {specialists: [metrics, logs, network]}
   DBConnectionsHigh: {specialists: [metrics, logs, network]}
