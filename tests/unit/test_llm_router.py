@@ -225,3 +225,8 @@ def test_gemini_client_is_built_with_its_proxy(monkeypatch: pytest.MonkeyPatch) 
     )
     openai_client(config, "key")
     assert created == [{"proxy": "http://127.0.0.1:10950"}]
+
+
+def test_llm_requests_have_a_bounded_timeout() -> None:
+    config = ProviderConfig(base_url="https://x", api_key_env="K", models={})
+    assert openai_client(config, "key", 42.0).timeout == 42.0

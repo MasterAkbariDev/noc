@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     llm_providers_file: Path = PACKAGE_DIR / "llm" / "providers.yaml"
     llm_fallback_enabled: bool = True
     llm_wait_deadline_seconds: float = 90.0
+    llm_request_timeout_seconds: float = 60.0
     cassette_dir: Path = Path("tests/cassettes")
     cassette_name: str = "default"
 

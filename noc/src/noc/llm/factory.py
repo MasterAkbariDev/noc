@@ -14,11 +14,17 @@ from noc.llm.router import Route, RoutedLLM
 from noc.llm.types import Tier
 
 
-def openai_client(config: ProviderConfig, api_key: str) -> AsyncOpenAI:
+def openai_client(
+    config: ProviderConfig, api_key: str, timeout_seconds: float = 60.0
+) -> AsyncOpenAI:
     proxy = config.proxy_url()
     http_client = openai.DefaultAsyncHttpxClient(proxy=proxy) if proxy else None
     return AsyncOpenAI(
-        base_url=config.base_url, api_key=api_key, max_retries=0, http_client=http_client
+        base_url=config.base_url,
+        api_key=api_key,
+        max_retries=0,
+        timeout=timeout_seconds,
+        http_client=http_client,
     )
 
 
@@ -35,7 +41,7 @@ def build_routed_llm(settings: Settings, sessions: SessionFactory) -> RoutedLLM:
             limits = config.models[tier]
             for api_key in config.api_keys():
                 label = key_label(name, api_key)
-                client = openai_client(config, api_key)
+                client = openai_client(config, api_key, settings.llm_request_timeout_seconds)
                 budget = RequestBudget(
                     label, limits.model, limits.rpm, limits.rpd, config.quota_timezone, quota_store
                 )
