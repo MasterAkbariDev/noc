@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -192,3 +192,68 @@ class LlmKeyView(BaseModel):
 class LlmStatus(BaseModel):
     mode: str
     keys: list[LlmKeyView]
+
+
+StepState = Literal["done", "current", "pending", "skipped", "failed"]
+
+
+class StoryStep(BaseModel):
+    key: str
+    label: str
+    state: StepState
+    at: datetime | None
+
+
+class StoryText(BaseModel):
+    text: str
+    technical: str | None
+
+
+class StoryPoint(BaseModel):
+    text: str
+    agent: str
+    label: str
+    refs: list[str]
+    grounded: bool
+
+
+class StoryFound(BaseModel):
+    text: str
+    root_cause_code: str | None
+    root_cause_label: str | None
+    confidence: float | None
+    points: list[StoryPoint]
+
+
+class StoryAction(BaseModel):
+    action: str
+    action_label: str
+    verdict: str
+    verdict_label: str
+    reasons: list[str]
+    technical: list[str]
+
+
+class StoryDid(BaseModel):
+    text: str
+    considered: list[StoryAction]
+
+
+class StoryAdvice(BaseModel):
+    text: str
+    steps: list[str]
+
+
+class IncidentStory(BaseModel):
+    id: uuid.UUID
+    title: str
+    target: str
+    severity: str
+    status: str
+    status_label: str
+    headline: str
+    steps: list[StoryStep]
+    what_happened: StoryText
+    what_we_found: StoryFound
+    what_we_did: StoryDid
+    what_you_should_do: StoryAdvice
