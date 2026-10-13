@@ -324,3 +324,15 @@ class LlmKeyStatus(Base):
     last_error_at: Mapped[datetime | None]
     last_success_at: Mapped[datetime | None]
     updated_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class User(CreatedAt, Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    username: Mapped[str] = mapped_column(String(32), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(16))
+    disabled: Mapped[bool] = mapped_column(default=False)
+    last_login_at: Mapped[datetime | None]
+    password_changed_at: Mapped[datetime] = mapped_column(default=utc_now)

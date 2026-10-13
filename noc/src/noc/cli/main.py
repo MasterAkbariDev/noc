@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -12,9 +13,11 @@ from sqlalchemy import select
 
 from noc.api.app import create_app
 from noc.audit.chain import append_audit, verify_chain
+from noc.auth.roles import Role
+from noc.auth.users import create_user, list_users, reset_password, set_disabled, set_role
 from noc.config import PACKAGE_DIR, get_settings
 from noc.db.base import utc_now
-from noc.db.models import Incident, Report, ScenarioRun, Target
+from noc.db.models import Incident, Report, ScenarioRun, Target, User
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
 from noc.domain.incident_status import InvalidTransition
@@ -49,11 +52,13 @@ audit_app = typer.Typer(help="Audit log", no_args_is_help=True)
 scenario_app = typer.Typer(
     help="Inject and score deterministic failure scenarios", no_args_is_help=True
 )
+users_app = typer.Typer(help="Manage dashboard users", no_args_is_help=True)
 app.add_typer(targets_app, name="targets")
 app.add_typer(incidents_app, name="incidents")
 app.add_typer(db_app, name="db")
 app.add_typer(audit_app, name="audit")
 app.add_typer(scenario_app, name="scenario")
+app.add_typer(users_app, name="users")
 
 
 def with_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[ResultT]]) -> ResultT:
@@ -330,6 +335,110 @@ def audit_verify() -> None:
         return
     typer.echo(f"audit chain broken at entry {broken}", err=True)
     raise typer.Exit(1)
+
+
+def read_password(password_stdin: bool) -> str:
+    if password_stdin:
+        return sys.stdin.readline().rstrip("\r\n")
+    password: str = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+    return password
+
+
+def describe_user(user: User) -> str:
+    return f"{user.username}: role={user.role} disabled={user.disabled}"
+
+
+def user_line(user: User) -> str:
+    disabled = "yes" if user.disabled else "no"
+    return f"{user.username:<32} {user.role:<10} {disabled:<8} {user.last_login_at or '-'}"
+
+
+@users_app.command("create")
+def users_create(
+    username: str,
+    role: Annotated[Role, typer.Option(help="viewer, operator or admin")],
+    password_stdin: Annotated[
+        bool, typer.Option("--password-stdin", help="Read the password from one line of stdin")
+    ] = False,
+) -> None:
+    password = read_password(password_stdin)
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            user = await create_user(session, username, password, role, "cli")
+            return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("list")
+def users_list() -> None:
+    async def work(sessions: SessionFactory) -> list[str]:
+        async with sessions() as session:
+            return [user_line(user) for user in await list_users(session)]
+
+    typer.echo(f"{'username':<32} {'role':<10} {'disabled':<8} last_login")
+    for line in with_sessions(work):
+        typer.echo(line)
+
+
+@users_app.command("disable")
+def users_disable(username: str) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user = await set_disabled(session, username, True, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("enable")
+def users_enable(username: str) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user = await set_disabled(session, username, False, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("set-role")
+def users_set_role(username: str, role: Role) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user = await set_role(session, username, role, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("reset-password")
+def users_reset_password(
+    username: str,
+    password_stdin: Annotated[
+        bool, typer.Option("--password-stdin", help="Read the password from one line of stdin")
+    ] = False,
+) -> None:
+    password = read_password(password_stdin)
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user = await reset_password(session, username, password, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
 
 
 def scenario_named(name: str) -> ScenarioDefinition:

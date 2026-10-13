@@ -21,6 +21,7 @@ dependencies = [
     "structlog>=24.4",
     "pyyaml>=6.0",
     "prometheus-client>=0.21",
+    "argon2-cffi>=25.1",
 ]
 
 [project.scripts]
