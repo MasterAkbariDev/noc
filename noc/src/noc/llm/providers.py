@@ -15,7 +15,7 @@ class ModelLimits(BaseModel):
     rpd: int = Field(gt=0)
 
 
-KEY_SEPARATORS = re.compile(r"[\s,;]+")
+KEY_SEPARATORS = re.compile(r"[\s,;\"']+")
 
 
 class ProviderConfig(BaseModel):

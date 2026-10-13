@@ -173,6 +173,15 @@ def test_keys_are_read_from_both_variables_without_duplicates(
     assert config.api_keys() == ["k1", "k2", "k3"]
 
 
+def test_one_quoted_key_per_line_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_KEYS", '"key-one\nkey-two\n  key-three\n"')
+    monkeypatch.delenv("TEST_KEY", raising=False)
+    config = ProviderConfig(
+        base_url="https://x", api_key_env="TEST_KEY", api_keys_env="TEST_KEYS", models={}
+    )
+    assert config.api_keys() == ["key-one", "key-two", "key-three"]
+
+
 def test_key_labels_never_contain_the_key() -> None:
     label = key_label("gemini", "AIzaSecretValue123")
     assert label.startswith("gemini#")
