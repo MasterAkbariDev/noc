@@ -25,6 +25,8 @@ RECOVERABLE = (
     ProviderKeyRejected,
     TimeoutError,
 )
+TRANSIENT = (ProviderUnavailable, TimeoutError)
+OVERLOAD_BACKOFF_SECONDS = (5.0, 15.0)
 COOLDOWN_SECONDS: dict[type[Exception], float] = {
     ProviderRateLimited: 60.0,
     QuotaExhausted: 600.0,
@@ -94,22 +96,35 @@ class RoutedLLM:
                 raise LLMUnavailable(f"every key for tier {request.tier} is cooling down")
             await self._sleep(wait)
             ready = [soonest]
-        return await self._try(request, ready, primary=chain[0].provider.name)
+        primary = chain[0].provider.name
+        waited = 0.0
+        for backoff in (*OVERLOAD_BACKOFF_SECONDS, None):
+            response, only_transient = await self._try(request, ready, primary)
+            if response is not None:
+                return response
+            if backoff is None or not only_transient or waited + backoff > self._deadline:
+                break
+            await self._sleep(backoff)
+            waited += backoff
+            ready = [route for route in chain if not self._cooldowns.is_cooling(route.label)]
+        raise LLMUnavailable(f"all routes failed for tier {request.tier}")
 
-    async def _try(self, request: LLMRequest, routes: list[Route], primary: str) -> LLMResponse:
-        failures: list[str] = []
+    async def _try(
+        self, request: LLMRequest, routes: list[Route], primary: str
+    ) -> tuple[LLMResponse | None, bool]:
+        only_transient = bool(routes)
         for route in routes:
             try:
                 wait_ms = await route.budget.acquire(self._deadline)
                 response = await route.provider.complete(request, route.budget.model)
             except RECOVERABLE as exc:
                 self._record_failure(route, exc)
-                failures.append(f"{route.label}: {type(exc).__name__}")
+                only_transient = only_transient and isinstance(exc, TRANSIENT)
                 continue
             response.wait_ms = wait_ms
             response.fallback = route.provider.name != primary
-            return response
-        raise LLMUnavailable("; ".join(failures))
+            return response, only_transient
+        return None, only_transient
 
     def _record_failure(self, route: Route, error: Exception) -> None:
         cooldown = COOLDOWN_SECONDS.get(type(error))

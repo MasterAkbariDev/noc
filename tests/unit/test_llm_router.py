@@ -9,6 +9,7 @@ from noc.llm.client import (
     LLMUnavailable,
     ProviderKeyRejected,
     ProviderRateLimited,
+    ProviderUnavailable,
 )
 from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
@@ -230,3 +231,32 @@ def test_gemini_client_is_built_with_its_proxy(monkeypatch: pytest.MonkeyPatch) 
 def test_llm_requests_have_a_bounded_timeout() -> None:
     config = ProviderConfig(base_url="https://x", api_key_env="K", models={})
     assert openai_client(config, "key", 42.0).timeout == 42.0
+
+
+async def test_model_overload_is_retried_with_backoff() -> None:
+    time = FakeTime()
+    flaky = StubProvider("gemini", [ProviderUnavailable("503"), ProviderUnavailable("503")])
+    llm = RoutedLLM({"small": [route(flaky, "g#1")]}, True, 90, clock=time.clock, sleep=time.sleep)
+    response = await llm.complete(REQUEST)
+    assert response.provider == "gemini"
+    assert time.slept == [5.0, 15.0]
+
+
+async def test_overload_backoff_stops_at_the_deadline() -> None:
+    time = FakeTime()
+    flaky = StubProvider("gemini", [ProviderUnavailable("503")] * 5)
+    llm = RoutedLLM({"small": [route(flaky, "g#1")]}, True, 10, clock=time.clock, sleep=time.sleep)
+    with pytest.raises(LLMUnavailable):
+        await llm.complete(REQUEST)
+    assert time.slept == [5.0]
+
+
+async def test_rate_limits_are_not_retried_with_backoff() -> None:
+    time = FakeTime()
+    limited = StubProvider("gemini", [ProviderRateLimited("429")])
+    llm = RoutedLLM(
+        {"small": [route(limited, "g#1")]}, True, 90, clock=time.clock, sleep=time.sleep
+    )
+    with pytest.raises(LLMUnavailable):
+        await llm.complete(REQUEST)
+    assert time.slept == []
