@@ -10,7 +10,7 @@ Group=demo
 WorkingDirectory=/opt/demo-app
 EnvironmentFile=-/etc/demo-app/env
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/demo-app/venv/bin/uvicorn demo_app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/demo-app/venv/bin/uvicorn demo_app.main:app --host 127.0.0.1 --port 8180
 Restart=on-failure
 RestartSec=3
 MemoryMax=600M

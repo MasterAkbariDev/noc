@@ -7,7 +7,7 @@ The shop and reports worker that the NOC monitors in the lab. It is a separate s
 ```bash
 cd lab/demo-app
 uv sync
-uv run uvicorn demo_app.main:app --port 8000
+uv run uvicorn demo_app.main:app --port 8180
 ```
 
 Without `DEMO_DATABASE_URL`, `/products` returns a static list, so the app works without Postgres.
@@ -43,6 +43,6 @@ Run as root on the VPS, from a copy of this directory:
 sudo ./deploy.sh
 ```
 
-The script is idempotent. It creates the `demo` system user, a venv in `/opt/demo-app`, installs the two systemd units (`demo-shop.service` with `MemoryMax=600M`, `demo-reports.service` with `MemoryMax=200M`) and restarts only those two units. The shop listens on `127.0.0.1:8000`, so nginx should proxy to it. Put the DSN in `/etc/demo-app/env` as `DEMO_DATABASE_URL=...`; the file is created empty on first run and is never overwritten.
+The script is idempotent. It creates the `demo` system user, a venv in `/opt/demo-app`, installs the two systemd units (`demo-shop.service` with `MemoryMax=600M`, `demo-reports.service` with `MemoryMax=200M`) and restarts only those two units. The shop listens on `127.0.0.1:8180` (8000 is the NOC API when both run on the staging host), so nginx should proxy to it. To stop it for the S4 demo use `systemctl stop demo-shop`: the unit restarts after crashes (`Restart=on-failure`), but a stop is not a failure. Put the DSN in `/etc/demo-app/env` as `DEMO_DATABASE_URL=...`; the file is created empty on first run and is never overwritten.
 
 `requirements.txt` is exported from `uv.lock` with `uv export --no-dev --no-hashes --no-emit-project --no-annotate --no-header`. Re-export it whenever dependencies change.
