@@ -163,4 +163,4 @@ tests:
               job: node
               target: demo-1
             exp_annotations:
-              summary: "Scrape target demo-1 (node) cannot be scraped"
+              summary: "node_exporter on demo-1 cannot be scraped"

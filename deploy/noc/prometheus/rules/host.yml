@@ -52,10 +52,10 @@ groups:
           summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.target }} has less than 5% free inodes"
 
       - alert: TargetDown
-        expr: up{job=~"node|sentinel"} == 0
+        expr: up{job="node"} == 0
         for: 1m
         labels:
           severity: critical
           category: network
         annotations:
-          summary: "Scrape target {{ $labels.target }} ({{ $labels.job }}) cannot be scraped"
+          summary: "node_exporter on {{ $labels.target }} cannot be scraped"
