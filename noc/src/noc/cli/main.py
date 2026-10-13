@@ -13,13 +13,17 @@ from sqlalchemy import select
 from noc.api.app import create_app
 from noc.audit.chain import append_audit, verify_chain
 from noc.config import PACKAGE_DIR, get_settings
-from noc.db.models import Incident, Report, Target
+from noc.db.base import utc_now
+from noc.db.models import Incident, Report, ScenarioRun, Target
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
 from noc.domain.incident_status import InvalidTransition
 from noc.logging import configure_logging
 from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment
+from noc.scenarios.chaos_client import ChaosError, build_chaos_client
+from noc.scenarios.definitions import ScenarioDefinition, load_scenarios
+from noc.scenarios.runner import PreconditionFailed, RunOutcome, ScenarioRunner
 from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.targets import (
     add_target,
@@ -42,10 +46,14 @@ targets_app = typer.Typer(help="Manage monitored targets", no_args_is_help=True)
 incidents_app = typer.Typer(help="Inspect incidents", no_args_is_help=True)
 db_app = typer.Typer(help="Database tasks", no_args_is_help=True)
 audit_app = typer.Typer(help="Audit log", no_args_is_help=True)
+scenario_app = typer.Typer(
+    help="Inject and score deterministic failure scenarios", no_args_is_help=True
+)
 app.add_typer(targets_app, name="targets")
 app.add_typer(incidents_app, name="incidents")
 app.add_typer(db_app, name="db")
 app.add_typer(audit_app, name="audit")
+app.add_typer(scenario_app, name="scenario")
 
 
 def with_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[ResultT]]) -> ResultT:
@@ -322,3 +330,107 @@ def audit_verify() -> None:
         return
     typer.echo(f"audit chain broken at entry {broken}", err=True)
     raise typer.Exit(1)
+
+
+def scenario_named(name: str) -> ScenarioDefinition:
+    scenarios = load_scenarios(get_settings().scenarios_dir)
+    if name not in scenarios:
+        raise typer.BadParameter(f"unknown scenario {name}; known: {', '.join(sorted(scenarios))}")
+    return scenarios[name]
+
+
+async def target_sentinel_url(sessions: SessionFactory, name: str) -> str:
+    async with sessions() as session:
+        return (await get_target(session, name)).sentinel_url
+
+
+def build_scenario_runner(sessions: SessionFactory, sentinel_url: str) -> ScenarioRunner:
+    chaos = build_chaos_client(sentinel_url, get_settings())
+    return ScenarioRunner(sessions, chaos, utc_now, asyncio.sleep)
+
+
+def format_outcome(outcome: RunOutcome) -> list[str]:
+    detection = "-" if outcome.detection_seconds is None else f"{outcome.detection_seconds:.0f}s"
+    return [
+        f"run {outcome.run_id}: {outcome.status}",
+        f"detected after {detection}, final status {outcome.final_status or '-'}",
+        f"root cause match: {outcome.root_cause_match}",
+    ]
+
+
+@scenario_app.command("list")
+def scenario_list() -> None:
+    for scenario in load_scenarios(get_settings().scenarios_dir).values():
+        typer.echo(
+            f"{scenario.name:<20} {scenario.injection.type:<14} "
+            f"{scenario.injection.resource_id:<20} {scenario.ground_truth.root_cause_code}"
+        )
+
+
+@scenario_app.command("run")
+def scenario_run(
+    name: str,
+    target: Annotated[str, typer.Option(help="Target name, e.g. demo-1")],
+    resource: Annotated[
+        str | None, typer.Option(help="Resource to inject on (default: the scenario's own)")
+    ] = None,
+) -> None:
+    scenario = scenario_named(name)
+    resource_id = resource or scenario.injection.resource_id
+
+    async def work(sessions: SessionFactory) -> list[str]:
+        runner = build_scenario_runner(sessions, await target_sentinel_url(sessions, target))
+        try:
+            outcome = await runner.run(scenario, target, resource_id)
+        except PreconditionFailed as error:
+            raise typer.BadParameter(str(error)) from error
+        return format_outcome(outcome)
+
+    try:
+        lines = with_admin_sessions(work)
+    except ChaosError as error:
+        typer.echo(f"sentinel rejected chaos request: {error.code}", err=True)
+        raise typer.Exit(1) from error
+    for line in lines:
+        typer.echo(line)
+
+
+@scenario_app.command("status")
+def scenario_status(limit: int = 10) -> None:
+    async def work(sessions: SessionFactory) -> list[str]:
+        async with sessions() as session:
+            rows = (
+                await session.execute(
+                    select(ScenarioRun, Target.name)
+                    .join(Target, Target.id == ScenarioRun.target_id)
+                    .order_by(ScenarioRun.injected_at.desc())
+                    .limit(limit)
+                )
+            ).all()
+        return [
+            f"{run.injected_at:%Y-%m-%d %H:%M}  {run.scenario:<16} {target_name:<12} "
+            f"{run.status:<10} final={run.final_status or '-':<14} "
+            f"root_cause_match={run.root_cause_match}"
+            for run, target_name in rows
+        ]
+
+    for line in with_sessions(work):
+        typer.echo(line)
+
+
+@scenario_app.command("stop")
+def scenario_stop(
+    target: Annotated[str, typer.Option(help="Target name, e.g. demo-1")],
+    resource: Annotated[str, typer.Option(help="Resource whose injection should be restored")],
+) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        runner = build_scenario_runner(sessions, await target_sentinel_url(sessions, target))
+        stopped = await runner.stop_injection(resource)
+        return f"{resource}: restored" if stopped else f"{resource}: nothing active"
+
+    try:
+        message = with_admin_sessions(work)
+    except ChaosError as error:
+        typer.echo(f"sentinel rejected chaos request: {error.code}", err=True)
+        raise typer.Exit(1) from error
+    typer.echo(message)

@@ -1,0 +1,15 @@
+name: service-down
+description: Stop demo-shop with systemd so it stays down; the NOC should detect a crashed service and escalate, because the skeleton cannot execute actions yet.
+injection:
+  type: service_down
+  resource_id: svc:demo-shop
+  ttl_seconds: 600
+detection_timeout_seconds: 240
+outcome_timeout_seconds: 600
+ground_truth:
+  root_cause_code: service_crashed
+  resource_id: svc:demo-shop
+  acceptable_actions:
+    - start_service
+    - restart_service
+  expected_outcome: escalated

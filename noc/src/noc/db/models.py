@@ -292,3 +292,22 @@ class AuditEntry(Base):
     payload: Mapped[Json] = mapped_column(JSONB, default=dict)
     prev_hash: Mapped[str] = mapped_column(String(64))
     hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+
+class ScenarioRun(Base):
+    __tablename__ = "scenario_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    scenario: Mapped[str] = mapped_column(String(64))
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    ground_truth: Mapped[Json] = mapped_column(JSONB)
+    injected_at: Mapped[datetime]
+    detected_at: Mapped[datetime | None]
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
+    final_status: Mapped[str | None] = mapped_column(String(32))
+    detection_seconds: Mapped[float | None]
+    root_cause_match: Mapped[bool | None]
+    error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None]

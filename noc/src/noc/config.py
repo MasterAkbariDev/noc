@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     sentinel_ca_file: Path | None = None
     sentinel_timeout_seconds: float = 10.0
 
+    chaos_key_id: str = "noc-chaos"
+    chaos_key_dir: Path | None = None
+    scenarios_dir: Path = Path("scenarios")
+
     @property
     def libpq_url(self) -> str:
         return self.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
