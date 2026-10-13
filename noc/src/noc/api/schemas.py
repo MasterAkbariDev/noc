@@ -112,3 +112,60 @@ class TargetView(BaseModel):
     halted: bool
     last_inventory_at: datetime | None
     resources: list[TargetResourceView]
+
+
+class AgentRunView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent: str
+    status: str
+    started_at: datetime
+    ended_at: datetime | None
+    rounds: int
+    llm_calls: int
+    tool_calls: int
+    error: str | None
+
+
+class ToolCallView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ref: str
+    agent: str
+    tool: str
+    args: dict[str, Any]
+    permission: str
+    decision: str
+    decision_reason: str | None
+    ok: bool
+    started_at: datetime
+    duration_ms: int
+    truncated: bool
+    injection_flags: list[str]
+
+
+class LlmCallView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent: str
+    tier: str
+    provider: str
+    model: str
+    mode: str
+    tokens_in: int
+    tokens_out: int
+    latency_ms: int
+    wait_ms: int
+    fallback: bool
+    finish_reason: str | None
+    redactions: int
+    error: str | None
+    created_at: datetime
+
+
+class IncidentTrace(BaseModel):
+    agent_runs: list[AgentRunView]
+    tool_calls: list[ToolCallView]
+    llm_calls: list[LlmCallView]

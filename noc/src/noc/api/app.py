@@ -10,6 +10,7 @@ from noc.api.incidents import router as incidents_router
 from noc.api.spa import SinglePageApp
 from noc.api.targets import router as targets_router
 from noc.api.tickets import TicketStore, redact_tickets_in_access_log
+from noc.api.trace import router as trace_router
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
@@ -27,6 +28,7 @@ def create_app(settings: Settings) -> FastAPI:
     redact_tickets_in_access_log()
     app = FastAPI(title="Multi-Agent NOC", version="0.1.0", lifespan=lifespan)
     app.include_router(incidents_router)
+    app.include_router(trace_router)
     app.include_router(events_router)
     app.include_router(targets_router)
 
