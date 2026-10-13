@@ -10,7 +10,7 @@ from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
 from noc.jobs import queue
 from noc.orchestration.graph import IncidentGraph
-from noc.store.investigations import new_agent_run
+from noc.store.investigations import ORPHANED_RUN_ERROR, new_agent_run
 from noc.worker.main import Worker
 from tests.integration.test_alert_ingestion import (
     StaticAlertSource,
@@ -83,3 +83,34 @@ async def test_a_retryable_failure_leaves_the_incident_alone(sessions: SessionFa
     async with sessions() as session:
         assert await session.scalar(select(Incident.status)) == "NEW"
         assert await session.scalar(select(Job.status)) == "queued"
+
+
+async def test_runs_left_behind_by_a_stopped_job_are_marked_failed(
+    sessions: SessionFactory,
+) -> None:
+    await register_demo_target(sessions)
+    source = StaticAlertSource()
+    source.alerts = [prometheus_alert()]
+    await AlertIngestor(source, sessions, 2).poll_once()
+    worker = Worker(
+        Settings(), sessions, cast(IncidentGraph, BrokenGraph()), cast(AlertIngestor, None)
+    )
+    async with transaction(sessions) as session:
+        incident_id = await session.scalar(select(Incident.id))
+        assert incident_id is not None
+        job = await queue.claim(session, worker._identity, [INVESTIGATE_JOB], 60)
+        assert job is not None
+        session.add(new_agent_run(incident_id, "metrics"))
+
+    assert await worker.sweep_orphans_once() == 0
+
+    async with transaction(sessions) as session:
+        await session.execute(
+            text("UPDATE jobs SET lease_expires_at = now() - interval '1 minute'")
+        )
+    assert await worker.sweep_orphans_once() == 1
+    async with sessions() as session:
+        run = await session.scalar(select(AgentRun))
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error == ORPHANED_RUN_ERROR

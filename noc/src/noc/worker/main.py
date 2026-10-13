@@ -25,6 +25,7 @@ from noc.jobs.queue import ClaimedJob
 from noc.orchestration.graph import IncidentGraph, build_incident_graph, run_incident
 from noc.orchestration.runtime import build_runtime
 from noc.store.incidents import escalate_abandoned
+from noc.store.investigations import fail_orphaned_runs
 from noc.tools.sentinel_client import build_sentinel_http
 from noc.worker.heartbeat import PollStatus, write_heartbeat
 
@@ -40,6 +41,7 @@ RETRY_DELAY_SECONDS = 30
 IDLE_SLEEP_SECONDS = 1.0
 ERROR_BACKOFF_SECONDS = 5.0
 PROMETHEUS_POLL_FAILED = "Prometheus did not answer the alert poll"
+ORPHAN_SWEEP_SECONDS = 60.0
 
 
 def worker_identity() -> str:
@@ -72,6 +74,7 @@ class Worker:
         loops: list[Awaitable[None]] = [
             self.run_ingest_loop(),
             self.run_heartbeat_loop(),
+            self.run_orphan_sweep_loop(),
             self._job_loop(),
         ]
         if self._settings.prometheus_targets_dir is not None:
@@ -122,6 +125,16 @@ class Worker:
                 self._settings.version,
                 utc_now(),
             )
+
+    async def run_orphan_sweep_loop(self) -> None:
+        await self._repeat("orphans", self.sweep_orphans_once, ORPHAN_SWEEP_SECONDS)
+
+    async def sweep_orphans_once(self) -> int:
+        async with transaction(self._sessions) as session:
+            failed = await fail_orphaned_runs(session, INVESTIGATE_JOB)
+        if failed:
+            logger.warning("orphaned_agent_runs_failed", count=failed)
+        return failed
 
     async def _file_sd_loop(self, directory: Path) -> None:
         await self._repeat(

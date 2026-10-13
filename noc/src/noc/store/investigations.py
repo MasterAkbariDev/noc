@@ -1,5 +1,7 @@
 import uuid
+from typing import Any, cast
 
+from sqlalchemy import CursorResult, String, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.agents.diagnosis import FindingView
@@ -7,7 +9,7 @@ from noc.agents.investigator import InvestigationOutcome
 from noc.agents.loop import AgentStats
 from noc.agents.schemas import Diagnosis, Finding
 from noc.db.base import utc_now
-from noc.db.models import AgentRun, DiagnosisRow, FindingRow, Incident
+from noc.db.models import AgentRun, DiagnosisRow, FindingRow, Incident, Job
 
 
 async def save_investigation(
@@ -37,6 +39,25 @@ def mark_run_failed(agent_run: AgentRun, error: str) -> None:
     agent_run.status = "failed"
     agent_run.ended_at = utc_now()
     agent_run.error = error
+
+
+ORPHANED_RUN_ERROR = "orphaned: the job running it stopped (worker restart or lost lease)"
+
+
+async def fail_orphaned_runs(session: AsyncSession, job_kind: str) -> int:
+    live_job = select(Job.id).where(
+        Job.kind == job_kind,
+        Job.status == "running",
+        Job.lease_expires_at > func.now(),
+        Job.payload["incident_id"].astext == AgentRun.incident_id.cast(String),
+    )
+    statement = (
+        update(AgentRun)
+        .where(AgentRun.status == "running", ~exists(live_job))
+        .values(status="failed", ended_at=utc_now(), error=ORPHANED_RUN_ERROR)
+    )
+    result = cast(CursorResult[Any], await session.execute(statement))
+    return result.rowcount
 
 
 def add_findings(
