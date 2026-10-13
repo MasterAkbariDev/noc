@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class SentinelCollector(Collector):
-    def __init__(self, config: SentinelConfig, systemctl: SystemctlRunner) -> None:
+    def __init__(
+        self, config: SentinelConfig, systemctl: SystemctlRunner, chaos_enabled: bool = False
+    ) -> None:
         self._config = config
         self._systemctl = systemctl
+        self._chaos_enabled = chaos_enabled
 
     def collect(self) -> Iterator[GaugeMetricFamily]:
         yield GaugeMetricFamily("noc_sentinel_up", "Sentinel is serving", value=1)
@@ -26,6 +29,11 @@ class SentinelCollector(Collector):
             value=1 if is_halted(self._config.halt_file) else 0,
         )
         yield self._service_up()
+        yield GaugeMetricFamily(
+            "noc_sentinel_chaos_enabled",
+            "Lab-only chaos endpoints are mounted on this target",
+            value=1 if self._chaos_enabled else 0,
+        )
 
     def _service_up(self) -> GaugeMetricFamily:
         family = GaugeMetricFamily(

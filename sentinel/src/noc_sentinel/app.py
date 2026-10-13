@@ -6,6 +6,12 @@ from fastapi import Depends, FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from prometheus_client.registry import CollectorRegistry
 
+from noc_sentinel.chaos import (
+    ChaosRunner,
+    ServiceDownChaos,
+    SubprocessChaosRunner,
+    build_chaos_router,
+)
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
 from noc_sentinel.halt import is_halted
 from noc_sentinel.metrics import SentinelCollector
@@ -32,6 +38,7 @@ def create_app(
     clock: Callable[[], datetime] = utc_now,
     host: HostReader | None = None,
     journal: JournalReader | None = None,
+    chaos_runner: ChaosRunner | None = None,
 ) -> FastAPI:
     app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
     verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
@@ -41,8 +48,17 @@ def create_app(
         host if host is not None else PsutilHostReader(),
         journal if journal is not None else SubprocessJournal(),
     )
+    chaos_mounted = config.environment == "lab" and config.chaos.enabled
+    if chaos_mounted:
+        chaos_verifier = RequestVerifier(
+            config.load_chaos_secrets(), nonce_store, clock, config.max_skew_seconds
+        )
+        controller = ServiceDownChaos(
+            config, chaos_runner if chaos_runner is not None else SubprocessChaosRunner(), clock
+        )
+        app.include_router(build_chaos_router(controller, chaos_verifier))
     registry = CollectorRegistry()
-    registry.register(SentinelCollector(config, systemctl))
+    registry.register(SentinelCollector(config, systemctl, chaos_enabled=chaos_mounted))
     Signed = Annotated[VerifiedRequest, Depends(verifier)]
 
     @app.get("/healthz")
