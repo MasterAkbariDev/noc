@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
+import structlog
 from sqlalchemy import func, select
 
 from noc.audit.chain import append_audit
@@ -14,6 +15,8 @@ from noc.domain.incident_status import IncidentStatus
 from noc.scenarios.chaos_client import NOT_ACTIVE, ChaosClient, ChaosError
 from noc.scenarios.definitions import ScenarioDefinition
 from noc.store.targets import find_target
+
+logger = structlog.get_logger(__name__)
 
 ACTOR: Final = "scenario-runner"
 DEFAULT_POLL_SECONDS: Final = 5.0
@@ -89,13 +92,20 @@ class ScenarioRunner:
         try:
             await self._chaos.start_service_down(resource_id, scenario.injection.ttl_seconds)
             outcome = await self._observe(run_id, scenario, target_id, injected_at)
-        except Exception as error:
-            await self._store(RunOutcome(run_id=run_id, status=FAILED), scenario, str(error))
+        except BaseException as error:
+            await self._stop_after_failure(resource_id)
+            if isinstance(error, Exception):
+                await self._store(RunOutcome(run_id=run_id, status=FAILED), scenario, str(error))
             raise
-        finally:
-            await self.stop_injection(resource_id)
+        await self.stop_injection(resource_id)
         await self._store(outcome, scenario, None)
         return outcome
+
+    async def _stop_after_failure(self, resource_id: str) -> None:
+        try:
+            await self.stop_injection(resource_id)
+        except Exception:
+            logger.exception("chaos_stop_failed_after_error", resource_id=resource_id)
 
     async def stop_injection(self, resource_id: str) -> bool:
         try:

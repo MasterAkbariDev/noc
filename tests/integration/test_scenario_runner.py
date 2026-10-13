@@ -43,6 +43,7 @@ class FakeChaos:
     def __init__(self) -> None:
         self.active = False
         self.fail_start = False
+        self.fail_stop = False
         self.starts: list[tuple[str, int]] = []
         self.stops: list[str] = []
 
@@ -58,6 +59,8 @@ class FakeChaos:
 
     async def stop_service_down(self, resource_id: str) -> ChaosState:
         self.stops.append(resource_id)
+        if self.fail_stop:
+            raise ChaosError("INTERNAL")
         if not self.active:
             raise ChaosError("NOT_ACTIVE")
         self.active = False
@@ -317,3 +320,25 @@ async def test_failed_start_still_attempts_stop_and_ignores_not_active(
     [run] = await load_runs(sessions)
     assert run.status == "failed"
     assert run.error == "INTERNAL"
+
+
+async def test_original_error_survives_a_failing_stop(
+    runner: ScenarioRunner,
+    scenario: ScenarioDefinition,
+    clock: FakeClock,
+    chaos: FakeChaos,
+    sessions: SessionFactory,
+    target_id: uuid.UUID,
+) -> None:
+    store: dict[str, uuid.UUID] = {}
+    script = Script(clock)
+    script.at(30, detects(sessions, target_id, store))
+    script.at(60, raises("database went away"))
+    chaos.fail_stop = True
+
+    with pytest.raises(RuntimeError, match="database went away"):
+        await runner.run(scenario, TARGET, RESOURCE)
+
+    assert chaos.stops == [RESOURCE]
+    [run] = await load_runs(sessions)
+    assert run.error == "database went away"
