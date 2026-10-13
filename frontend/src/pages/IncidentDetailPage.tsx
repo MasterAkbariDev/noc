@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { getIncident } from "../api/client";
 import { useToken } from "../auth/token";
+import { CloseIncidentForm } from "../components/CloseIncidentForm";
 import { DiagnosisPanel } from "../components/DiagnosisPanel";
 import { FindingsList } from "../components/FindingsList";
 import { PolicyTable } from "../components/PolicyTable";
@@ -94,6 +95,8 @@ export function IncidentDetailPage() {
           <dd>{optionalTime(incident.closed_at)}</dd>
         </dl>
       </section>
+
+      <CloseIncidentForm incidentId={incident.id} status={incident.status} />
 
       <section>
         <h2>Timeline</h2>
