@@ -201,7 +201,7 @@ describe("UsersAdmin actions", () => {
 
   it("resets a password from the dialog and confirms with a toast", async () => {
     vi.mocked(getUsers).mockResolvedValue([ALICE]);
-    vi.mocked(resetUserPassword).mockResolvedValue(ALICE);
+    vi.mocked(resetUserPassword).mockResolvedValue(undefined);
     renderAs("admin");
 
     await screen.findByRole("table", { name: "Users" });

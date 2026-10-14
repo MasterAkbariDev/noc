@@ -221,8 +221,8 @@ export function enableUser(id: string): Promise<UserView> {
   return apiPost<UserView>(`/api/users/${encodedId(id)}/enable`, {});
 }
 
-export function resetUserPassword(id: string, newPassword: string): Promise<UserView> {
-  return apiPost<UserView>(`/api/users/${encodedId(id)}/password`, { new_password: newPassword });
+export function resetUserPassword(id: string, newPassword: string): Promise<void> {
+  return apiPost<void>(`/api/users/${encodedId(id)}/password`, { new_password: newPassword });
 }
 
 export function decideOnAction(

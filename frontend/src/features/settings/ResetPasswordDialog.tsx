@@ -40,9 +40,9 @@ function ResetPasswordForm({ user, onDone }: { user: UserView; onDone: () => voi
 
   const mutation = useMutation({
     mutationFn: (newPassword: string) => resetUserPassword(user.id, newPassword),
-    onSuccess: (updated) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success(`Reset the password for ${updated.username}. Their sessions ended.`);
+      toast.success(`Reset the password for ${user.username}. Their sessions ended.`);
       onDone();
     },
   });
