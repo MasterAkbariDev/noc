@@ -51,6 +51,32 @@ install -m 0644 deploy/noc/auto-update/noc-update.{service,timer} /etc/systemd/s
 systemctl daemon-reload && systemctl enable --now noc-update.timer
 ```
 
+## Web panel
+
+The panel is optional. It shows the overview, incidents, servers, system health, the audit log and the accounts, and the API serves it on the same port. The API listens on the server's loopback address only, so open it through an SSH tunnel:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 <server>
+```
+
+Then open http://localhost:8000 in a browser.
+
+Create the first admin on the server. The command asks for the password twice:
+
+```bash
+docker compose --env-file /opt/noc/.env -f /opt/noc/deploy/noc/docker-compose.single-host.yml exec noc noc users create <name> --role admin
+```
+
+To read the password from a pipe instead, add `-T` after `exec` and `--password-stdin` at the end.
+
+There are three roles, each one including the ones before it:
+
+- **viewer** can read everything.
+- **operator** can also close escalated incidents and approve or reject waiting actions.
+- **admin** can also create and change accounts.
+
+The API token is for the CLI and automation only. People sign in to the panel with their username and password.
+
 ## Configuration
 
 All settings use the `NOC_` prefix; see `.env.example`. LLM keys go in `GEMINI_API_KEYS` / `GROQ_API_KEYS`, one per line inside double quotes. Without keys, `NOC_LLM_MODE=replay` answers from recorded responses.
