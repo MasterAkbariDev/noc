@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AgentRunView } from "../api/types";
+import type { AgentRunView } from "../../api/types";
 import { AgentRunsTimeline, timelineBars } from "./AgentRunsTimeline";
 
 const HOSTILE_ERROR = '<img src=x onerror=alert(1)>Logs unavailable';

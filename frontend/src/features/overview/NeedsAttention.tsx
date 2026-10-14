@@ -40,7 +40,13 @@ export function NeedsAttention({ items, canClose }: NeedsAttentionProps) {
         }}
         title="Mark incident resolved"
       >
-        {resolving !== undefined && <CloseIncidentForm incidentId={resolving.incident_id} status={resolving.status} />}
+        {resolving !== undefined && (
+          <CloseIncidentForm
+            incidentId={resolving.incident_id}
+            status={resolving.status}
+            onClosed={() => setResolvingId(null)}
+          />
+        )}
       </Dialog>
     </>
   );

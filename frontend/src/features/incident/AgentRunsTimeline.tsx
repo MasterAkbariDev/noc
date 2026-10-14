@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
-import type { AgentRunView } from "../api/types";
-import { StatusBadge } from "./StatusBadge";
+import type { AgentRunView } from "../../api/types";
+import { Badge } from "../../ui/Badge";
+import { runStatusTone } from "./labels";
 
 const MIN_BAR_PERCENT = 0.5;
 
@@ -42,33 +43,40 @@ export function timelineBars(runs: AgentRunView[]): TimelineBar[] {
 
 export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
   if (runs.length === 0) {
-    return <p className="muted">No agent runs recorded.</p>;
+    return <p className="m-0 text-muted">No agent runs recorded.</p>;
   }
   const axis = timelineAxis(runs);
 
   return (
-    <div className="card timeline">
-      <ol className="timeline-rows">
+    <div className="grid gap-3 rounded-card border border-border bg-surface p-4">
+      <ol className="m-0 grid list-none gap-3 p-0">
         {timelineBars(runs).map(({ run, left, width }) => (
-          <li key={run.id} className="timeline-row">
-            <div className="timeline-label">
-              <strong>{run.agent}</strong>
-              <StatusBadge status={run.status} />
-              <span className="muted">
+          <li key={run.id} className="grid gap-2 md:grid-cols-[minmax(0,15rem)_1fr] md:items-center">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <strong className="font-semibold">{run.agent}</strong>
+              <Badge tone={runStatusTone(run.status)}>{run.status}</Badge>
+              <span className="text-muted">
                 rounds {run.rounds}, tool calls {run.tool_calls}, LLM calls {run.llm_calls}
               </span>
-              {run.error !== null && <span className="error">{run.error}</span>}
+              {run.error !== null && <span className="text-critical">{run.error}</span>}
             </div>
-            <div className="timeline-track">
+            <div className="relative h-3 rounded-control bg-surface-2">
               <div
-                className={`timeline-bar timeline-bar-${run.status.toLowerCase()}`}
-                style={{ "--bar-left": `${left}%`, "--bar-width": `${width}%` } as CSSProperties}
+                className="timeline-bar absolute inset-y-0 rounded-control bg-accent"
+                style={
+                  {
+                    "--bar-left": `${left}%`,
+                    "--bar-width": `${width}%`,
+                    left: "var(--bar-left)",
+                    width: "var(--bar-width)",
+                  } as CSSProperties
+                }
               />
             </div>
           </li>
         ))}
       </ol>
-      <div className="timeline-axis muted">
+      <div className="flex justify-between gap-2 text-xs text-muted">
         <span>{new Date(axis.start).toLocaleString()}</span>
         <span>{new Date(axis.end).toLocaleString()}</span>
       </div>

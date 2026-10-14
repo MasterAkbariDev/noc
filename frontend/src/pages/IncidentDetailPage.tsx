@@ -1,126 +1,156 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router";
-import { getIncident } from "../api/client";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+import { getIncident, getServers, getStory } from "../api/client";
+import type { IncidentDetail, ServerSummary } from "../api/types";
+import { useSession } from "../auth/session";
 import { CloseIncidentForm } from "../components/CloseIncidentForm";
-import { DiagnosisPanel } from "../components/DiagnosisPanel";
-import { FindingsList } from "../components/FindingsList";
-import { PolicyTable } from "../components/PolicyTable";
-import { StatusBadge } from "../components/StatusBadge";
-import { Timeline } from "../components/Timeline";
-import { errorMessage, formatConfidence, formatTime } from "../components/format";
+import { errorMessage } from "../components/format";
+import { AgentActivityTab } from "../features/incident/AgentActivityTab";
+import { EvidenceTab } from "../features/incident/EvidenceTab";
+import { ReportTab } from "../features/incident/ReportTab";
+import { StoryHeader } from "../features/incident/StoryHeader";
+import { StoryProgress } from "../features/incident/StoryProgress";
+import { StorySections } from "../features/incident/StorySections";
+import { TimelineTab } from "../features/incident/TimelineTab";
 import { useLivePollInterval } from "../live/useEventStream";
+import { useDocumentTitle } from "../shell/useDocumentTitle";
+import { Dialog } from "../ui/Dialog";
+import { ErrorState } from "../ui/ErrorState";
+import { Skeleton } from "../ui/Skeleton";
+import { Tabs, type TabItem } from "../ui/Tabs";
 
-function optionalTime(value: string | null): string {
-  return value === null ? "-" : formatTime(value);
+const TAB_IDS = ["evidence", "activity", "report", "timeline"] as const;
+type TabId = (typeof TAB_IDS)[number];
+
+function tabFrom(value: string | null): TabId {
+  return TAB_IDS.find((tab) => tab === value) ?? "evidence";
+}
+
+function serverIdFor(servers: ServerSummary[] | undefined, target: string): string | null {
+  return servers?.find((server) => server.name === target)?.id ?? null;
+}
+
+function BackLink() {
+  return (
+    <Link to="/incidents" className="justify-self-start text-sm text-accent underline">
+      Back to incidents
+    </Link>
+  );
+}
+
+function detailPart(
+  query: UseQueryResult<IncidentDetail, Error>,
+  render: (incident: IncidentDetail) => ReactNode,
+): ReactNode {
+  if (query.isPending) {
+    return <Skeleton lines={5} />;
+  }
+  if (query.isError) {
+    return (
+      <ErrorState
+        title="The incident details could not be loaded"
+        message={errorMessage(query.error)}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+  return render(query.data);
 }
 
 export function IncidentDetailPage() {
   const { id = "" } = useParams();
+  const { me } = useSession();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [closing, setClosing] = useState(false);
   const refetchInterval = useLivePollInterval();
 
-  const query = useQuery({
+  const story = useQuery({
+    queryKey: ["story", id],
+    queryFn: () => getStory(id),
+    enabled: id !== "",
+    refetchInterval,
+  });
+  const incident = useQuery({
     queryKey: ["incident", id],
     queryFn: () => getIncident(id),
     enabled: id !== "",
     refetchInterval,
   });
+  const servers = useQuery({ queryKey: ["servers"], queryFn: getServers });
+  useDocumentTitle(story.data?.title ?? "Incident");
 
-  if (query.isPending) {
-    return <p className="muted">Loading incident...</p>;
-  }
-  if (query.isError) {
+  if (story.isPending) {
     return (
-      <section>
-        <Link to="/incidents">Back to incidents</Link>
-        <p role="alert" className="error">{errorMessage(query.error)}</p>
-      </section>
+      <div className="grid gap-6">
+        <BackLink />
+        <Skeleton lines={6} />
+      </div>
+    );
+  }
+  if (story.isError) {
+    return (
+      <div className="grid gap-6">
+        <BackLink />
+        <ErrorState
+          title="This incident could not be loaded"
+          message={errorMessage(story.error)}
+          onRetry={() => void story.refetch()}
+        />
+      </div>
     );
   }
 
-  const incident = query.data;
+  const data = story.data;
+  const canClose = data.status === "ESCALATED" && me.role !== "viewer";
+  const tab = tabFrom(searchParams.get("tab"));
+
+  function selectTab(value: string) {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("tab", value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  const items: TabItem[] = [
+    {
+      value: "evidence",
+      label: "Evidence",
+      content: detailPart(incident, (detail) => <EvidenceTab incident={detail} />),
+    },
+    { value: "activity", label: "Agent activity", content: <AgentActivityTab incidentId={id} /> },
+    {
+      value: "report",
+      label: "Report",
+      content: detailPart(incident, (detail) => <ReportTab report={detail.report_markdown} />),
+    },
+    {
+      value: "timeline",
+      label: "Timeline",
+      content: detailPart(incident, (detail) => <TimelineTab events={detail.events} />),
+    },
+  ];
+
   return (
-    <article>
-      <Link to="/incidents">Back to incidents</Link>
-      <div className="page-head">
-        <h1>{incident.title}</h1>
-        <Link to={`/incidents/${incident.id}/trace`}>Agent trace</Link>
-      </div>
-      <StatusBadge status={incident.status} />
-
-      <section className="card">
-        <h2>Summary</h2>
-        <dl className="summary">
-          <dt>Target</dt>
-          <dd>{incident.target}</dd>
-          <dt>Mode</dt>
-          <dd>{incident.mode}</dd>
-          <dt>Severity</dt>
-          <dd>{incident.severity}</dd>
-          <dt>Opened</dt>
-          <dd>{formatTime(incident.opened_at)}</dd>
-          <dt>Root cause</dt>
-          <dd>
-            {incident.root_cause_code ?? "-"} {incident.confidence !== null && formatConfidence(incident.confidence)}
-          </dd>
-          <dt>Root cause summary</dt>
-          <dd>{incident.root_cause_summary ?? "-"}</dd>
-          <dt>Escalation reason</dt>
-          <dd>{incident.escalation_reason ?? "-"}</dd>
-          <dt>Resolution note</dt>
-          <dd>{incident.resolution_note ?? "-"}</dd>
-          <dt>Trace</dt>
-          <dd><code>{incident.trace_id}</code></dd>
-        </dl>
-      </section>
-
-      <section className="card">
-        <h2>Key times</h2>
-        <dl className="summary">
-          <dt>Investigation started</dt>
-          <dd>{optionalTime(incident.investigation_started_at)}</dd>
-          <dt>Diagnosed</dt>
-          <dd>{optionalTime(incident.diagnosed_at)}</dd>
-          <dt>Plan ready</dt>
-          <dd>{optionalTime(incident.plan_at)}</dd>
-          <dt>Escalated</dt>
-          <dd>{optionalTime(incident.escalated_at)}</dd>
-          <dt>Resolved</dt>
-          <dd>{optionalTime(incident.resolved_at)}</dd>
-          <dt>Closed</dt>
-          <dd>{optionalTime(incident.closed_at)}</dd>
-        </dl>
-      </section>
-
-      <CloseIncidentForm incidentId={incident.id} status={incident.status} />
-
-      <section>
-        <h2>Timeline</h2>
-        <Timeline events={incident.events} />
-      </section>
-
-      <section>
-        <h2>Diagnosis</h2>
-        <DiagnosisPanel diagnosis={incident.diagnosis} />
-      </section>
-
-      <section>
-        <h2>Findings</h2>
-        <FindingsList findings={incident.findings} />
-      </section>
-
-      <section>
-        <h2>Policy decisions</h2>
-        <PolicyTable actions={incident.actions} />
-      </section>
-
-      <section>
-        <h2>Report</h2>
-        {incident.report_markdown === null ? (
-          <p className="muted">Report not ready yet.</p>
-        ) : (
-          <pre className="report">{incident.report_markdown}</pre>
-        )}
-      </section>
-    </article>
+    <div className="grid gap-8">
+      <BackLink />
+      <StoryHeader
+        story={data}
+        openedAt={incident.data?.opened_at ?? null}
+        serverId={serverIdFor(servers.data, data.target)}
+      />
+      <StoryProgress steps={data.steps} />
+      <StorySections story={data} onClose={canClose ? () => setClosing(true) : undefined} />
+      <Tabs label="Incident details" items={items} value={tab} onValueChange={selectTab} />
+      {canClose && (
+        <Dialog open={closing} onOpenChange={setClosing} title="Close this incident">
+          <CloseIncidentForm incidentId={id} status={data.status} onClosed={() => setClosing(false)} />
+        </Dialog>
+      )}
+    </div>
   );
 }

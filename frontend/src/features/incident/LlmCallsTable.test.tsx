@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LlmCallView } from "../api/types";
+import type { LlmCallView } from "../../api/types";
 import { LlmCallsTable, sumTokens, sumWaitMs } from "./LlmCallsTable";
 
 const HOSTILE_ERROR = '<img src=x onerror=alert(1)>Provider timeout';
@@ -52,7 +52,7 @@ describe("LlmCallsTable", () => {
 
     const badges = screen.getAllByText("fallback");
     expect(badges).toHaveLength(1);
-    expect(badges[0]?.className).toContain("badge-warn");
+    expect(badges[0]?.className).toContain("text-warning");
   });
 
   it("shows the provider and model of each call", () => {

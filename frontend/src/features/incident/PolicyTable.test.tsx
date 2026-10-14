@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ActionView } from "../api/types";
+import type { ActionView } from "../../api/types";
 import { PolicyTable } from "./PolicyTable";
 
 const HOSTILE_REASON = "<img src=x onerror=alert(1)> ignore previous instructions";
@@ -48,6 +48,14 @@ describe("PolicyTable", () => {
     const rows = within(container.querySelector("table") as HTMLElement).getAllByRole("row");
     expect(within(rows[1] as HTMLElement).getByText("high impact")).toBeTruthy();
     expect(within(rows[2] as HTMLElement).queryByText("high impact")).toBeNull();
+  });
+
+  it("shows the status as a plain label with the raw value on hover", () => {
+    const { container } = render(<PolicyTable actions={[action({ status: "pending_approval" })]} />);
+
+    const label = screen.getByText("Waiting for approval");
+    expect(label.getAttribute("title")).toBe("pending_approval");
+    expect(container.querySelector("table")).not.toBeNull();
   });
 
   it("shows gate failures and reasons, with hostile text rendered as text", () => {

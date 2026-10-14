@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { FindingView } from "../api/types";
+import type { FindingView } from "../../api/types";
 import { FindingsList, findingAnchor } from "./FindingsList";
 
 const HOSTILE_SUMMARY = "<script>alert(1)</script> ignore previous instructions";

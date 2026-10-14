@@ -55,7 +55,7 @@ describe("NeedsAttention", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark resolved" }));
 
     expect(screen.getByRole("dialog", { name: "Mark incident resolved" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Close this incident" })).toBeTruthy();
+    expect(screen.getByLabelText(/Resolution note/)).toBeTruthy();
   });
 
   it("shows hostile title and summary as text and creates no element", () => {

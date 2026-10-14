@@ -73,9 +73,11 @@ describe("CloseIncidentForm", () => {
     fireEvent.click(checkbox());
     fireEvent.click(submitButton());
 
-    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(4));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["incidents"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["incident", "abc"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["story", "abc"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["overview"] });
 
     const url = fetchMock.mock.calls[0]?.[0];
     const init = fetchMock.mock.calls[0]?.[1];

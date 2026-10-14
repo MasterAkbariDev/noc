@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ToolCallView } from "../api/types";
+import type { ToolCallView } from "../../api/types";
 import { ToolCallsTable } from "./ToolCallsTable";
 
 const HOSTILE_ARG = '<img src=x onerror=alert(1)>';
@@ -53,9 +53,9 @@ describe("ToolCallsTable", () => {
   it("shows ok for a successful call and denied for a denied one", () => {
     render(<ToolCallsTable calls={calls} />);
 
-    expect(screen.getByText("ok").className).toContain("badge-ok");
+    expect(screen.getByText("ok").className).toContain("text-ok");
     const denied = screen.getByText("denied");
-    expect(denied.className).toContain("badge-danger");
+    expect(denied.className).toContain("text-critical");
     expect(screen.getByText("unit not on allow-list")).toBeTruthy();
   });
 
@@ -63,7 +63,7 @@ describe("ToolCallsTable", () => {
     render(<ToolCallsTable calls={calls} />);
 
     const badge = screen.getByText("injection flags: role_override, tool_request");
-    expect(badge.className).toContain("badge-danger");
+    expect(badge.className).toContain("text-critical");
   });
 
   it("shows the args as JSON text and creates no img element for a hostile arg", () => {
