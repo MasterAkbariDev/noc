@@ -176,6 +176,19 @@ async def test_twenty_first_attempt_from_one_ip_is_429(client: httpx.AsyncClient
     assert blocked.status_code == 429
 
 
+@pytest.mark.usefixtures("alice")
+async def test_a_disabled_ip_limit_keeps_shared_addresses_usable(app: FastAPI) -> None:
+    app.state.settings = app.state.settings.model_copy(update={"login_ip_limit": 0})
+    async with new_client(app) as http:
+        for number in range(25):
+            response = await login(http, username=f"ghost{number:02d}", password="wrong horse")
+            assert response.status_code == 401
+        assert (await login(http)).status_code == 200
+        for _ in range(6):
+            await login(http, username="ghost00", password="still wrong")
+        assert (await login(http, username="ghost00")).status_code == 429
+
+
 async def test_a_session_cookie_is_refused_without_csrf_and_accepted_with_it(
     client: httpx.AsyncClient, alice: None
 ) -> None:

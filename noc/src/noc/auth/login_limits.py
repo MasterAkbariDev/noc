@@ -7,7 +7,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from noc.db.models import LoginFailure
 
 USERNAME_LIMIT = 5
-IP_LIMIT = 20
+DEFAULT_IP_LIMIT = 20
 WINDOW = timedelta(minutes=15)
 USERNAME_MAX_LENGTH = 64
 
@@ -21,12 +21,16 @@ async def count_recent(session: AsyncSession, now: datetime, criterion: ColumnEl
     return int(await session.scalar(statement) or 0)
 
 
-async def over_limit(session: AsyncSession, username: str, ip: str, now: datetime) -> bool:
+async def over_limit(
+    session: AsyncSession, username: str, ip: str, now: datetime, ip_limit: int = DEFAULT_IP_LIMIT
+) -> bool:
     attempts_for_user = await count_recent(session, now, LoginFailure.username == username)
     if attempts_for_user > USERNAME_LIMIT:
         return True
+    if ip_limit <= 0:
+        return False
     attempts_from_ip = await count_recent(session, now, LoginFailure.ip == ip)
-    return attempts_from_ip > IP_LIMIT
+    return attempts_from_ip > ip_limit
 
 
 async def record_attempt(session: AsyncSession, username: str, ip: str, now: datetime) -> int:

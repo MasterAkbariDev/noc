@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = True
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12
+    login_ip_limit: int = Field(20, ge=0)
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2

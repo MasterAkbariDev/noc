@@ -166,7 +166,7 @@ async def login(
     ip = client_ip(request)
     now = utc_now()
     attempt_id = await record_attempt(session, key, ip, now)
-    if await over_limit(session, key, ip, now):
+    if await over_limit(session, key, ip, now, settings.login_ip_limit):
         await drop_attempt(session, attempt_id)
         raise too_many_attempts()
     user = await find_login_user(session, key)
@@ -216,6 +216,7 @@ async def change_password(
     body: PasswordChangeRequest,
     principal: CurrentPrincipal,
     session: Session,
+    settings: Config,
 ) -> None:
     if principal.via != "session" or principal.user_id is None or principal.session_hash is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "password change needs a browser session")
@@ -229,7 +230,7 @@ async def change_password(
     ip = client_ip(request)
     now = utc_now()
     attempt_id = await record_attempt(session, user.username, ip, now)
-    if await over_limit(session, user.username, ip, now):
+    if await over_limit(session, user.username, ip, now, settings.login_ip_limit):
         await drop_attempt(session, attempt_id)
         raise too_many_attempts()
     verified = await asyncio.to_thread(verify_password, user.password_hash, body.current_password)
