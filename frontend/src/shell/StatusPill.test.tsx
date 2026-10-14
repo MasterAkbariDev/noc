@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { getOverview } from "../api/client";
 import type { Overview, VerdictLevel } from "../api/types";
-import { TOKEN_STORAGE_KEY, TokenProvider } from "../auth/token";
 import { StatusPill } from "./StatusPill";
 
 vi.mock("../api/client", () => ({ getOverview: vi.fn() }));
@@ -37,11 +36,9 @@ function renderPill() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <TokenProvider>
-        <MemoryRouter>
-          <StatusPill />
-        </MemoryRouter>
-      </TokenProvider>
+      <MemoryRouter>
+        <StatusPill />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -51,13 +48,11 @@ function dotClass(link: HTMLElement): string {
 }
 
 beforeEach(() => {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, "t");
   vi.mocked(getOverview).mockReset();
 });
 
 afterEach(() => {
   cleanup();
-  sessionStorage.clear();
 });
 
 describe("StatusPill", () => {
@@ -90,11 +85,13 @@ describe("StatusPill", () => {
     await waitFor(() => expect(screen.getByText("Status unavailable")).toBeTruthy());
   });
 
-  it("asks for the token and sends no request without one", () => {
-    sessionStorage.clear();
+  it("loads the overview once without any credential argument", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture("ok", "All systems operational"));
     renderPill();
 
-    expect(screen.getByText("Enter the API token to see status")).toBeTruthy();
-    expect(getOverview).not.toHaveBeenCalled();
+    await screen.findByRole("link", { name: "All systems operational" });
+
+    expect(getOverview).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getOverview).mock.calls[0]).toEqual([]);
   });
 });

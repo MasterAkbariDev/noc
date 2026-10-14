@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { getOverview } from "../api/client";
 import type { VerdictLevel } from "../api/types";
-import { useToken } from "../auth/token";
 import { cx } from "../lib/cx";
 import type { Tone } from "../lib/tones";
 import { StatusDot } from "../ui/StatusDot";
@@ -27,18 +26,12 @@ function UnknownPill({ label }: { label: string }) {
 }
 
 export function StatusPill() {
-  const { token } = useToken();
-
   const query = useQuery({
     queryKey: ["overview"],
-    queryFn: () => getOverview(token),
-    enabled: token !== "",
+    queryFn: () => getOverview(),
     refetchInterval: OVERVIEW_POLL_MS,
   });
 
-  if (token === "") {
-    return <UnknownPill label="Enter the API token to see status" />;
-  }
   if (query.isPending) {
     return <UnknownPill label="Checking…" />;
   }

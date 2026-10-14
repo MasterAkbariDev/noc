@@ -3,7 +3,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { IncidentSummary } from "../api/types";
-import { TOKEN_STORAGE_KEY, TokenProvider } from "../auth/token";
 import { IncidentsPage } from "./IncidentsPage";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -37,19 +36,16 @@ function renderList(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <TokenProvider>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/incidents" element={<IncidentsPage />} />
-          </Routes>
-        </MemoryRouter>
-      </TokenProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/incidents" element={<IncidentsPage />} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 beforeEach(() => {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, "secret-token");
   fetchMock.mockResolvedValue(
     new Response(JSON.stringify(incidents), { status: 200, headers: { "Content-Type": "application/json" } }),
   );
@@ -60,7 +56,6 @@ afterEach(() => {
   cleanup();
   fetchMock.mockReset();
   vi.unstubAllGlobals();
-  sessionStorage.clear();
 });
 
 describe("IncidentsPage", () => {

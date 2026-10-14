@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { getTrace } from "../api/client";
-import { useToken } from "../auth/token";
 import { AgentRunsTimeline } from "../components/AgentRunsTimeline";
 import { LlmCallsTable } from "../components/LlmCallsTable";
 import { ToolCallsTable } from "../components/ToolCallsTable";
@@ -9,20 +8,16 @@ import { errorMessage } from "../components/format";
 import { useLivePollInterval } from "../live/useEventStream";
 
 export function TracePage() {
-  const { token } = useToken();
   const { id = "" } = useParams();
   const refetchInterval = useLivePollInterval();
 
   const query = useQuery({
     queryKey: ["trace", id],
-    queryFn: () => getTrace(token, id),
-    enabled: token !== "" && id !== "",
+    queryFn: () => getTrace(id),
+    enabled: id !== "",
     refetchInterval,
   });
 
-  if (token === "") {
-    return <p className="muted">Enter the API token above to load this trace.</p>;
-  }
   if (query.isPending) {
     return <p className="muted">Loading trace...</p>;
   }

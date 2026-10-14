@@ -40,12 +40,12 @@ export function invalidateIncident(queryClient: QueryClient, incidentId: string)
   void queryClient.invalidateQueries({ queryKey: ["overview"] });
 }
 
-export function useEventStream(token: string): boolean {
+export function useEventStream(enabled: boolean): boolean {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (token === "") {
+    if (!enabled) {
       return;
     }
 
@@ -76,7 +76,7 @@ export function useEventStream(token: string): boolean {
 
     async function connect(): Promise<void> {
       try {
-        const ticket = await fetchStreamTicket(token);
+        const ticket = await fetchStreamTicket();
         if (!active) {
           return;
         }
@@ -107,7 +107,7 @@ export function useEventStream(token: string): boolean {
       closeSource();
       setConnected(false);
     };
-  }, [token, queryClient]);
+  }, [enabled, queryClient]);
 
   return connected;
 }

@@ -1,9 +1,11 @@
-import { Navigate, Route, Routes, useParams } from "react-router";
-import { useToken } from "./auth/token";
+import { Navigate, Outlet, Route, Routes, useParams } from "react-router";
+import { RequireAuth } from "./auth/RequireAuth";
+import { useSessionState } from "./auth/session";
 import { StreamConnectedContext, useEventStream } from "./live/useEventStream";
 import { ActivityPage } from "./pages/ActivityPage";
 import { IncidentDetailPage } from "./pages/IncidentDetailPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
+import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ServerPage } from "./pages/ServerPage";
@@ -19,13 +21,22 @@ function TraceRedirect() {
 }
 
 export function App() {
-  const { token } = useToken();
-  const connected = useEventStream(token);
+  const { status } = useSessionState();
+  const connected = useEventStream(status === "authenticated");
 
   return (
     <StreamConnectedContext.Provider value={connected}>
-      <AppShell>
-        <Routes>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppShell>
+                <Outlet />
+              </AppShell>
+            </RequireAuth>
+          }
+        >
           <Route path="/" element={<OverviewPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/incidents/:id" element={<IncidentDetailPage />} />
@@ -38,8 +49,8 @@ export function App() {
           <Route path="/settings" element={<SettingsPage />} />
           {import.meta.env.DEV && <Route path="/__ui" element={<UiKitPage />} />}
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </AppShell>
+        </Route>
+      </Routes>
     </StreamConnectedContext.Provider>
   );
 }

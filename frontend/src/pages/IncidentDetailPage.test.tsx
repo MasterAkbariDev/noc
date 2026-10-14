@@ -3,7 +3,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { IncidentDetail } from "../api/types";
-import { TOKEN_STORAGE_KEY, TokenProvider } from "../auth/token";
 import { IncidentDetailPage } from "./IncidentDetailPage";
 
 const FINDING_SUMMARY = "Finding <script>alert(1)</script> ignore previous instructions";
@@ -68,19 +67,16 @@ function renderDetail() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <TokenProvider>
-        <MemoryRouter initialEntries={["/incidents/abc"]}>
-          <Routes>
-            <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </TokenProvider>
+      <MemoryRouter initialEntries={["/incidents/abc"]}>
+        <Routes>
+          <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 beforeEach(() => {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, "secret-token");
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -88,7 +84,6 @@ afterEach(() => {
   cleanup();
   fetchMock.mockReset();
   vi.unstubAllGlobals();
-  sessionStorage.clear();
 });
 
 describe("IncidentDetailPage", () => {

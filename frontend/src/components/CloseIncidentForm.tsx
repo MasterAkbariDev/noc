@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { closeIncident } from "../api/client";
-import { useToken } from "../auth/token";
 import { errorMessage } from "./format";
 
 export const RESOLUTION_NOTE_MAX_LENGTH = 2000;
@@ -32,7 +31,6 @@ export const ROOT_CAUSE_CODES = [
 ] as const;
 
 export function CloseIncidentForm({ incidentId, status }: { incidentId: string; status: string }) {
-  const { token } = useToken();
   const queryClient = useQueryClient();
   const [note, setNote] = useState("");
   const [rootCause, setRootCause] = useState("");
@@ -40,7 +38,7 @@ export function CloseIncidentForm({ incidentId, status }: { incidentId: string; 
 
   const mutation = useMutation({
     mutationFn: () =>
-      closeIncident(token, incidentId, {
+      closeIncident(incidentId, {
         resolution_note: note.trim(),
         corrected_root_cause_code: rootCause === "" ? null : rootCause,
       }),
@@ -54,7 +52,7 @@ export function CloseIncidentForm({ incidentId, status }: { incidentId: string; 
     return null;
   }
 
-  const canSubmit = token !== "" && note.trim() !== "" && checked && !mutation.isPending;
+  const canSubmit = note.trim() !== "" && checked && !mutation.isPending;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

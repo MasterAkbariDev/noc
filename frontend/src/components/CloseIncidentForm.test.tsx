@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TOKEN_STORAGE_KEY, TokenProvider } from "../auth/token";
 import { CloseIncidentForm } from "./CloseIncidentForm";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -11,9 +10,7 @@ function renderForm(status: string) {
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <TokenProvider>
-        <CloseIncidentForm incidentId="abc" status={status} />
-      </TokenProvider>
+      <CloseIncidentForm incidentId="abc" status={status} />
     </QueryClientProvider>,
   );
   return { ...view, invalidate };
@@ -32,7 +29,7 @@ function submitButton(): HTMLButtonElement {
 }
 
 beforeEach(() => {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, "secret-token");
+  document.cookie = "noc_csrf=csrf-value; path=/";
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -40,7 +37,7 @@ afterEach(() => {
   cleanup();
   fetchMock.mockReset();
   vi.unstubAllGlobals();
-  sessionStorage.clear();
+  document.cookie = "noc_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
 });
 
 describe("CloseIncidentForm", () => {
@@ -68,7 +65,7 @@ describe("CloseIncidentForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("posts the note with the token in the header, not the URL, and refreshes the incident queries", async () => {
+  it("posts the note with the CSRF header and no bearer token, and refreshes the incident queries", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
     const { invalidate } = renderForm("ESCALATED");
 
@@ -83,9 +80,10 @@ describe("CloseIncidentForm", () => {
     const url = fetchMock.mock.calls[0]?.[0];
     const init = fetchMock.mock.calls[0]?.[1];
     expect(url).toBe("/api/incidents/abc/close");
-    expect(String(url)).not.toContain("secret-token");
+    expect(String(url)).not.toContain("csrf-value");
     expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
+    expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("csrf-value");
+    expect(new Headers(init?.headers).has("Authorization")).toBe(false);
     expect(JSON.parse(String(init?.body))).toEqual({
       resolution_note: "Restarted the service",
       corrected_root_cause_code: null,

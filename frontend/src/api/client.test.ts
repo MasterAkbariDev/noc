@@ -2,16 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   apiPost,
+  changePassword,
   createUser,
   disableUser,
   fetchStreamTicket,
   getActivity,
   getIncident,
+  getMe,
   getOverview,
   getServer,
   getStory,
   listIncidents,
+  login,
+  logout,
   resetUserPassword,
+  setUnauthorizedHandler,
   setUserRole,
 } from "./client";
 
@@ -24,31 +29,43 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function expireCookie(name: string): void {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
+
+function sentHeaders(call = 0): Headers {
+  return new Headers(fetchMock.mock.calls[call]?.[1]?.headers);
+}
+
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
+  document.cookie = "noc_csrf=csrf-value; path=/";
 });
 
 afterEach(() => {
   fetchMock.mockReset();
   vi.unstubAllGlobals();
+  setUnauthorizedHandler(null);
+  expireCookie("noc_csrf");
 });
 
 describe("listIncidents", () => {
-  it("sends the bearer token and no query when no status is given", async () => {
+  it("sends no query when no status is given and never an Authorization header", async () => {
     fetchMock.mockResolvedValue(jsonResponse([]));
 
-    const incidents = await listIncidents("secret-token");
+    const incidents = await listIncidents();
 
     expect(incidents).toEqual([]);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/incidents");
-    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
+    expect(init?.credentials).toBe("same-origin");
+    expect(sentHeaders().has("Authorization")).toBe(false);
   });
 
   it("adds the status filter as a query parameter", async () => {
     fetchMock.mockResolvedValue(jsonResponse([]));
 
-    await listIncidents("t", "ESCALATED");
+    await listIncidents("ESCALATED");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents?status=ESCALATED");
   });
@@ -58,7 +75,7 @@ describe("getIncident", () => {
   it("requests one incident by id", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "abc" }));
 
-    const detail = await getIncident("t", "abc");
+    const detail = await getIncident("abc");
 
     expect(detail).toEqual({ id: "abc" });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents/abc");
@@ -66,42 +83,63 @@ describe("getIncident", () => {
 });
 
 describe("apiPost", () => {
-  it("sends the bearer token and the body as JSON", async () => {
+  it("sends the body as JSON and the CSRF token from the cookie", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
 
-    const result = await apiPost("/api/example", "secret-token", { note: "done" });
+    const result = await apiPost("/api/example", { note: "done" });
 
     expect(result).toEqual({ ok: true });
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/example");
     expect(init?.method).toBe("POST");
-    const headers = new Headers(init?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer secret-token");
+    const headers = sentHeaders();
     expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-CSRF-Token")).toBe("csrf-value");
+    expect(headers.has("Authorization")).toBe(false);
     expect(init?.body).toBe(JSON.stringify({ note: "done" }));
   });
 
-  it("turns a failed POST into an ApiError", async () => {
+  it("turns a failed POST into an ApiError with the status text when the body has no detail", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 409, statusText: "Conflict" }));
 
-    const failure = await apiPost("/api/example", "t", {}).catch((error: unknown) => error);
+    const failure = await apiPost("/api/example", {}).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(409);
+    expect((failure as ApiError).detail).toBe("409 Conflict");
+  });
+
+  it("reads the detail from the JSON body of an error", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "too many attempts, try again later" }, 429));
+
+    const failure = await apiPost("/api/example", {}).catch((error: unknown) => error);
+
+    expect((failure as ApiError).detail).toBe("too many attempts, try again later");
+    expect((failure as ApiError).message).toBe("too many attempts, try again later");
+  });
+
+  it("sends no CSRF header on a GET", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ verdict: { level: "ok", sentence: "ok" } }));
+
+    await getOverview();
+
+    expect(sentHeaders().has("X-CSRF-Token")).toBe(false);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("GET");
   });
 });
 
 describe("fetchStreamTicket", () => {
-  it("posts with the bearer token and returns only the ticket string", async () => {
+  it("posts with the CSRF header and returns only the ticket string", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ticket: "one-time", expires_in: 30 }));
 
-    const ticket = await fetchStreamTicket("secret-token");
+    const ticket = await fetchStreamTicket();
 
     expect(ticket).toBe("one-time");
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/events/ticket");
     expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
+    expect(sentHeaders().get("X-CSRF-Token")).toBe("csrf-value");
+    expect(sentHeaders().has("Authorization")).toBe(false);
   });
 });
 
@@ -109,29 +147,119 @@ describe("error handling", () => {
   it("turns a 401 into an ApiError with the status", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 401, statusText: "Unauthorized" }));
 
-    const failure = await listIncidents("wrong").catch((error: unknown) => error);
+    const failure = await listIncidents().catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(401);
   });
+
+  it("calls the unauthorized handler when a data request gets a 401", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "unauthorized" }, 401));
+
+    await listIncidents().catch(() => undefined);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call the unauthorized handler for the login or the me probe", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "invalid username or password" }, 401));
+
+    await login("alice", "wrong-password-here").catch(() => undefined);
+    await getMe().catch(() => undefined);
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not end the session when the current password is wrong", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "current password is wrong" }, 401));
+
+    const failure = await changePassword("wrong-password-here", "new-password-here").catch(
+      (error: unknown) => error,
+    );
+
+    expect((failure as ApiError).detail).toBe("current password is wrong");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not call the unauthorized handler for other errors", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "not found" }, 404));
+
+    await getIncident("missing").catch(() => undefined);
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("session functions", () => {
+  it("logs in with a JSON body and returns the signed-in user", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ username: "alice", role: "operator", via: "session" }));
+
+    const me = await login("alice", "a-long-password");
+
+    expect(me).toEqual({ username: "alice", role: "operator", via: "session" });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/auth/login");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ username: "alice", password: "a-long-password" }));
+  });
+
+  it("returns nothing for a 204 logout and still sends the CSRF header", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    const result = await logout();
+
+    expect(result).toBeUndefined();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/auth/logout");
+    expect(sentHeaders().get("X-CSRF-Token")).toBe("csrf-value");
+  });
+
+  it("reads the current user from the me route with cookies only", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ username: "alice", role: "viewer", via: "session" }));
+
+    await getMe();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/auth/me");
+    expect(init?.method).toBe("GET");
+    expect(sentHeaders().has("Authorization")).toBe(false);
+  });
+
+  it("sends the password change under the field names the server expects", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await changePassword("old-password-here", "new-password-here");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/auth/password");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ current_password: "old-password-here", new_password: "new-password-here" }),
+    );
+  });
 });
 
 describe("v2 read functions", () => {
-  it("reads the overview with the bearer token", async () => {
+  it("reads the overview without any token", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ verdict: { level: "ok", sentence: "ok" } }));
 
-    await getOverview("secret-token");
+    await getOverview();
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/overview");
     expect(init?.method).toBe("GET");
-    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
+    expect(sentHeaders().has("Authorization")).toBe(false);
   });
 
   it("encodes the incident id in the story path", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "a/b" }));
 
-    await getStory("t", "a/b");
+    await getStory("a/b");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents/a%2Fb/story");
   });
@@ -139,7 +267,7 @@ describe("v2 read functions", () => {
   it("encodes the server id in the server path", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "srv" }));
 
-    await getServer("t", "srv 1");
+    await getServer("srv 1");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/servers/srv%201");
   });
@@ -147,7 +275,7 @@ describe("v2 read functions", () => {
   it("sends only the activity filters that are set", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ items: [], next_before_id: null }));
 
-    await getActivity("t", { limit: 20, action: "login_failed" });
+    await getActivity({ limit: 20, action: "login_failed" });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/activity?limit=20&action=login_failed");
   });
@@ -155,7 +283,7 @@ describe("v2 read functions", () => {
   it("requests the plain activity list without a query when no filter is given", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ items: [], next_before_id: null }));
 
-    await getActivity("t");
+    await getActivity();
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/activity");
   });
@@ -165,7 +293,7 @@ describe("v2 user functions", () => {
   it("creates a user with a JSON body", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
 
-    await createUser("t", { username: "bob", password: "long-enough-pw", role: "viewer" });
+    await createUser({ username: "bob", password: "long-enough-pw", role: "viewer" });
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe("/api/users");
@@ -176,7 +304,7 @@ describe("v2 user functions", () => {
   it("changes a role on the user's own path", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
 
-    await setUserRole("t", "u1", "operator");
+    await setUserRole("u1", "operator");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/role");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ role: "operator" }));
@@ -185,7 +313,7 @@ describe("v2 user functions", () => {
   it("disables a user with a POST to the disable path", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
 
-    await disableUser("t", "u1");
+    await disableUser("u1");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/disable");
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
@@ -194,7 +322,7 @@ describe("v2 user functions", () => {
   it("sends the new password under new_password", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: "u1" }));
 
-    await resetUserPassword("t", "u1", "another-long-pw");
+    await resetUserPassword("u1", "another-long-pw");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/password");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ new_password: "another-long-pw" }));

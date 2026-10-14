@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { getIncident } from "../api/client";
-import { useToken } from "../auth/token";
 import { CloseIncidentForm } from "../components/CloseIncidentForm";
 import { DiagnosisPanel } from "../components/DiagnosisPanel";
 import { FindingsList } from "../components/FindingsList";
@@ -16,20 +15,16 @@ function optionalTime(value: string | null): string {
 }
 
 export function IncidentDetailPage() {
-  const { token } = useToken();
   const { id = "" } = useParams();
   const refetchInterval = useLivePollInterval();
 
   const query = useQuery({
-    queryKey: ["incident", id, token],
-    queryFn: () => getIncident(token, id),
-    enabled: token !== "" && id !== "",
+    queryKey: ["incident", id],
+    queryFn: () => getIncident(id),
+    enabled: id !== "",
     refetchInterval,
   });
 
-  if (token === "") {
-    return <p className="muted">Enter the API token above to load this incident.</p>;
-  }
   if (query.isPending) {
     return <p className="muted">Loading incident...</p>;
   }

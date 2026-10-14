@@ -8,6 +8,7 @@ import type {
   IncidentSummary,
   IncidentTrace,
   LlmStatus,
+  MeView,
   Overview,
   Role,
   ServerDetail,
@@ -25,67 +26,133 @@ export type ActivityQuery = {
   actor?: string;
 };
 
+export const CSRF_COOKIE = "noc_csrf";
+export const CSRF_HEADER = "X-CSRF-Token";
+
+const PATHS_WITHOUT_SESSION_EXPIRY: ReadonlySet<string> = new Set([
+  "/api/auth/login",
+  "/api/auth/me",
+  "/api/auth/password",
+]);
+
+let unauthorizedHandler: (() => void) | null = null;
+
 export class ApiError extends Error {
   readonly status: number;
+  readonly detail: string;
 
-  constructor(status: number, message: string) {
-    super(message);
+  constructor(status: number, detail: string) {
+    super(detail);
     this.name = "ApiError";
     this.status = status;
+    this.detail = detail;
   }
 }
 
-async function apiRequest<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function readCsrfToken(): string {
+  const prefix = `${CSRF_COOKIE}=`;
+  const part = document.cookie
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(prefix));
+  return part === undefined ? "" : part.slice(prefix.length);
+}
+
+function pathname(path: string): string {
+  return path.split("?", 1)[0] ?? path;
+}
+
+async function errorDetail(response: Response): Promise<string> {
+  const fallback = `${response.status} ${response.statusText}`.trim();
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === "object" && body !== null && "detail" in body && typeof body.detail === "string") {
+      return body.detail;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function apiRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
+  }
+  if (method !== "GET") {
+    headers[CSRF_HEADER] = readCsrfToken();
   }
   const response = await fetch(path, {
     method,
     headers,
+    credentials: "same-origin",
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new ApiError(response.status, `${response.status} ${response.statusText}`.trim());
+    const error = new ApiError(response.status, await errorDetail(response));
+    if (response.status === 401 && !PATHS_WITHOUT_SESSION_EXPIRY.has(pathname(path))) {
+      unauthorizedHandler?.();
+    }
+    throw error;
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return (await response.json()) as T;
 }
 
-export function apiGet<T>(path: string, token: string): Promise<T> {
-  return apiRequest<T>("GET", path, token);
+export function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>("GET", path);
 }
 
-export function apiPost<T>(path: string, token: string, body: unknown): Promise<T> {
-  return apiRequest<T>("POST", path, token, body);
+export function apiPost<T>(path: string, body: unknown): Promise<T> {
+  return apiRequest<T>("POST", path, body);
 }
 
-export function listIncidents(token: string, status?: string): Promise<IncidentSummary[]> {
+export function login(username: string, password: string): Promise<MeView> {
+  return apiPost<MeView>("/api/auth/login", { username, password });
+}
+
+export function logout(): Promise<void> {
+  return apiPost<void>("/api/auth/logout", {});
+}
+
+export function getMe(): Promise<MeView> {
+  return apiGet<MeView>("/api/auth/me");
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return apiPost<void>("/api/auth/password", { current_password: currentPassword, new_password: newPassword });
+}
+
+export function listIncidents(status?: string): Promise<IncidentSummary[]> {
   const query = status ? `?${new URLSearchParams({ status })}` : "";
-  return apiGet<IncidentSummary[]>(`/api/incidents${query}`, token);
+  return apiGet<IncidentSummary[]>(`/api/incidents${query}`);
 }
 
-export function getIncident(token: string, id: string): Promise<IncidentDetail> {
-  return apiGet<IncidentDetail>(`/api/incidents/${encodeURIComponent(id)}`, token);
+export function getIncident(id: string): Promise<IncidentDetail> {
+  return apiGet<IncidentDetail>(`/api/incidents/${encodeURIComponent(id)}`);
 }
 
-export function getTrace(token: string, id: string): Promise<IncidentTrace> {
-  return apiGet<IncidentTrace>(`/api/incidents/${encodeURIComponent(id)}/trace`, token);
+export function getTrace(id: string): Promise<IncidentTrace> {
+  return apiGet<IncidentTrace>(`/api/incidents/${encodeURIComponent(id)}/trace`);
 }
 
-export function getTargets(token: string): Promise<TargetView[]> {
-  return apiGet<TargetView[]>("/api/targets", token);
+export function getTargets(): Promise<TargetView[]> {
+  return apiGet<TargetView[]>("/api/targets");
 }
 
-export function closeIncident(
-  token: string,
-  id: string,
-  body: IncidentResolutionBody,
-): Promise<IncidentSummary> {
-  return apiPost<IncidentSummary>(`/api/incidents/${encodeURIComponent(id)}/close`, token, body);
+export function closeIncident(id: string, body: IncidentResolutionBody): Promise<IncidentSummary> {
+  return apiPost<IncidentSummary>(`/api/incidents/${encodeURIComponent(id)}/close`, body);
 }
 
-export async function fetchStreamTicket(token: string): Promise<string> {
-  const issued = await apiPost<StreamTicket>("/api/events/ticket", token, {});
+export async function fetchStreamTicket(): Promise<string> {
+  const issued = await apiPost<StreamTicket>("/api/events/ticket", {});
   return issued.ticket;
 }
 
@@ -100,58 +167,58 @@ function encodedId(id: string): string {
   return encodeURIComponent(id);
 }
 
-export function getOverview(token: string): Promise<Overview> {
-  return apiGet<Overview>("/api/overview", token);
+export function getOverview(): Promise<Overview> {
+  return apiGet<Overview>("/api/overview");
 }
 
-export function getSystemHealth(token: string): Promise<SystemHealth> {
-  return apiGet<SystemHealth>("/api/system/health", token);
+export function getSystemHealth(): Promise<SystemHealth> {
+  return apiGet<SystemHealth>("/api/system/health");
 }
 
-export function getLlmStatus(token: string): Promise<LlmStatus> {
-  return apiGet<LlmStatus>("/api/system/llm", token);
+export function getLlmStatus(): Promise<LlmStatus> {
+  return apiGet<LlmStatus>("/api/system/llm");
 }
 
-export function getStory(token: string, id: string): Promise<IncidentStory> {
-  return apiGet<IncidentStory>(`/api/incidents/${encodedId(id)}/story`, token);
+export function getStory(id: string): Promise<IncidentStory> {
+  return apiGet<IncidentStory>(`/api/incidents/${encodedId(id)}/story`);
 }
 
-export function getServers(token: string): Promise<ServerSummary[]> {
-  return apiGet<ServerSummary[]>("/api/servers", token);
+export function getServers(): Promise<ServerSummary[]> {
+  return apiGet<ServerSummary[]>("/api/servers");
 }
 
-export function getServer(token: string, id: string): Promise<ServerDetail> {
-  return apiGet<ServerDetail>(`/api/servers/${encodedId(id)}`, token);
+export function getServer(id: string): Promise<ServerDetail> {
+  return apiGet<ServerDetail>(`/api/servers/${encodedId(id)}`);
 }
 
-export function getActivity(token: string, query: ActivityQuery = {}): Promise<ActivityPage> {
-  return apiGet<ActivityPage>(`/api/activity${queryString(query)}`, token);
+export function getActivity(query: ActivityQuery = {}): Promise<ActivityPage> {
+  return apiGet<ActivityPage>(`/api/activity${queryString(query)}`);
 }
 
-export function verifyActivity(token: string): Promise<ActivityVerify> {
-  return apiGet<ActivityVerify>("/api/activity/verify", token);
+export function verifyActivity(): Promise<ActivityVerify> {
+  return apiGet<ActivityVerify>("/api/activity/verify");
 }
 
-export function getUsers(token: string): Promise<UserView[]> {
-  return apiGet<UserView[]>("/api/users", token);
+export function getUsers(): Promise<UserView[]> {
+  return apiGet<UserView[]>("/api/users");
 }
 
-export function createUser(token: string, body: CreateUserBody): Promise<UserView> {
-  return apiPost<UserView>("/api/users", token, body);
+export function createUser(body: CreateUserBody): Promise<UserView> {
+  return apiPost<UserView>("/api/users", body);
 }
 
-export function setUserRole(token: string, id: string, role: Role): Promise<UserView> {
-  return apiPost<UserView>(`/api/users/${encodedId(id)}/role`, token, { role });
+export function setUserRole(id: string, role: Role): Promise<UserView> {
+  return apiPost<UserView>(`/api/users/${encodedId(id)}/role`, { role });
 }
 
-export function disableUser(token: string, id: string): Promise<UserView> {
-  return apiPost<UserView>(`/api/users/${encodedId(id)}/disable`, token, {});
+export function disableUser(id: string): Promise<UserView> {
+  return apiPost<UserView>(`/api/users/${encodedId(id)}/disable`, {});
 }
 
-export function enableUser(token: string, id: string): Promise<UserView> {
-  return apiPost<UserView>(`/api/users/${encodedId(id)}/enable`, token, {});
+export function enableUser(id: string): Promise<UserView> {
+  return apiPost<UserView>(`/api/users/${encodedId(id)}/enable`, {});
 }
 
-export function resetUserPassword(token: string, id: string, newPassword: string): Promise<UserView> {
-  return apiPost<UserView>(`/api/users/${encodedId(id)}/password`, token, { new_password: newPassword });
+export function resetUserPassword(id: string, newPassword: string): Promise<UserView> {
+  return apiPost<UserView>(`/api/users/${encodedId(id)}/password`, { new_password: newPassword });
 }

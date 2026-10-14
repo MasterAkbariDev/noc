@@ -11,7 +11,7 @@ export function formatConfidence(value: number | null): string {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) {
-    return "The API rejected the token. Forget it and enter it again.";
+    return "Your session ended. Sign in again.";
   }
   if (error instanceof ApiError && error.status === 404) {
     return "Not found.";

@@ -1,6 +1,5 @@
 import { Menu as MenuIcon } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { TokenBar } from "../components/TokenBar";
 import { cx } from "../lib/cx";
 import { buttonClass } from "../ui/Button";
 import { StatusPill } from "./StatusPill";
@@ -28,7 +27,6 @@ export function TopBar({ menuOpen, onToggleMenu }: TopBarProps) {
         <StatusPill />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <TokenBar />
         <ThemeToggle />
         <UserMenu />
       </div>

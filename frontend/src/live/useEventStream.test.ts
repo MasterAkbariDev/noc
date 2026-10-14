@@ -63,10 +63,10 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
-function renderStream(token: string) {
-  return renderHook((current: string) => useEventStream(current), {
+function renderStream(enabled: boolean) {
+  return renderHook((current: boolean) => useEventStream(current), {
     wrapper,
-    initialProps: token,
+    initialProps: enabled,
   });
 }
 
@@ -97,8 +97,8 @@ afterEach(() => {
 });
 
 describe("useEventStream", () => {
-  it("connects nothing without a token", async () => {
-    renderStream("");
+  it("connects nothing while the session is not signed in", async () => {
+    renderStream(false);
 
     await act(async () => {
       await Promise.resolve();
@@ -108,18 +108,15 @@ describe("useEventStream", () => {
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 
-  it("gets a ticket and opens the stream with the ticket, never the token", async () => {
-    const { result } = renderStream("api-secret");
+  it("gets a ticket with the session and opens the stream with the ticket, never a bearer header", async () => {
+    const { result } = renderStream(true);
 
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
     const source = currentSource();
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/events/ticket");
-    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(
-      "Bearer api-secret",
-    );
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has("Authorization")).toBe(false);
     expect(source.url).toBe("/api/events/stream?ticket=ticket-1");
-    expect(source.url).not.toContain("api-secret");
     expect(result.current).toBe(false);
 
     act(() => source.open());
@@ -129,7 +126,7 @@ describe("useEventStream", () => {
 
   it("invalidates the incident, detail and trace keys when an event arrives", async () => {
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-    renderStream("t");
+    renderStream(true);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
     const message = JSON.stringify({
@@ -153,7 +150,7 @@ describe("useEventStream", () => {
 
   it("ignores a message that is not an incident event", async () => {
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-    renderStream("t");
+    renderStream(true);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
     act(() => currentSource().message("incident_event", "not json"));
@@ -162,7 +159,7 @@ describe("useEventStream", () => {
   });
 
   it("closes after an error and asks for a new ticket after the backoff", async () => {
-    const { result } = renderStream("t");
+    const { result } = renderStream(true);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const first = currentSource();
     act(() => first.open());
@@ -179,7 +176,7 @@ describe("useEventStream", () => {
   });
 
   it("closes the stream on unmount", async () => {
-    const { unmount } = renderStream("t");
+    const { unmount } = renderStream(true);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = currentSource();
 
@@ -188,12 +185,12 @@ describe("useEventStream", () => {
     expect(source.closed).toBe(true);
   });
 
-  it("closes the stream when the token is forgotten", async () => {
-    const { rerender } = renderStream("t");
+  it("closes the stream when the session ends", async () => {
+    const { rerender } = renderStream(true);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = currentSource();
 
-    rerender("");
+    rerender(false);
 
     expect(source.closed).toBe(true);
   });

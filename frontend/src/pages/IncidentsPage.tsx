@@ -2,22 +2,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { listIncidents } from "../api/client";
 import { INCIDENT_STATUSES } from "../api/types";
-import { useToken } from "../auth/token";
 import { IncidentTable } from "../components/IncidentTable";
 import { errorMessage } from "../components/format";
 import { useLivePollInterval } from "../live/useEventStream";
 
 export function IncidentsPage() {
-  const { token } = useToken();
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "";
   const severity = params.get("severity") ?? "";
   const refetchInterval = useLivePollInterval();
 
   const query = useQuery({
-    queryKey: ["incidents", status, token],
-    queryFn: () => listIncidents(token, status || undefined),
-    enabled: token !== "",
+    queryKey: ["incidents", status],
+    queryFn: () => listIncidents(status || undefined),
     refetchInterval,
   });
 
@@ -66,8 +63,7 @@ export function IncidentsPage() {
           </label>
         </div>
       </div>
-      {token === "" && <p className="muted">Enter the API token above to load incidents.</p>}
-      {token !== "" && query.isPending && <p className="muted">Loading incidents...</p>}
+      {query.isPending && <p className="muted">Loading incidents...</p>}
       {query.isError && <p role="alert" className="error">{errorMessage(query.error)}</p>}
       {query.data && <IncidentTable incidents={visible} />}
     </section>
