@@ -3,19 +3,21 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { getOverview } from "../api/client";
-import type { Overview, VerdictLevel } from "../api/types";
+import type { Overview } from "../api/types";
+import type { OverviewLevel } from "../lib/tones";
 import { StatusPill } from "./StatusPill";
 
 vi.mock("../api/client", () => ({ getOverview: vi.fn() }));
 
-const DOT_CLASSES: Record<VerdictLevel, string> = {
+const DOT_CLASSES: Record<OverviewLevel, string> = {
   ok: "bg-ok",
+  working: "bg-info",
   attention: "bg-warning",
   degraded: "bg-warning",
   down: "bg-critical",
 };
 
-function overviewFixture(level: VerdictLevel, sentence: string): Overview {
+function overviewFixture(level: OverviewLevel, sentence: string): Overview {
   return {
     verdict: { level, sentence },
     kpis: {
@@ -56,8 +58,9 @@ afterEach(() => {
 });
 
 describe("StatusPill", () => {
-  it.each<[VerdictLevel, string]>([
-    ["ok", "All systems operational"],
+  it.each<[OverviewLevel, string]>([
+    ["ok", "2 servers · 0 open incidents · LLM OK"],
+    ["working", "Working on 1 incident · 2 servers up · LLM OK"],
     ["attention", "1 incident needs you"],
     ["degraded", "The LLM provider is degraded"],
     ["down", "The NOC is not working"],

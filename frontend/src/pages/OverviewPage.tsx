@@ -5,6 +5,7 @@ import type { Overview } from "../api/types";
 import { useSession } from "../auth/session";
 import { LiveActivity } from "../features/overview/LiveActivity";
 import { KpiRow } from "../features/overview/KpiRow";
+import { InProgress } from "../features/overview/InProgress";
 import { NeedsAttention } from "../features/overview/NeedsAttention";
 import { OVERVIEW_FALLBACK_POLL_MS, canCloseIncidents } from "../features/overview/model";
 import { ServerList } from "../features/overview/ServerList";
@@ -68,6 +69,9 @@ function OverviewContent({
       <KpiRow kpis={overview.kpis} llmMode={llmMode} />
       <Card title="Needs attention">
         <NeedsAttention items={overview.needs_attention} canClose={canClose} />
+      </Card>
+      <Card title="In progress">
+        <InProgress />
       </Card>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Live activity">

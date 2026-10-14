@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Kpis, Role, VerdictLevel } from "../../api/types";
-import { ACTIVITY_LIMIT, canCloseIncidents, kpiViews, recentActivity, serverLabel, serverTone, verdictTone } from "./model";
+import type { Kpis, Role } from "../../api/types";
+import { ACTIVITY_LIMIT, canCloseIncidents, kpiViews, recentActivity, serverLabel, serverTone } from "./model";
 import { activityItem } from "./testData";
 
 const HEALTHY_KPIS: Kpis = {
@@ -11,17 +11,6 @@ const HEALTHY_KPIS: Kpis = {
   llm_keys_ok: 10,
   llm_keys_total: 10,
 };
-
-describe("verdictTone", () => {
-  it.each<[VerdictLevel, string]>([
-    ["ok", "ok"],
-    ["attention", "warning"],
-    ["degraded", "warning"],
-    ["down", "critical"],
-  ])("maps the %s level to the %s tone", (level, tone) => {
-    expect(verdictTone(level)).toBe(tone);
-  });
-});
 
 describe("server status", () => {
   it("maps each server status to a tone and a plain label", () => {

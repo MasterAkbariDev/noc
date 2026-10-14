@@ -47,3 +47,33 @@ export function incidentStatusView(status: string): ToneView {
 export function healthView(status: HealthStatus): ToneView {
   return HEALTH_VIEWS[status];
 }
+
+export type OverviewLevel = "ok" | "working" | "attention" | "degraded" | "down";
+
+const OVERVIEW_LEVEL_VIEWS: Record<OverviewLevel, Tone> = {
+  ok: "ok",
+  working: "info",
+  attention: "warning",
+  degraded: "warning",
+  down: "critical",
+};
+
+const STORY_VERDICT_VIEWS = new Map<string, Tone>([
+  ["waiting", "info"],
+  ["running", "info"],
+  ["ran", "ok"],
+  ["failed", "critical"],
+  ["blocked", "warning"],
+  ["unknown", "warning"],
+  ["rejected", "warning"],
+  ["expired", "neutral"],
+  ["cancelled", "neutral"],
+]);
+
+export function overviewTone(level: OverviewLevel): Tone {
+  return OVERVIEW_LEVEL_VIEWS[level];
+}
+
+export function storyVerdictTone(verdict: string): Tone {
+  return STORY_VERDICT_VIEWS.get(verdict) ?? "neutral";
+}

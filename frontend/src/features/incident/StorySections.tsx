@@ -4,7 +4,7 @@ import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
 import { Section } from "../../ui/Section";
 import { Term } from "../../ui/Term";
-import { verdictTone } from "./labels";
+import { storyVerdictTone } from "../../lib/tones";
 
 type StorySectionsProps = {
   story: IncidentStory;
@@ -53,7 +53,7 @@ function ActionItem({ action }: { action: StoryAction }) {
     <li className="grid gap-1 rounded-control border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <strong className="font-semibold">{action.action_label}</strong>
-        <Badge tone={verdictTone(action.verdict)}>{action.verdict_label}</Badge>
+        <Badge tone={storyVerdictTone(action.verdict)}>{action.verdict_label}</Badge>
       </div>
       {action.reasons.length > 0 && (
         <ul className="m-0 list-disc pl-5 text-sm">

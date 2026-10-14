@@ -5,7 +5,6 @@ import {
   eventTypeLabel,
   plainLabel,
   runStatusTone,
-  verdictTone,
 } from "./labels";
 
 const BACKEND_EVENT_TYPES = [
@@ -79,9 +78,4 @@ describe("tones", () => {
     expect(runStatusTone("odd")).toBe("neutral");
   });
 
-  it("maps verdicts to tones and falls back to neutral", () => {
-    expect(verdictTone("ran")).toBe("ok");
-    expect(verdictTone("blocked")).toBe("warning");
-    expect(verdictTone("unknown")).toBe("neutral");
-  });
 });

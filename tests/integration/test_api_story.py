@@ -352,6 +352,63 @@ async def test_story_cites_the_alert_and_ranks_supporting_findings_first(
     }
 
 
+async def test_story_waiting_for_approval_asks_for_a_decision(
+    sessions: SessionFactory,
+    alerts: tuple[AlertIngestor, StaticAlertSource],
+    client: httpx.AsyncClient,
+) -> None:
+    incident_id = await open_incident(sessions, alerts)
+    await walk(
+        sessions,
+        incident_id,
+        [
+            IncidentStatus.INVESTIGATING,
+            IncidentStatus.DIAGNOSED,
+            IncidentStatus.PLANNED,
+            IncidentStatus.AWAITING_APPROVAL,
+        ],
+    )
+    await add_rows(sessions, diagnosis_row(incident_id, "service_crashed", 0.9, []))
+    await add_action(sessions, incident_id, "pending_approval", True, [])
+    body = await story(client, incident_id)
+    assert body["headline"] == (
+        f"{TITLE} needs you: a planned action is waiting for your approval."
+    )
+    assert body["what_you_should_do"] == {
+        "text": "Review the planned action below and approve or reject it.",
+        "steps": [
+            "Check the gates and the impact score.",
+            "Approve to let the NOC run it, or reject to handle it yourself.",
+        ],
+    }
+    assert body["what_we_did"]["considered"][0]["verdict"] == "waiting"
+    assert body["what_we_did"]["considered"][0]["verdict_label"] == "Waiting for approval"
+
+
+async def test_a_failed_action_is_described_as_tried_and_failed(
+    sessions: SessionFactory,
+    alerts: tuple[AlertIngestor, StaticAlertSource],
+    client: httpx.AsyncClient,
+) -> None:
+    incident_id = await open_incident(sessions, alerts)
+    await walk(
+        sessions,
+        incident_id,
+        [
+            IncidentStatus.INVESTIGATING,
+            IncidentStatus.DIAGNOSED,
+            IncidentStatus.PLANNED,
+            IncidentStatus.REMEDIATING,
+        ],
+    )
+    await add_rows(sessions, diagnosis_row(incident_id, "service_crashed", 0.9, []))
+    await add_action(sessions, incident_id, "failed", True, [])
+    body = await story(client, incident_id)
+    assert body["what_we_did"]["text"] == "Tried restart service, and it failed."
+    assert body["what_we_did"]["considered"][0]["verdict"] == "failed"
+    assert body["what_we_did"]["considered"][0]["verdict_label"] == "Failed"
+
+
 async def test_story_of_unknown_incident_is_not_found(client: httpx.AsyncClient) -> None:
     response = await client.get(f"/api/incidents/{uuid.uuid4()}/story", headers=AUTH)
     assert response.status_code == 404

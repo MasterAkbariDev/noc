@@ -1,5 +1,4 @@
 import asyncio
-import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -272,23 +272,29 @@ async def migration_revision(session: AsyncSession) -> str | None:
     return revision
 
 
-async def newest_job(session: AsyncSession, incident_id: uuid.UUID) -> Job | None:
-    return await session.scalar(
+async def newest_jobs(session: AsyncSession, incident_ids: list[str]) -> dict[str, Job]:
+    if not incident_ids:
+        return {}
+    incident_key = Job.payload["incident_id"].astext
+    rows = await session.scalars(
         select(Job)
-        .where(Job.payload["incident_id"].astext == str(incident_id))
-        .order_by(Job.id.desc())
-        .limit(1)
+        .where(incident_key.in_(incident_ids))
+        .ext(distinct_on(incident_key))
+        .order_by(incident_key, Job.id.desc())
     )
+    return {str(job.payload["incident_id"]): job for job in rows}
 
 
 async def stuck_incidents(session: AsyncSession, now: datetime) -> list[StuckIncident]:
+    active = [status.value for status in ACTIVE_STATUSES]
     last_event = (
         select(IncidentEvent.incident_id, func.max(IncidentEvent.ts).label("last_ts"))
+        .join(Incident, Incident.id == IncidentEvent.incident_id)
+        .where(Incident.status.in_(active))
         .group_by(IncidentEvent.incident_id)
         .subquery()
     )
     since = func.coalesce(last_event.c.last_ts, Incident.opened_at)
-    active = [status.value for status in ACTIVE_STATUSES]
     rows = await session.execute(
         select(Incident, Target.name, since.label("since"))
         .join(Target, Target.id == Incident.target_id)
@@ -296,22 +302,27 @@ async def stuck_incidents(session: AsyncSession, now: datetime) -> list[StuckInc
         .where(Incident.status.in_(active), since < now - STUCK_AFTER)
         .order_by(since)
     )
-    stuck: list[StuckIncident] = []
-    for incident, target_name, started in rows.all():
-        job = await newest_job(session, incident.id)
-        stuck.append(
-            StuckIncident(
-                id=incident.id,
-                title=incident.title,
-                target=target_name,
-                status=incident.status,
-                since=started,
-                job_status=job.status if job else None,
-                job_attempts=job.attempts if job else None,
-                job_last_error=job.last_error if job else None,
-            )
-        )
-    return stuck
+    found = rows.all()
+    jobs = await newest_jobs(session, [str(incident.id) for incident, _, _ in found])
+    return [
+        stuck_view(incident, target_name, started, jobs.get(str(incident.id)))
+        for incident, target_name, started in found
+    ]
+
+
+def stuck_view(
+    incident: Incident, target_name: str, started: datetime, job: Job | None
+) -> StuckIncident:
+    return StuckIncident(
+        id=incident.id,
+        title=incident.title,
+        target=target_name,
+        status=incident.status,
+        since=started,
+        job_status=job.status if job else None,
+        job_attempts=job.attempts if job else None,
+        job_last_error=job.last_error if job else None,
+    )
 
 
 async def read_snapshot(session: AsyncSession, now: datetime) -> DatabaseSnapshot | None:
@@ -322,6 +333,7 @@ async def read_snapshot(session: AsyncSession, now: datetime) -> DatabaseSnapsho
         migration = await migration_revision(session)
         stuck = await stuck_incidents(session, now)
     except SQLAlchemyError:
+        await session.rollback()
         return None
     return DatabaseSnapshot(heartbeat=heartbeat, migration=migration, stuck=stuck)
 

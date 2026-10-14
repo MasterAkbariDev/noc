@@ -50,13 +50,6 @@ const RUN_STATUS_TONES = new Map<string, Tone>([
   ["running", "info"],
 ]);
 
-const VERDICT_TONES = new Map<string, Tone>([
-  ["ran", "ok"],
-  ["failed", "critical"],
-  ["blocked", "warning"],
-  ["waiting", "info"],
-]);
-
 function humanize(code: string): string {
   const text = code.replaceAll("_", " ").toLowerCase();
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -78,6 +71,3 @@ export function runStatusTone(status: string): Tone {
   return RUN_STATUS_TONES.get(status) ?? "neutral";
 }
 
-export function verdictTone(verdict: string): Tone {
-  return VERDICT_TONES.get(verdict) ?? "neutral";
-}

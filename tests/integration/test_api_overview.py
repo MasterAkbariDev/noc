@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import SecretStr
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.app import create_app
@@ -221,7 +222,11 @@ async def test_incidents_that_need_a_person_are_listed_oldest_first_with_the_hea
     assert first["status_label"] == "Needs you"
     assert first["summary"] == ESCALATED_HEADLINE
     assert first["advice"] == ESCALATED_ADVICE
-    assert body["needs_attention"][1]["summary"] == f"{ALPHA_TITLE}: waiting for approval."
+    waiting = body["needs_attention"][1]
+    assert waiting["summary"] == (
+        f"{ALPHA_TITLE} needs you: a planned action is waiting for your approval."
+    )
+    assert waiting["advice"] == "Review the planned action below and approve or reject it."
 
 
 @pytest.mark.usefixtures("fleet")
@@ -243,7 +248,10 @@ async def test_the_verdict_asks_for_attention_when_incidents_need_a_person(
 ) -> None:
     async with api_client(sessions, make_settings(), ZETA_DOWN) as client:
         body = await fetch_overview(client)
-    assert body["verdict"] == {"level": "attention", "sentence": "2 incidents need you"}
+    assert body["verdict"] == {
+        "level": "attention",
+        "sentence": "2 incidents need you · Prometheus: 1 of 2 scrape targets are down",
+    }
 
 
 @pytest.mark.usefixtures("fleet")
@@ -274,12 +282,12 @@ async def test_activity_is_capped_at_fifteen_entries(
     assert body["activity"][0]["text"] == "cli added the target lab-19"
 
 
-async def test_a_quiet_fleet_is_all_systems_operational(
+async def test_a_quiet_fleet_says_ok_with_the_summary_line(
     sessions: SessionFactory, quiet_fleet: None
 ) -> None:
     async with api_client(sessions, make_settings(), ZETA_UP) as client:
         body = await fetch_overview(client)
-    assert body["verdict"] == {"level": "ok", "sentence": "All systems operational"}
+    assert body["verdict"] == {"level": "ok", "sentence": "2 servers · 0 open incidents · LLM OK"}
     assert body["needs_attention"] == []
     assert body["kpis"]["open_incidents"] == 0
 
@@ -297,3 +305,73 @@ async def test_an_unreachable_prometheus_degrades_the_verdict_without_a_500(
     }
     assert [server["status"] for server in body["servers"]] == ["unknown", "unknown"]
     assert all(server["metrics"] is None for server in body["servers"])
+
+
+async def test_an_incident_in_progress_makes_the_verdict_working(
+    sessions: SessionFactory, quiet_fleet: None
+) -> None:
+    async with transaction(sessions) as session:
+        alpha = (await session.scalars(select(Target).where(Target.name == "alpha-1"))).one()
+        session.add(
+            Incident(
+                target_id=alpha.id,
+                status="INVESTIGATING",
+                severity="warning",
+                title=ALPHA_TITLE,
+                trace_id="d" * 32,
+                opened_at=utc_now(),
+            )
+        )
+    async with api_client(sessions, make_settings(), ZETA_UP) as client:
+        body = await fetch_overview(client)
+    assert body["verdict"] == {
+        "level": "working",
+        "sentence": "Working on 1 incident · 2 servers up · LLM OK",
+    }
+
+
+async def test_needs_attention_is_capped_at_twenty_oldest_first_and_the_count_is_exact(
+    sessions: SessionFactory, quiet_fleet: None
+) -> None:
+    now = utc_now()
+    async with transaction(sessions) as session:
+        alpha = (await session.scalars(select(Target).where(Target.name == "alpha-1"))).one()
+        session.add_all(
+            [
+                Incident(
+                    target_id=alpha.id,
+                    status="ESCALATED",
+                    severity="warning",
+                    title=f"Incident {number}",
+                    trace_id=f"{number:032x}",
+                    opened_at=now - timedelta(hours=number + 1),
+                    escalated_at=now - timedelta(hours=number),
+                    escalation_reason="execution_not_available",
+                )
+                for number in range(21)
+            ]
+        )
+    async with api_client(sessions, make_settings(), ZETA_UP) as client:
+        body = await fetch_overview(client)
+    titles = [item["title"] for item in body["needs_attention"]]
+    assert len(titles) == 20
+    assert titles[0] == "Incident 20"
+    assert titles[-1] == "Incident 1"
+    assert body["kpis"]["needs_you"] == 21
+
+
+async def test_a_failed_health_snapshot_does_not_break_the_rest_of_the_overview(
+    sessions: SessionFactory, quiet_fleet: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def broken_revision(session: AsyncSession) -> str | None:
+        await session.execute(text("SELECT * FROM no_such_table"))
+        return None
+
+    monkeypatch.setattr("noc.api.system.migration_revision", broken_revision)
+    async with api_client(sessions, make_settings(), ZETA_UP) as client:
+        body = await fetch_overview(client)
+    assert body["verdict"] == {
+        "level": "down",
+        "sentence": "The NOC is not working: The database did not answer",
+    }
+    assert body["kpis"]["open_incidents"] == 0

@@ -24,6 +24,19 @@ from noc.db.models import ActionRow, AlertEvent, DiagnosisRow, FindingRow, Incid
 from noc.domain.incident_status import ACTIVE_STATUSES, CLOSED_STATUSES, IncidentStatus
 from noc.reporting import plain_language as words
 from noc.store.decisions import EXECUTED_STATUSES, IN_FLIGHT_STATUSES
+from noc.store.remediation import (
+    AUTHORIZED,
+    CANCELLED,
+    DISPATCHED,
+    EXPIRED,
+    FAILED,
+    OUTCOME_UNKNOWN,
+    PENDING_APPROVAL,
+    PROPOSED,
+    REFUSED,
+    REJECTED,
+    SUCCEEDED,
+)
 from noc_shared.taxonomy import RootCauseCode
 
 router = APIRouter(
@@ -34,7 +47,31 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 Step = tuple[str, StepState, datetime | None]
 OUTCOME_KEY = "outcome"
 FAILED_ACTION = "failed"
+EXECUTING = "executing"
 MAX_POINTS = 4
+VERDICT_BY_STATUS: dict[str, str] = {
+    PROPOSED: "waiting",
+    PENDING_APPROVAL: "waiting",
+    AUTHORIZED: "running",
+    DISPATCHED: "running",
+    EXECUTING: "running",
+    SUCCEEDED: "ran",
+    FAILED: "failed",
+    REFUSED: "failed",
+    OUTCOME_UNKNOWN: "unknown",
+    REJECTED: "rejected",
+    EXPIRED: "expired",
+    CANCELLED: "cancelled",
+}
+DID_BY_STATUS: tuple[tuple[tuple[str, ...], str], ...] = (
+    ((SUCCEEDED,), "Ran {names}."),
+    ((FAILED, REFUSED), "Tried {names}, and it failed."),
+    ((OUTCOME_UNKNOWN,), "Ran {names}, but the result is not known."),
+    ((AUTHORIZED, DISPATCHED, EXECUTING), "Running {names}."),
+    ((REJECTED,), "Nothing — a person rejected the planned action."),
+    ((EXPIRED,), "Nothing — nobody approved the planned action in time."),
+    ((CANCELLED,), "Nothing — the planned action was cancelled."),
+)
 
 
 @router.get("/{incident_id}/story")
@@ -87,7 +124,7 @@ def build_story(
         what_happened=build_what_happened(incident, alert),
         what_we_found=build_found(incident, diagnosis, findings),
         what_we_did=build_did(incident, actions),
-        what_you_should_do=build_advice(incident, status, code),
+        what_you_should_do=build_advice(incident, status, code, pending_action(actions)),
     )
 
 
@@ -95,7 +132,13 @@ def build_headline(incident: Incident, status: IncidentStatus, status_label: str
     if status is IncidentStatus.ESCALATED:
         why, _ = words.escalation_pair(incident.escalation_reason)
         return f"{incident.title} needs you: {why}."
+    if status is IncidentStatus.AWAITING_APPROVAL:
+        return f"{incident.title} needs you: a planned action is waiting for your approval."
     return f"{incident.title}: {status_label.lower()}."
+
+
+def pending_action(actions: list[ActionRow]) -> ActionRow | None:
+    return next((action for action in actions if action.status == PENDING_APPROVAL), None)
 
 
 def build_steps(
@@ -289,10 +332,10 @@ def build_did(incident: Incident, actions: list[ActionRow]) -> StoryDid:
 
 
 def did_text(incident: Incident, actions: list[ActionRow]) -> str:
-    ran = [action for action in actions if action.status in EXECUTED_STATUSES]
-    if ran:
-        names = ", ".join(words.humanize(action.action_type).lower() for action in ran)
-        return f"Ran {names}."
+    for statuses, template in DID_BY_STATUS:
+        named = [action for action in actions if action.status in statuses]
+        if named:
+            return template.format(names=action_names(named))
     gates = [gate for action in actions for gate in action.gate_failures]
     if gates:
         return f"Nothing — {words.text_for(words.GATE_TEXT, gates[0])}."
@@ -302,6 +345,10 @@ def did_text(incident: Incident, actions: list[ActionRow]) -> str:
     if not actions:
         return "No action was proposed."
     return "Nothing was run yet."
+
+
+def action_names(actions: list[ActionRow]) -> str:
+    return ", ".join(words.humanize(action.action_type).lower() for action in actions)
 
 
 def story_action(action: ActionRow) -> StoryAction:
@@ -317,21 +364,23 @@ def story_action(action: ActionRow) -> StoryAction:
 
 
 def action_verdict(action: ActionRow) -> str:
-    if action.status == FAILED_ACTION:
-        return "failed"
-    if action.status in EXECUTED_STATUSES:
-        return "ran"
+    verdict = VERDICT_BY_STATUS.get(action.status)
+    if verdict is not None:
+        return verdict
     if not action.eligible:
         return "blocked"
     return "waiting"
 
 
-def build_advice(incident: Incident, status: IncidentStatus, code: str | None) -> StoryAdvice:
+def build_advice(
+    incident: Incident, status: IncidentStatus, code: str | None, pending: ActionRow | None
+) -> StoryAdvice:
     if status is IncidentStatus.ESCALATED:
         _, what_to_do = words.escalation_pair(incident.escalation_reason)
         return StoryAdvice(text=what_to_do, steps=root_cause_steps(code))
     if status is IncidentStatus.AWAITING_APPROVAL:
-        return StoryAdvice(text=words.APPROVAL_WAIT_TEXT, steps=[])
+        steps = list(words.APPROVAL_WAIT_STEPS) if pending is not None else []
+        return StoryAdvice(text=words.APPROVAL_WAIT_TEXT, steps=steps)
     if status in ACTIVE_STATUSES:
         return StoryAdvice(text=words.WORKING_TEXT, steps=[])
     return StoryAdvice(text=words.FINISHED_TEXT, steps=[])

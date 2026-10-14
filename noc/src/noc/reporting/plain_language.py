@@ -11,7 +11,11 @@ ESCALATION_FALLBACK = (
 )
 ROOT_CAUSE_FALLBACK_ADVICE = "Investigate by hand."
 WORKING_TEXT = "Nothing yet — the agents are still working."
-APPROVAL_WAIT_TEXT = "Nothing yet — the planned action is waiting for approval."
+APPROVAL_WAIT_TEXT = "Review the planned action below and approve or reject it."
+APPROVAL_WAIT_STEPS = [
+    "Check the gates and the impact score.",
+    "Approve to let the NOC run it, or reject to handle it yourself.",
+]
 FINISHED_TEXT = "Nothing. This incident is finished."
 
 STATUS_LABELS: dict[IncidentStatus, str] = {
@@ -225,10 +229,39 @@ AUTOMATION_LABELS: dict[AutomationLevel, str] = {
 }
 
 VERDICT_LABELS: dict[str, str] = {
-    "ran": "Ran",
+    "waiting": "Waiting for approval",
+    "running": "Running",
+    "ran": "Done",
     "failed": "Failed",
+    "unknown": "Result unknown",
+    "rejected": "Rejected by a person",
+    "expired": "Approval expired",
+    "cancelled": "Cancelled",
     "blocked": "Blocked",
-    "waiting": "Waiting",
+}
+
+STATE_CHANGED_EVENT = "state_changed"
+
+EVENT_SENTENCES: dict[str, str] = {
+    "incident_opened": "{title} was opened",
+    "alert_attached": "An alert was added to {title}",
+    "report_generated": "A report was written for {title}",
+    "investigation_planned": "The investigation of {title} was planned",
+    "investigation_abandoned": "The investigation of {title} was abandoned",
+    "specialist_unavailable": "A specialist was unavailable for {title}",
+    "specialist_finished": "{actor} finished checking {title}",
+    "specialist_failed": "{actor} failed while checking {title}",
+    "action_authorized": "An action for {title} was approved to run",
+    "approval_requested": "An action for {title} is waiting for an approval",
+    "approval_decided": "{actor} recorded a decision on an action for {title}",
+    "approval_expired": "Nobody approved an action for {title} in time",
+    "action_dispatched": "An action for {title} started",
+    "action_succeeded": "An action for {title} succeeded",
+    "action_failed": "An action for {title} failed",
+    "action_outcome_unknown": "The result of an action for {title} is unknown",
+    "action_cancelled": "An action for {title} was cancelled",
+    "verification_passed": "The check after the fix for {title} passed",
+    "verification_failed": "The check after the fix for {title} failed",
 }
 
 AUDIT_ACTION_LABELS: dict[str, str] = {

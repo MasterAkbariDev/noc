@@ -300,6 +300,66 @@ async def test_an_incident_that_stopped_moving_is_listed_with_its_job(
     assert abs(since - (now - timedelta(minutes=20))) < timedelta(minutes=1)
 
 
+async def test_each_stuck_incident_is_listed_with_its_own_newest_job(
+    sessions: SessionFactory,
+) -> None:
+    now = utc_now()
+    async with transaction(sessions) as session:
+        first_target = await add_target(
+            session, "demo-1", "10.0.0.2", "https://demo-1:9443", Environment.LAB, KEY_ID
+        )
+        second_target = await add_target(
+            session, "demo-2", "10.0.0.3", "https://demo-2:9443", Environment.LAB, KEY_ID
+        )
+        first = Incident(
+            target_id=first_target.id,
+            status="INVESTIGATING",
+            severity="critical",
+            title="ServiceDown on demo-1",
+            trace_id="a" * 32,
+            opened_at=now - timedelta(minutes=40),
+        )
+        second = Incident(
+            target_id=second_target.id,
+            status="PLANNED",
+            severity="critical",
+            title="ServiceDown on demo-2",
+            trace_id="b" * 32,
+            opened_at=now - timedelta(minutes=41),
+        )
+        session.add_all([first, second])
+        await session.flush()
+        session.add_all(
+            [
+                Job(
+                    kind="investigate",
+                    payload={"incident_id": str(first.id)},
+                    status="dead",
+                    attempts=5,
+                    last_error="old failure",
+                ),
+                Job(
+                    kind="investigate",
+                    payload={"incident_id": str(first.id)},
+                    status="queued",
+                    attempts=0,
+                ),
+                Job(
+                    kind="investigate",
+                    payload={"incident_id": str(second.id)},
+                    status="dead",
+                    attempts=3,
+                    last_error="second failure",
+                ),
+            ]
+        )
+        expected = {str(first.id): "queued", str(second.id): "dead"}
+    async with api_client(sessions, make_settings()) as client:
+        body = await fetch_health(client)
+    statuses = {row["id"]: row["job_status"] for row in body["stuck_incidents"]}
+    assert statuses == expected
+
+
 async def test_the_migration_revision_comes_from_alembic_version(
     sessions: SessionFactory,
 ) -> None:

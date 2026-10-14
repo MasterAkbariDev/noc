@@ -390,7 +390,7 @@ class MeView(BaseModel):
     via: Literal["session", "token"]
 
 
-OverviewLevel = Literal["ok", "attention", "degraded", "down"]
+OverviewLevel = Literal["ok", "working", "attention", "degraded", "down"]
 ActivityKind = Literal["incident", "audit"]
 
 

@@ -1,15 +1,8 @@
-import type { ActivityItem, Kpis, Role, ServerStatus, VerdictLevel } from "../../api/types";
+import type { ActivityItem, Kpis, Role, ServerStatus } from "../../api/types";
 import type { Tone } from "../../lib/tones";
 
 export const OVERVIEW_FALLBACK_POLL_MS = 15000;
 export const ACTIVITY_LIMIT = 15;
-
-const VERDICT_TONES: Record<VerdictLevel, Tone> = {
-  ok: "ok",
-  attention: "warning",
-  degraded: "warning",
-  down: "critical",
-};
 
 const SERVER_TONES: Record<ServerStatus, Tone> = {
   up: "ok",
@@ -31,10 +24,6 @@ export type KpiView = {
   tone: Tone;
   to: string;
 };
-
-export function verdictTone(level: VerdictLevel): Tone {
-  return VERDICT_TONES[level];
-}
 
 export function serverTone(status: ServerStatus): Tone {
   return SERVER_TONES[status];

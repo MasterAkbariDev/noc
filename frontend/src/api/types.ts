@@ -192,7 +192,7 @@ export type CreateUserBody = {
   role: Role;
 };
 
-export type VerdictLevel = "ok" | "attention" | "degraded" | "down";
+export type VerdictLevel = "ok" | "working" | "attention" | "degraded" | "down";
 
 export type Verdict = {
   level: VerdictLevel;

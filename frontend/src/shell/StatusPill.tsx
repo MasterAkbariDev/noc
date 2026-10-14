@@ -1,19 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { getOverview } from "../api/client";
-import type { VerdictLevel } from "../api/types";
 import { cx } from "../lib/cx";
-import type { Tone } from "../lib/tones";
+import { overviewTone } from "../lib/tones";
 import { StatusDot } from "../ui/StatusDot";
 
 export const OVERVIEW_POLL_MS = 30000;
-
-const LEVEL_TONES: Record<VerdictLevel, Tone> = {
-  ok: "ok",
-  attention: "warning",
-  degraded: "warning",
-  down: "critical",
-};
 
 const PILL_CLASS = "inline-flex max-w-full items-center rounded-full border border-border px-3 py-1 text-sm";
 
@@ -42,7 +34,7 @@ export function StatusPill() {
   const verdict = query.data.verdict;
   return (
     <Link to="/" className={cx(PILL_CLASS, "hover:bg-surface-2")}>
-      <StatusDot tone={LEVEL_TONES[verdict.level]} label={verdict.sentence} showLabel />
+      <StatusDot tone={overviewTone(verdict.level)} label={verdict.sentence} showLabel />
     </Link>
   );
 }

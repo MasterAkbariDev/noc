@@ -129,7 +129,7 @@ class IncidentEvent(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
-    ts: Mapped[datetime] = mapped_column(default=utc_now)
+    ts: Mapped[datetime] = mapped_column(default=utc_now, index=True)
     type: Mapped[str] = mapped_column(String(48))
     actor: Mapped[str] = mapped_column(String(64))
     payload: Mapped[Json] = mapped_column(JSONB, default=dict)
@@ -307,7 +307,7 @@ class AuditEntry(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ts: Mapped[datetime] = mapped_column(default=utc_now)
+    ts: Mapped[datetime] = mapped_column(default=utc_now, index=True)
     actor: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(64))
     subject: Mapped[str] = mapped_column(String(160))

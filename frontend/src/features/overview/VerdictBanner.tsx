@@ -1,11 +1,17 @@
-import { CircleCheck, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
-import type { Verdict, VerdictLevel } from "../../api/types";
+import { Activity, CircleCheck, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Link } from "react-router";
 import { cx } from "../../lib/cx";
-import type { Tone } from "../../lib/tones";
-import { verdictTone } from "./model";
+import { overviewTone, type OverviewLevel, type Tone } from "../../lib/tones";
+import { buttonClass } from "../../ui";
 
-const LEVEL_ICONS: Record<VerdictLevel, LucideIcon> = {
+export type BannerVerdict = {
+  level: OverviewLevel;
+  sentence: string;
+};
+
+const LEVEL_ICONS: Record<OverviewLevel, LucideIcon> = {
   ok: CircleCheck,
+  working: Activity,
   attention: TriangleAlert,
   degraded: TriangleAlert,
   down: OctagonAlert,
@@ -29,16 +35,42 @@ const ICON_CLASSES: Record<Tone, string> = {
   unknown: "text-unknown",
 };
 
-export function VerdictBanner({ verdict }: { verdict: Verdict }) {
-  const tone = verdictTone(verdict.level);
+const SEPARATOR = " · ";
+const LINKED_LEVELS: ReadonlySet<OverviewLevel> = new Set(["attention", "degraded", "down"]);
+
+function sentenceLines(verdict: BannerVerdict): { primary: string; secondary: string | null } {
+  const index = verdict.sentence.indexOf(SEPARATOR);
+  if (verdict.level !== "attention" || index === -1) {
+    return { primary: verdict.sentence, secondary: null };
+  }
+  return {
+    primary: verdict.sentence.slice(0, index),
+    secondary: verdict.sentence.slice(index + SEPARATOR.length),
+  };
+}
+
+export function VerdictBanner({ verdict }: { verdict: BannerVerdict }) {
+  const tone = overviewTone(verdict.level);
   const Icon = LEVEL_ICONS[verdict.level];
+  const { primary, secondary } = sentenceLines(verdict);
   return (
     <section
       aria-label="Overall status"
-      className={cx("flex items-center gap-3 rounded-card border p-4", BOX_CLASSES[tone])}
+      className={cx(
+        "flex flex-wrap items-center gap-3 rounded-card border p-4",
+        BOX_CLASSES[tone],
+      )}
     >
       <Icon aria-hidden="true" size={24} strokeWidth={2.25} className={ICON_CLASSES[tone]} />
-      <p className="m-0 text-lg font-semibold">{verdict.sentence}</p>
+      <div className="grid min-w-0 flex-1 gap-1">
+        <p className="m-0 text-lg font-semibold break-words">{primary}</p>
+        {secondary !== null && <p className="m-0 text-sm break-words">{secondary}</p>}
+      </div>
+      {LINKED_LEVELS.has(verdict.level) && (
+        <Link to="/system" className={buttonClass({ size: "sm" })}>
+          See system health
+        </Link>
+      )}
     </section>
   );
 }

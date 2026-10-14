@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { healthView, incidentStatusView, severityView } from "./tones";
+import {
+  healthView,
+  incidentStatusView,
+  overviewTone,
+  severityView,
+  storyVerdictTone,
+  type OverviewLevel,
+  type Tone,
+} from "./tones";
 
 describe("severityView", () => {
   it("maps the three known severities to a label and a tone", () => {
@@ -43,5 +51,37 @@ describe("healthView", () => {
     ["unknown", "Unknown", "unknown"],
   ] as const)("maps %s to %s with tone %s", (status, label, tone) => {
     expect(healthView(status)).toEqual({ label, tone });
+  });
+});
+
+describe("overviewTone", () => {
+  it.each<[OverviewLevel, Tone]>([
+    ["ok", "ok"],
+    ["working", "info"],
+    ["attention", "warning"],
+    ["degraded", "warning"],
+    ["down", "critical"],
+  ])("maps the %s level to the %s tone", (level, tone) => {
+    expect(overviewTone(level)).toBe(tone);
+  });
+});
+
+describe("storyVerdictTone", () => {
+  it.each<[string, Tone]>([
+    ["waiting", "info"],
+    ["running", "info"],
+    ["ran", "ok"],
+    ["failed", "critical"],
+    ["blocked", "warning"],
+    ["unknown", "warning"],
+    ["rejected", "warning"],
+    ["expired", "neutral"],
+    ["cancelled", "neutral"],
+  ])("maps the %s verdict to the %s tone", (verdict, tone) => {
+    expect(storyVerdictTone(verdict)).toBe(tone);
+  });
+
+  it("falls back to neutral for a verdict it does not know", () => {
+    expect(storyVerdictTone("something_new")).toBe("neutral");
   });
 });
