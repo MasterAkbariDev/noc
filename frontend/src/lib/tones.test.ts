@@ -68,7 +68,8 @@ describe("overviewTone", () => {
 
 describe("storyVerdictTone", () => {
   it.each<[string, Tone]>([
-    ["waiting", "info"],
+    ["approval", "warning"],
+    ["waiting", "neutral"],
     ["running", "info"],
     ["ran", "ok"],
     ["failed", "critical"],

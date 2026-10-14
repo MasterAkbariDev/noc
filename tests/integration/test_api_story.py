@@ -381,7 +381,7 @@ async def test_story_waiting_for_approval_asks_for_a_decision(
             "Approve to let the NOC run it, or reject to handle it yourself.",
         ],
     }
-    assert body["what_we_did"]["considered"][0]["verdict"] == "waiting"
+    assert body["what_we_did"]["considered"][0]["verdict"] == "approval"
     assert body["what_we_did"]["considered"][0]["verdict_label"] == "Waiting for approval"
 
 

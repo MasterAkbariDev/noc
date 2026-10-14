@@ -59,7 +59,8 @@ const OVERVIEW_LEVEL_VIEWS: Record<OverviewLevel, Tone> = {
 };
 
 const STORY_VERDICT_VIEWS = new Map<string, Tone>([
-  ["waiting", "info"],
+  ["approval", "warning"],
+  ["waiting", "neutral"],
   ["running", "info"],
   ["ran", "ok"],
   ["failed", "critical"],

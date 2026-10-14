@@ -16,6 +16,10 @@ APPROVAL_WAIT_STEPS = [
     "Check the gates and the impact score.",
     "Approve to let the NOC run it, or reject to handle it yourself.",
 ]
+APPROVAL_EXPIRED_TEXT = (
+    "The approval window passed without a decision. Decide by hand what to do, then close "
+    "the incident with a note."
+)
 FINISHED_TEXT = "Nothing. This incident is finished."
 
 STATUS_LABELS: dict[IncidentStatus, str] = {
@@ -229,7 +233,8 @@ AUTOMATION_LABELS: dict[AutomationLevel, str] = {
 }
 
 VERDICT_LABELS: dict[str, str] = {
-    "waiting": "Waiting for approval",
+    "approval": "Waiting for approval",
+    "waiting": "Not started yet",
     "running": "Running",
     "ran": "Done",
     "failed": "Failed",

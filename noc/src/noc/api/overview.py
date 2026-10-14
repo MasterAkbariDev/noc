@@ -23,11 +23,12 @@ from noc.api.schemas import (
     SystemHealth,
 )
 from noc.api.servers import load_server_summaries
-from noc.api.story import build_advice, build_headline
+from noc.api.story import approval_open, build_advice, build_headline
 from noc.api.system import system_health
 from noc.api.system_llm import get_llm_status
 from noc.auth.roles import Role
 from noc.config import Settings
+from noc.db.base import utc_now
 from noc.db.models import ActionRow, AuditEntry, Incident, IncidentEvent, Target
 from noc.domain.incident_status import ACTIVE_STATUSES, OPEN_STATUSES, IncidentStatus
 from noc.reporting import plain_language as words
@@ -164,7 +165,7 @@ def attention_item(
         status=incident.status,
         status_label=status_label,
         since=attention_since(incident),
-        summary=build_headline(incident, status, status_label),
+        summary=build_headline(incident, status, status_label, pending),
         advice=attention_advice(status, advice),
     )
 
@@ -192,10 +193,15 @@ async def needs_attention(session: AsyncSession) -> list[AttentionItem]:
     )
     waiting = rows.all()
     pending = await pending_actions(session, [incident.id for incident, _ in waiting])
+    now = utc_now()
     return [
-        attention_item(incident, target_name, pending.get(incident.id))
+        attention_item(incident, target_name, open_pending(pending.get(incident.id), now))
         for incident, target_name in waiting
     ]
+
+
+def open_pending(action: ActionRow | None, now: datetime) -> ActionRow | None:
+    return action if action is not None and approval_open(action, now) else None
 
 
 async def count_incidents(session: AsyncSession, statuses: Collection[str]) -> int:

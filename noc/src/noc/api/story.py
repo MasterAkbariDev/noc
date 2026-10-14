@@ -20,6 +20,7 @@ from noc.api.schemas import (
     StoryText,
 )
 from noc.auth.roles import Role
+from noc.db.base import utc_now
 from noc.db.models import ActionRow, AlertEvent, DiagnosisRow, FindingRow, Incident, Target
 from noc.domain.incident_status import ACTIVE_STATUSES, CLOSED_STATUSES, IncidentStatus
 from noc.reporting import plain_language as words
@@ -51,7 +52,7 @@ EXECUTING = "executing"
 MAX_POINTS = 4
 VERDICT_BY_STATUS: dict[str, str] = {
     PROPOSED: "waiting",
-    PENDING_APPROVAL: "waiting",
+    PENDING_APPROVAL: "approval",
     AUTHORIZED: "running",
     DISPATCHED: "running",
     EXECUTING: "running",
@@ -112,6 +113,8 @@ def build_story(
     status = IncidentStatus(incident.status)
     status_label = words.text_for(words.STATUS_LABELS, incident.status)
     code = root_cause_code(incident, diagnosis)
+    now = utc_now()
+    pending = pending_action(actions, now)
     return IncidentStory(
         id=incident.id,
         title=incident.title,
@@ -119,26 +122,35 @@ def build_story(
         severity=incident.severity,
         status=incident.status,
         status_label=status_label,
-        headline=build_headline(incident, status, status_label),
+        headline=build_headline(incident, status, status_label, pending),
         steps=build_steps(incident, status, actions),
         what_happened=build_what_happened(incident, alert),
         what_we_found=build_found(incident, diagnosis, findings),
-        what_we_did=build_did(incident, actions),
-        what_you_should_do=build_advice(incident, status, code, pending_action(actions)),
+        what_we_did=build_did(incident, actions, now),
+        what_you_should_do=build_advice(incident, status, code, pending),
     )
 
 
-def build_headline(incident: Incident, status: IncidentStatus, status_label: str) -> str:
+def build_headline(
+    incident: Incident, status: IncidentStatus, status_label: str, pending: ActionRow | None
+) -> str:
     if status is IncidentStatus.ESCALATED:
         why, _ = words.escalation_pair(incident.escalation_reason)
         return f"{incident.title} needs you: {why}."
+    if status is IncidentStatus.AWAITING_APPROVAL and pending is None:
+        return f"{incident.title} needs you: the approval request expired."
     if status is IncidentStatus.AWAITING_APPROVAL:
         return f"{incident.title} needs you: a planned action is waiting for your approval."
     return f"{incident.title}: {status_label.lower()}."
 
 
-def pending_action(actions: list[ActionRow]) -> ActionRow | None:
-    return next((action for action in actions if action.status == PENDING_APPROVAL), None)
+def approval_open(action: ActionRow, now: datetime) -> bool:
+    expires_at = action.approval_expires_at
+    return action.status == PENDING_APPROVAL and (expires_at is None or expires_at > now)
+
+
+def pending_action(actions: list[ActionRow], now: datetime) -> ActionRow | None:
+    return next((action for action in actions if approval_open(action, now)), None)
 
 
 def build_steps(
@@ -324,10 +336,10 @@ def evidence_refs(evidence: list[dict[str, Any]]) -> list[str]:
     return [str(item["tool_call_ref"]) for item in evidence if "tool_call_ref" in item]
 
 
-def build_did(incident: Incident, actions: list[ActionRow]) -> StoryDid:
+def build_did(incident: Incident, actions: list[ActionRow], now: datetime) -> StoryDid:
     return StoryDid(
         text=did_text(incident, actions),
-        considered=[story_action(action) for action in actions],
+        considered=[story_action(action, now) for action in actions],
     )
 
 
@@ -351,8 +363,8 @@ def action_names(actions: list[ActionRow]) -> str:
     return ", ".join(words.humanize(action.action_type).lower() for action in actions)
 
 
-def story_action(action: ActionRow) -> StoryAction:
-    verdict = action_verdict(action)
+def story_action(action: ActionRow, now: datetime) -> StoryAction:
+    verdict = action_verdict(action, now)
     return StoryAction(
         action=action.action_type,
         action_label=words.humanize(action.action_type),
@@ -363,7 +375,9 @@ def story_action(action: ActionRow) -> StoryAction:
     )
 
 
-def action_verdict(action: ActionRow) -> str:
+def action_verdict(action: ActionRow, now: datetime) -> str:
+    if action.status == PENDING_APPROVAL and not approval_open(action, now):
+        return "expired"
     verdict = VERDICT_BY_STATUS.get(action.status)
     if verdict is not None:
         return verdict
@@ -378,9 +392,10 @@ def build_advice(
     if status is IncidentStatus.ESCALATED:
         _, what_to_do = words.escalation_pair(incident.escalation_reason)
         return StoryAdvice(text=what_to_do, steps=root_cause_steps(code))
+    if status is IncidentStatus.AWAITING_APPROVAL and pending is None:
+        return StoryAdvice(text=words.APPROVAL_EXPIRED_TEXT, steps=[])
     if status is IncidentStatus.AWAITING_APPROVAL:
-        steps = list(words.APPROVAL_WAIT_STEPS) if pending is not None else []
-        return StoryAdvice(text=words.APPROVAL_WAIT_TEXT, steps=steps)
+        return StoryAdvice(text=words.APPROVAL_WAIT_TEXT, steps=list(words.APPROVAL_WAIT_STEPS))
     if status in ACTIVE_STATUSES:
         return StoryAdvice(text=words.WORKING_TEXT, steps=[])
     return StoryAdvice(text=words.FINISHED_TEXT, steps=[])

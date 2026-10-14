@@ -16,7 +16,7 @@ from noc.auth.roles import Role
 from noc.auth.users import create_user
 from noc.config import Settings
 from noc.db.base import utc_now
-from noc.db.models import Incident, Target, WorkerHeartbeat
+from noc.db.models import ActionRow, Incident, Target, WorkerHeartbeat
 from noc.db.session import SessionFactory, transaction
 from noc.policy.models import Environment
 from noc.store.incidents import add_event
@@ -165,6 +165,26 @@ async def fleet(sessions: SessionFactory, heartbeat: None) -> None:
         )
         session.add_all([escalated, waiting, resolved])
         await session.flush()
+        session.add(
+            ActionRow(
+                incident_id=waiting.id,
+                target_id=alpha.id,
+                action_type="restart_service",
+                resource_id="svc:demo-shop",
+                params={},
+                status="pending_approval",
+                permission_class="SAFE_ACTION",
+                eligible=True,
+                auto_executable=False,
+                gate_failures=[],
+                reasons=[],
+                impact_score=3,
+                high_impact=False,
+                policy_version="test",
+                action_hash="d" * 64,
+                approval_expires_at=now + timedelta(hours=1),
+            )
+        )
         await add_event(
             session,
             escalated.id,
