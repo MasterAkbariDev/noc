@@ -14,6 +14,10 @@ x-noc-app: &noc-app
     NOC_PROMETHEUS_TARGETS_DIR: /var/lib/noc/prometheus-targets
     NOC_UPDATE_STATUS_FILE: /var/lib/noc-update/status.json
     NOC_MAX_CONCURRENT_INCIDENTS: "1"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
   restart: unless-stopped
   logging: *logging
 
