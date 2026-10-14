@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Page } from "@playwright/test";
+import { readEnv } from "./env";
 
 export { expect };
 
@@ -16,7 +17,7 @@ const MIN_PASSWORD_LENGTH = 12;
 const CSP_MARKER = "Content Security Policy";
 
 export function e2ePassword(): string {
-  const password = process.env.NOC_E2E_PASSWORD ?? "";
+  const password = readEnv("NOC_E2E_PASSWORD") ?? "";
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`NOC_E2E_PASSWORD must be set to at least ${MIN_PASSWORD_LENGTH} characters`);
   }

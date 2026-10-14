@@ -42,6 +42,17 @@ export function openIncidentsText(count: number): string {
   return count === 1 ? "1 open incident" : `${count} open incidents`;
 }
 
+const HEADLINE_SEPARATOR = " · ";
+
+export function headlineWithoutIncidents(headline: string, count: number): string {
+  const phrase = openIncidentsText(count);
+  if (headline === phrase) {
+    return "";
+  }
+  const suffix = `${HEADLINE_SEPARATOR}${phrase}`;
+  return headline.endsWith(suffix) ? headline.slice(0, -suffix.length) : headline;
+}
+
 export function errorText(error: unknown): string {
   return error instanceof ApiError ? error.detail : UNREACHABLE_MESSAGE;
 }

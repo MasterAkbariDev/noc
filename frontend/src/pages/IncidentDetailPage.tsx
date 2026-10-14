@@ -5,7 +5,7 @@ import { getIncident, getServers, getStory } from "../api/client";
 import type { IncidentDetail, ServerSummary } from "../api/types";
 import { useSession } from "../auth/session";
 import { CloseIncidentForm } from "../components/CloseIncidentForm";
-import { errorMessage } from "../components/format";
+import { errorMessage } from "../lib/format";
 import { AgentActivityTab } from "../features/incident/AgentActivityTab";
 import { ApprovalCard } from "../features/incident/ApprovalCard";
 import { canDecideActions, pendingApprovals } from "../features/incident/approval";

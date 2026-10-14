@@ -47,10 +47,23 @@ describe("ServerCard", () => {
   it("shows the headline, the status label and the open incidents as text", () => {
     renderCard();
 
-    expect(screen.getByText("Disk 92% full · 1 open incident")).toBeTruthy();
+    expect(screen.getByText("Disk 92% full")).toBeTruthy();
     expect(screen.getByText("Reachable")).toBeTruthy();
     expect(screen.getByText("1 open incident")).toBeTruthy();
     expect(screen.getByText("Critical")).toBeTruthy();
+  });
+
+  it("names the open incidents once, in the footer, not in the headline", () => {
+    renderCard();
+
+    expect(screen.queryByText("Disk 92% full · 1 open incident")).toBeNull();
+    expect(screen.getAllByText(/open incident/)).toHaveLength(1);
+  });
+
+  it("leaves out the headline line when it only repeats the open incidents", () => {
+    renderCard({ headline: "1 open incident" });
+
+    expect(screen.getAllByText("1 open incident")).toHaveLength(1);
   });
 
   it("shows the automation label, with the raw level in a tooltip term", () => {

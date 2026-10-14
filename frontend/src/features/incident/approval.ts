@@ -1,6 +1,6 @@
 import { ApiError } from "../../api/client";
 import type { ActionView, Role } from "../../api/types";
-import { errorMessage } from "../../components/format";
+import { errorMessage } from "../../lib/format";
 
 export const COMMENT_MAX_LENGTH = 500;
 

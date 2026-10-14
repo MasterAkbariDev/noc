@@ -1,4 +1,4 @@
-import { errorMessage } from "../../components/format";
+import { errorMessage } from "../../lib/format";
 import { Button, ErrorState, Skeleton } from "../../ui";
 import { ActivityTable } from "./ActivityTable";
 import type { ActivityFilters } from "./filters";

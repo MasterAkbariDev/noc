@@ -4,6 +4,7 @@ import {
   clampPercent,
   environmentTone,
   errorText,
+  headlineWithoutIncidents,
   isAttention,
   isNotFound,
   openIncidentsText,
@@ -11,6 +12,24 @@ import {
   serviceView,
   UNREACHABLE_MESSAGE,
 } from "./serverView";
+
+describe("headlineWithoutIncidents", () => {
+  it("drops the trailing open incidents phrase the server adds", () => {
+    expect(headlineWithoutIncidents("Disk 92% full · 1 open incident", 1)).toBe("Disk 92% full");
+    expect(headlineWithoutIncidents("Not reachable · 3 open incidents", 3)).toBe("Not reachable");
+  });
+
+  it("keeps the headline when it does not end with the phrase", () => {
+    expect(headlineWithoutIncidents("Disk 92% full", 1)).toBe("Disk 92% full");
+    expect(headlineWithoutIncidents("Disk 92% full · 2 open incidents", 1)).toBe(
+      "Disk 92% full · 2 open incidents",
+    );
+  });
+
+  it("returns an empty headline when the headline is only the phrase", () => {
+    expect(headlineWithoutIncidents("1 open incident", 1)).toBe("");
+  });
+});
 
 describe("serverStatusView", () => {
   it.each([

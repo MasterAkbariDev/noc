@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 import type { DiagnosisView, HypothesisView } from "../../api/types";
 import { percentFromFraction } from "../../lib/format";
+import { Term } from "../../ui/Term";
 import { findingAnchor } from "./FindingsList";
+import { plainLabel } from "./labels";
 
 export function DiagnosisPanel({ diagnosis }: { diagnosis: DiagnosisView | null }) {
   if (diagnosis === null) {
@@ -10,10 +12,10 @@ export function DiagnosisPanel({ diagnosis }: { diagnosis: DiagnosisView | null 
   const ranked = [...diagnosis.hypotheses].sort((a, b) => b.confidence - a.confidence);
   return (
     <div className="grid gap-4">
-      <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+      <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted">Primary cause</dt>
         <dd className="m-0">
-          <code>{diagnosis.primary_code}</code>
+          <Term technical={diagnosis.primary_code}>{plainLabel(diagnosis.primary_code)}</Term>
         </dd>
         <dt className="text-muted">Confidence</dt>
         <dd className="m-0">{percentFromFraction(diagnosis.confidence)}</dd>

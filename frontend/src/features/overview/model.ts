@@ -59,7 +59,28 @@ function fractionTone(healthy: number, total: number): Tone {
   return healthy === total ? "ok" : "warning";
 }
 
-export function kpiViews(kpis: Kpis): KpiView[] {
+function llmKpiView(kpis: Kpis, llmMode: string | undefined): KpiView {
+  if (llmMode === "replay") {
+    return {
+      key: "llm",
+      label: "LLM keys",
+      value: "Replay mode",
+      hint: "recorded answers",
+      tone: "neutral",
+      to: "/system",
+    };
+  }
+  return {
+    key: "llm",
+    label: "LLM keys",
+    value: `${kpis.llm_keys_ok}/${kpis.llm_keys_total}`,
+    hint: "working now",
+    tone: fractionTone(kpis.llm_keys_ok, kpis.llm_keys_total),
+    to: "/system",
+  };
+}
+
+export function kpiViews(kpis: Kpis, llmMode?: string): KpiView[] {
   return [
     {
       key: "open",
@@ -85,13 +106,6 @@ export function kpiViews(kpis: Kpis): KpiView[] {
       tone: fractionTone(kpis.servers_up, kpis.servers_total),
       to: "/servers",
     },
-    {
-      key: "llm",
-      label: "LLM keys",
-      value: `${kpis.llm_keys_ok}/${kpis.llm_keys_total}`,
-      hint: "working now",
-      tone: fractionTone(kpis.llm_keys_ok, kpis.llm_keys_total),
-      to: "/system",
-    },
+    llmKpiView(kpis, llmMode),
   ];
 }

@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from "react-router";
 import { ApiError } from "../api/client";
 import { useSessionState } from "../auth/session";
 import { safeNext } from "../auth/safeNext";
+import { useDocumentTitle } from "../shell/useDocumentTitle";
 import { Button } from "../ui/Button";
 
 const FIELD_MAX_LENGTH = 256;
@@ -20,6 +21,7 @@ function loginFailureText(error: unknown): string {
 }
 
 export function LoginPage() {
+  useDocumentTitle("Sign in");
   const session = useSessionState();
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));

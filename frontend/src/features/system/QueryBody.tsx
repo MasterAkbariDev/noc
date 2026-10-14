@@ -1,6 +1,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { errorMessage } from "../../components/format";
+import { errorMessage } from "../../lib/format";
 import { ErrorState, Skeleton } from "../../ui";
 
 type QueryBodyProps<Data> = {

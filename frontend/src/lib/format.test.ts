@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../api/client";
 import {
   absoluteTime,
   durationMs,
+  errorMessage,
   percentFromFraction,
   percentFromHundred,
   relativeTime,
@@ -70,5 +72,24 @@ describe("durationMs", () => {
     [119_500, "2 min 0 s"],
   ])("formats %i ms as %s", (ms, expected) => {
     expect(durationMs(ms)).toBe(expected);
+  });
+});
+
+describe("errorMessage", () => {
+  it("asks for a new sign-in when the session ended", () => {
+    expect(errorMessage(new ApiError(401, "nope"))).toBe("Your session ended. Sign in again.");
+  });
+
+  it("says when the thing is not found", () => {
+    expect(errorMessage(new ApiError(404, "missing"))).toBe("Not found.");
+  });
+
+  it("uses the message of any other error", () => {
+    expect(errorMessage(new Error("network down"))).toBe("network down");
+    expect(errorMessage(new ApiError(500, "boom"))).toBe("boom");
+  });
+
+  it("falls back to a generic text for values that are not errors", () => {
+    expect(errorMessage("<script>alert(1)</script>")).toBe("Request failed.");
   });
 });

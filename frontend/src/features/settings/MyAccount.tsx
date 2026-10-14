@@ -8,7 +8,7 @@ export function MyAccount() {
 
   return (
     <Card>
-      <dl className="m-0 grid gap-3 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6">
+      <dl className="m-0 grid gap-3 text-sm sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-x-6">
         <dt className="text-muted">Username</dt>
         <dd className="m-0 font-medium break-all">{me.username}</dd>
         <dt className="text-muted">Role</dt>

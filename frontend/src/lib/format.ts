@@ -1,6 +1,18 @@
+import { ApiError } from "../api/client";
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 401) {
+    return "Your session ended. Sign in again.";
+  }
+  if (error instanceof ApiError && error.status === 404) {
+    return "Not found.";
+  }
+  return error instanceof Error ? error.message : "Request failed.";
+}
 
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const then = Date.parse(iso);

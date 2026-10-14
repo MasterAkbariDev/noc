@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useContext } from "react";
-import { getOverview } from "../api/client";
+import { getLlmStatus, getOverview } from "../api/client";
 import type { Overview } from "../api/types";
 import { useSession } from "../auth/session";
-import { errorMessage } from "../components/format";
 import { LiveActivity } from "../features/overview/LiveActivity";
 import { KpiRow } from "../features/overview/KpiRow";
 import { NeedsAttention } from "../features/overview/NeedsAttention";
 import { OVERVIEW_FALLBACK_POLL_MS, canCloseIncidents } from "../features/overview/model";
 import { ServerList } from "../features/overview/ServerList";
 import { VerdictBanner } from "../features/overview/VerdictBanner";
+import { LLM_STATUS_KEY } from "../features/system/queries";
+import { errorMessage } from "../lib/format";
 import { StreamConnectedContext } from "../live/useEventStream";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
 import { Card, ErrorState, PageHeader, Skeleton } from "../ui";
@@ -22,6 +23,10 @@ export function OverviewPage() {
     queryKey: ["overview"],
     queryFn: () => getOverview(),
     refetchInterval: streamConnected ? false : OVERVIEW_FALLBACK_POLL_MS,
+  });
+  const llm = useQuery({
+    queryKey: LLM_STATUS_KEY,
+    queryFn: () => getLlmStatus(),
   });
 
   return (
@@ -38,17 +43,29 @@ export function OverviewPage() {
           <Skeleton lines={6} />
         )
       ) : (
-        <OverviewContent overview={query.data} canClose={canCloseIncidents(me.role)} />
+        <OverviewContent
+          overview={query.data}
+          canClose={canCloseIncidents(me.role)}
+          llmMode={llm.data?.mode}
+        />
       )}
     </>
   );
 }
 
-function OverviewContent({ overview, canClose }: { overview: Overview; canClose: boolean }) {
+function OverviewContent({
+  overview,
+  canClose,
+  llmMode,
+}: {
+  overview: Overview;
+  canClose: boolean;
+  llmMode: string | undefined;
+}) {
   return (
     <div className="grid gap-6">
       <VerdictBanner verdict={overview.verdict} />
-      <KpiRow kpis={overview.kpis} />
+      <KpiRow kpis={overview.kpis} llmMode={llmMode} />
       <Card title="Needs attention">
         <NeedsAttention items={overview.needs_attention} canClose={canClose} />
       </Card>

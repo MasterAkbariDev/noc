@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { closeIncident } from "../api/client";
 import { Button } from "../ui/Button";
-import { errorMessage } from "./format";
+import { useToast } from "../ui/Toaster";
+import { errorMessage } from "../lib/format";
 
 export const RESOLUTION_NOTE_MAX_LENGTH = 2000;
 
@@ -39,6 +40,7 @@ type CloseIncidentFormProps = {
 
 export function CloseIncidentForm({ incidentId, status, onClosed }: CloseIncidentFormProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [note, setNote] = useState("");
   const [rootCause, setRootCause] = useState("");
   const [checked, setChecked] = useState(false);
@@ -54,6 +56,7 @@ export function CloseIncidentForm({ incidentId, status, onClosed }: CloseInciden
       void queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
       void queryClient.invalidateQueries({ queryKey: ["story", incidentId] });
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
+      toast.success("Incident closed.");
       onClosed?.();
     },
   });

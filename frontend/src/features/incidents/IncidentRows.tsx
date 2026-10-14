@@ -24,7 +24,8 @@ const COLUMNS: Column<IncidentSummary>[] = [
   {
     key: "target",
     header: "Target",
-    cell: (incident) => <span className="break-all">{incident.target}</span>,
+    cell: (incident) => <span className="whitespace-nowrap">{incident.target}</span>,
+    className: "whitespace-nowrap",
   },
   {
     key: "status",

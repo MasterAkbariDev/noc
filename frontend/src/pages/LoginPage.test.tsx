@@ -76,6 +76,14 @@ afterEach(() => {
 });
 
 describe("LoginPage errors", () => {
+  it("names the page Sign in in the document title", async () => {
+    serve(ANONYMOUS);
+    renderLogin("/login");
+
+    await screen.findByRole("heading", { level: 1, name: "Sign in" });
+    expect(document.title).toBe("Sign in · NOC");
+  });
+
   it("says the username or password is wrong for a 401 and clears the password", async () => {
     serve(ANONYMOUS, jsonResponse({ detail: "invalid username or password" }, 401));
     renderLogin("/login");

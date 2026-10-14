@@ -168,7 +168,7 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
           </Badge>
         )}
       </div>
-      <dl className="m-0 grid gap-2 text-sm sm:grid-cols-[max-content_1fr]">
+      <dl className="m-0 grid gap-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
         <dt className="text-muted">Action</dt>
         <dd className="m-0">
           <Term technical={action.action_type}>{plainLabel(action.action_type)}</Term>

@@ -7,7 +7,7 @@ function DetailList({ details }: { details: Record<string, string> }) {
     return null;
   }
   return (
-    <dl className="m-0 mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+    <dl className="m-0 mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
       {entries.map(([name, value]) => (
         <div key={name} className="contents">
           <dt className="text-muted">{name}</dt>

@@ -32,4 +32,16 @@ describe("KpiRow", () => {
     expect(screen.getByText("2/2")).toBeTruthy();
     expect(screen.getByText("9/10")).toBeTruthy();
   });
+
+  it("shows Replay mode with the recorded answers hint in place of 0/0", () => {
+    render(
+      <MemoryRouter>
+        <KpiRow kpis={{ ...overviewFixture().kpis, llm_keys_ok: 0, llm_keys_total: 0 }} llmMode="replay" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Replay mode")).toBeTruthy();
+    expect(screen.getByText("recorded answers")).toBeTruthy();
+    expect(screen.queryByText("0/0")).toBeNull();
+  });
 });

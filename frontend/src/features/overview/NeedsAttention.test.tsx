@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { AttentionItem } from "../../api/types";
+import { Toaster } from "../../ui/Toaster";
 import { NeedsAttention } from "./NeedsAttention";
 import { HOSTILE_IMG, HOSTILE_SCRIPT, attentionItem } from "./testData";
 
@@ -10,9 +11,11 @@ function renderList(items: AttentionItem[], canClose: boolean) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <NeedsAttention items={items} canClose={canClose} />
-      </MemoryRouter>
+      <Toaster>
+        <MemoryRouter>
+          <NeedsAttention items={items} canClose={canClose} />
+        </MemoryRouter>
+      </Toaster>
     </QueryClientProvider>,
   );
 }

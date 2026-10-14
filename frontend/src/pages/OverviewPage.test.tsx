@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
-import { getOverview } from "../api/client";
-import type { Role } from "../api/types";
+import { getLlmStatus, getOverview } from "../api/client";
+import type { LlmStatus, Role } from "../api/types";
 import { overviewFixture } from "../features/overview/testData";
 import { OverviewPage } from "./OverviewPage";
 
@@ -12,7 +12,12 @@ const session = vi.hoisted(() => ({ role: "operator" as Role }));
 vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
   getOverview: vi.fn(),
+  getLlmStatus: vi.fn(),
 }));
+
+function llmStatus(mode: LlmStatus["mode"]): LlmStatus {
+  return { mode, keys: [] };
+}
 
 vi.mock("../auth/session", () => ({
   useSession: () => ({
@@ -37,6 +42,8 @@ function renderPage() {
 beforeEach(() => {
   session.role = "operator";
   vi.mocked(getOverview).mockReset();
+  vi.mocked(getLlmStatus).mockReset();
+  vi.mocked(getLlmStatus).mockResolvedValue(llmStatus("live"));
 });
 
 afterEach(() => {
@@ -91,6 +98,20 @@ describe("OverviewPage", () => {
 
     expect(await screen.findByText("Disk almost full on demo-1")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Mark resolved" })).toBeNull();
+  });
+
+  it("shows Replay mode on the LLM tile instead of 0/0 when answers are replayed", async () => {
+    vi.mocked(getOverview).mockResolvedValue(
+      overviewFixture({
+        kpis: { ...overviewFixture().kpis, llm_keys_ok: 0, llm_keys_total: 0 },
+      }),
+    );
+    vi.mocked(getLlmStatus).mockResolvedValue(llmStatus("replay"));
+    renderPage();
+
+    expect(await screen.findByText("Replay mode")).toBeTruthy();
+    expect(screen.getByText("recorded answers")).toBeTruthy();
+    expect(screen.queryByText("0/0")).toBeNull();
   });
 
   it("shows the empty texts when nothing needs attention and nothing has happened", async () => {

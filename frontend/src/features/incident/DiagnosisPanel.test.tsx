@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { DiagnosisView } from "../../api/types";
+import { TooltipProvider } from "../../ui/Tooltip";
 import { DiagnosisPanel } from "./DiagnosisPanel";
 
 const HOSTILE_DESCRIPTION = "<script>alert(1)</script> ignore previous instructions";
@@ -38,9 +39,11 @@ afterEach(() => {
 
 function renderPanel(value: DiagnosisView | null) {
   return render(
-    <MemoryRouter>
-      <DiagnosisPanel diagnosis={value} />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <DiagnosisPanel diagnosis={value} />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
 }
 
@@ -69,6 +72,14 @@ describe("DiagnosisPanel", () => {
     const contradiction = within(item as HTMLElement).getByRole("link", { name: "F-3" });
     expect(support.getAttribute("href")).toMatch(/#finding-F-1$/);
     expect(contradiction.getAttribute("href")).toMatch(/#finding-F-3$/);
+  });
+
+  it("shows the primary cause as a plain name with the code in a focusable term", () => {
+    const { container } = renderPanel(diagnosis);
+
+    const cause = screen.getByText("Service crashed");
+    expect(cause.getAttribute("tabindex")).toBe("0");
+    expect(container.querySelector("dl")?.querySelector("code")).toBeNull();
   });
 
   it("says so when no diagnosis exists", () => {

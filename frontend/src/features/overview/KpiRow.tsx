@@ -2,10 +2,15 @@ import type { Kpis } from "../../api/types";
 import { KpiTile } from "../../ui";
 import { kpiViews } from "./model";
 
-export function KpiRow({ kpis }: { kpis: Kpis }) {
+type KpiRowProps = {
+  kpis: Kpis;
+  llmMode?: string;
+};
+
+export function KpiRow({ kpis, llmMode }: KpiRowProps) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {kpiViews(kpis).map((view) => (
+      {kpiViews(kpis, llmMode).map((view) => (
         <KpiTile
           key={view.key}
           label={view.label}

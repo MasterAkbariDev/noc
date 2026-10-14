@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
+import { Skeleton } from "../ui/Skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -20,7 +21,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((open) => !open)} />
         <main id="main" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-6xl flex-1 p-4 md:p-6">
-          <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>
+          <ErrorBoundary key={location.pathname}>
+            <Suspense fallback={<Skeleton lines={6} />}>{children}</Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>

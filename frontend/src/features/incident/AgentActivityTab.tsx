@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTrace } from "../../api/client";
-import { errorMessage } from "../../components/format";
+import { errorMessage } from "../../lib/format";
 import { useLivePollInterval } from "../../live/useEventStream";
 import { ErrorState } from "../../ui/ErrorState";
 import { Section } from "../../ui/Section";

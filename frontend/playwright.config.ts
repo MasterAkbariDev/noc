@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readEnv } from "./e2e/env";
 
-const isCi = Boolean(process.env.CI);
+const isCi = Boolean(readEnv("CI"));
 
 export default defineConfig({
   testDir: "./e2e",
@@ -14,7 +15,7 @@ export default defineConfig({
     ["html", { outputFolder: "dist/playwright-report", open: "never" }],
   ],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:8000",
+    baseURL: readEnv("E2E_BASE_URL") ?? "http://localhost:8000",
     trace: "on-first-retry",
   },
   projects: [

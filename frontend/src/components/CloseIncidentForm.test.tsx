@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Toaster } from "../ui/Toaster";
 import { CloseIncidentForm } from "./CloseIncidentForm";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -10,7 +11,9 @@ function renderForm(status: string) {
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <CloseIncidentForm incidentId="abc" status={status} />
+      <Toaster>
+        <CloseIncidentForm incidentId="abc" status={status} />
+      </Toaster>
     </QueryClientProvider>,
   );
   return { ...view, invalidate };
@@ -101,5 +104,16 @@ describe("CloseIncidentForm", () => {
     fireEvent.click(submitButton());
 
     expect((await screen.findByRole("alert")).textContent).toBe("409 Conflict");
+  });
+
+  it("confirms the close with a toast", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    renderForm("ESCALATED");
+
+    fireEvent.change(noteField(), { target: { value: "Restarted the service" } });
+    fireEvent.click(checkbox());
+    fireEvent.click(submitButton());
+
+    expect(await screen.findByText("Incident closed.")).toBeTruthy();
   });
 });

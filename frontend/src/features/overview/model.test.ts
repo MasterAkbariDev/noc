@@ -92,4 +92,22 @@ describe("kpiViews", () => {
     expect(views[2]?.tone).toBe("neutral");
     expect(views[3]?.tone).toBe("neutral");
   });
+
+  it("says Replay mode instead of 0/0 on the LLM tile when the LLM replays recorded answers", () => {
+    const views = kpiViews({ ...HEALTHY_KPIS, llm_keys_ok: 0, llm_keys_total: 0 }, "replay");
+
+    expect(views[3]).toEqual({
+      key: "llm",
+      label: "LLM keys",
+      value: "Replay mode",
+      hint: "recorded answers",
+      tone: "neutral",
+      to: "/system",
+    });
+  });
+
+  it("keeps the key count when the mode is live or not known yet", () => {
+    expect(kpiViews(HEALTHY_KPIS, "live")[3]?.value).toBe("10/10");
+    expect(kpiViews(HEALTHY_KPIS)[3]?.value).toBe("10/10");
+  });
 });

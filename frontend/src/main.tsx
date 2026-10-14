@@ -6,7 +6,6 @@ import { App } from "./App";
 import { SessionProvider } from "./auth/session";
 import { Toaster, TooltipProvider } from "./ui";
 import "./styles.css";
-import "./legacy.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1 } },
