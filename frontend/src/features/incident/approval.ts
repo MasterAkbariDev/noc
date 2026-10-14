@@ -6,6 +6,10 @@ export const COMMENT_MAX_LENGTH = 500;
 
 export const CHANGED_REQUEST_TEXT = "This request changed or expired — reload the incident.";
 
+const STATUS_LINE = /^\d{3}(\s|$)/;
+
+export const INVALID_DECISION_TEXT = "The decision was not accepted. Check the comment and try again.";
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
@@ -49,7 +53,7 @@ export function decisionErrorMessage(error: unknown): string {
     return CHANGED_REQUEST_TEXT;
   }
   if (error instanceof ApiError && error.status === 422) {
-    return error.detail;
+    return STATUS_LINE.test(error.detail) ? INVALID_DECISION_TEXT : error.detail;
   }
   return errorMessage(error);
 }

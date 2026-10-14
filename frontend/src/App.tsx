@@ -17,7 +17,9 @@ const ServerPage = lazy(() => import("./pages/ServerPage").then((module) => ({ d
 const ServersPage = lazy(() => import("./pages/ServersPage").then((module) => ({ default: module.ServersPage })));
 const SettingsPage = lazy(() => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const SystemPage = lazy(() => import("./pages/SystemPage").then((module) => ({ default: module.SystemPage })));
-const UiKitPage = lazy(() => import("./pages/UiKitPage").then((module) => ({ default: module.UiKitPage })));
+const UiKitPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/UiKitPage").then((module) => ({ default: module.UiKitPage })))
+  : null;
 
 function TraceRedirect() {
   const { id = "" } = useParams();
@@ -51,7 +53,7 @@ export function App() {
           <Route path="/system" element={<SystemPage />} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          {import.meta.env.DEV && <Route path="/__ui" element={<UiKitPage />} />}
+          {UiKitPage !== null && <Route path="/__ui" element={<UiKitPage />} />}
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

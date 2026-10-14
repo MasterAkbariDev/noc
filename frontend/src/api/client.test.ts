@@ -66,9 +66,27 @@ describe("listIncidents", () => {
   it("adds the status filter as a query parameter", async () => {
     fetchMock.mockResolvedValue(jsonResponse([]));
 
-    await listIncidents("ESCALATED");
+    await listIncidents({ status: "ESCALATED" });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents?status=ESCALATED");
+  });
+
+  it("sends every status, the search text and the limit the list page asks for", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await listIncidents({ statuses: ["NEW", "ESCALATED"], q: "disk 100%", limit: 200 });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/incidents?statuses=NEW&statuses=ESCALATED&q=disk+100%25&limit=200",
+    );
+  });
+
+  it("leaves out empty search text", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await listIncidents({ q: "" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents");
   });
 });
 
@@ -117,6 +135,16 @@ describe("apiPost", () => {
 
     expect((failure as ApiError).detail).toBe("too many attempts, try again later");
     expect((failure as ApiError).message).toBe("too many attempts, try again later");
+  });
+
+  it("joins the messages of a validation error list into the detail", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ detail: [{ msg: "field required" }, { msg: "value too long" }] }, 422),
+    );
+
+    const failure = await apiPost("/api/example", {}).catch((error: unknown) => error);
+
+    expect((failure as ApiError).detail).toBe("field required; value too long");
   });
 
   it("sends no CSRF header on a GET", async () => {

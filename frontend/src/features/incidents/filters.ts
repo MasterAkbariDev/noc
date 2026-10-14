@@ -20,33 +20,36 @@ export const FILTER_EMPTY_TEXT: Record<IncidentFilter, string> = {
   all: "No incidents yet.",
 };
 
-const FINISHED_STATUSES: ReadonlySet<string> = new Set(["RESOLVED", "SELF_RESOLVED", "CLOSED"]);
+const OPEN_STATUSES = [
+  "NEW",
+  "INVESTIGATING",
+  "DIAGNOSED",
+  "PLANNED",
+  "AWAITING_APPROVAL",
+  "REMEDIATING",
+  "VERIFYING",
+  "ESCALATED",
+] as const;
 
-const NEEDS_YOU_STATUSES: ReadonlySet<string> = new Set(["ESCALATED", "AWAITING_APPROVAL"]);
+const NEEDS_YOU_STATUSES = ["ESCALATED", "AWAITING_APPROVAL"] as const;
+
+const FINISHED_STATUSES = ["RESOLVED", "SELF_RESOLVED", "CLOSED"] as const;
 
 export function parseFilter(value: string | null): IncidentFilter {
   return INCIDENT_FILTERS.find((filter) => filter === value) ?? DEFAULT_FILTER;
 }
 
-export function matchesFilter(incident: IncidentSummary, filter: IncidentFilter): boolean {
+export function statusesFor(filter: IncidentFilter): string[] {
   switch (filter) {
     case "open":
-      return !FINISHED_STATUSES.has(incident.status);
+      return [...OPEN_STATUSES];
     case "needs-you":
-      return NEEDS_YOU_STATUSES.has(incident.status);
+      return [...NEEDS_YOU_STATUSES];
     case "resolved":
-      return FINISHED_STATUSES.has(incident.status);
+      return [...FINISHED_STATUSES];
     case "all":
-      return true;
+      return [];
   }
-}
-
-export function matchesSearch(incident: IncidentSummary, search: string): boolean {
-  const needle = search.trim().toLowerCase();
-  if (needle === "") {
-    return true;
-  }
-  return incident.title.toLowerCase().includes(needle) || incident.target.toLowerCase().includes(needle);
 }
 
 export function matchesSeverity(incident: IncidentSummary, severity: string): boolean {

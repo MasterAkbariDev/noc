@@ -164,43 +164,10 @@ export type TargetResource = {
   name: string;
 };
 
-export type TargetView = {
-  id: string;
-  name: string;
-  environment: string;
-  automation_level: string;
-  halted: boolean;
-  last_inventory_at: string | null;
-  resources: TargetResource[];
-};
-
 export type StreamTicket = {
   ticket: string;
   expires_in: number;
 };
-
-export type IncidentEventMessage = {
-  incident_id: string;
-  id: number;
-  ts: string;
-  type: string;
-  actor: string;
-  payload: Record<string, unknown>;
-};
-
-export const INCIDENT_STATUSES = [
-  "NEW",
-  "INVESTIGATING",
-  "DIAGNOSED",
-  "PLANNED",
-  "AWAITING_APPROVAL",
-  "REMEDIATING",
-  "VERIFYING",
-  "RESOLVED",
-  "SELF_RESOLVED",
-  "ESCALATED",
-  "CLOSED",
-] as const;
 
 export type Role = "viewer" | "operator" | "admin";
 

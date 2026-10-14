@@ -1,9 +1,9 @@
-import { apiGet } from "../../api/client";
+import { listIncidents } from "../../api/client";
 import type { IncidentSummary } from "../../api/types";
+import { statusesFor, type IncidentFilter } from "./filters";
 
 export const ALL_INCIDENTS_LIMIT = 200;
 
-export function listAllIncidents(): Promise<IncidentSummary[]> {
-  const query = new URLSearchParams({ limit: String(ALL_INCIDENTS_LIMIT) });
-  return apiGet<IncidentSummary[]>(`/api/incidents?${query}`);
+export function listIncidentRows(filter: IncidentFilter, search: string): Promise<IncidentSummary[]> {
+  return listIncidents({ statuses: statusesFor(filter), q: search, limit: ALL_INCIDENTS_LIMIT });
 }

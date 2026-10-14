@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, OctagonAlert, TriangleAlert } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { decideOnAction } from "../../api/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { ApiError, decideOnAction } from "../../api/client";
 import type { ActionView, ApprovalDecision } from "../../api/types";
 import { absoluteTime } from "../../lib/format";
 import { Badge } from "../../ui/Badge";
@@ -14,6 +14,7 @@ import { COMMENT_MAX_LENGTH, decisionErrorMessage, expiryText, isExpired } from 
 import { actionStatusLabel, plainLabel } from "./labels";
 
 const FIELD_CLASS = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal text-fg";
+const EXPIRY_TICK_MS = 30_000;
 
 type ApprovalCardProps = {
   incidentId: string;
@@ -21,7 +22,17 @@ type ApprovalCardProps = {
   canDecide: boolean;
 };
 
+type PendingDecision = {
+  decision: ApprovalDecision;
+  actionHash: string;
+  impactScore: number;
+};
+
 type CopyState = "idle" | "copied" | "failed";
+
+function pendingFor(decision: ApprovalDecision, action: ActionView): PendingDecision {
+  return { decision, actionHash: action.action_hash, impactScore: action.impact_score };
+}
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -85,25 +96,25 @@ function GateChecks({ action }: { action: ActionView }) {
 function DecisionForm({
   incidentId,
   action,
-  decision,
+  pending,
   onDone,
 }: {
   incidentId: string;
   action: ActionView;
-  decision: ApprovalDecision;
+  pending: PendingDecision;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [comment, setComment] = useState("");
   const trimmedComment = comment.trim();
-  const approving = decision === "approved";
+  const approving = pending.decision === "approved";
 
   const mutation = useMutation({
     mutationFn: () =>
       decideOnAction(incidentId, action.id, {
-        decision,
-        action_hash: action.action_hash,
+        decision: pending.decision,
+        action_hash: pending.actionHash,
         comment: trimmedComment === "" ? null : trimmedComment,
       }),
     onSuccess: () => {
@@ -113,6 +124,11 @@ function DecisionForm({
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
       toast.success(approving ? "Action approved." : "Action rejected.");
       onDone();
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.refetchQueries({ queryKey: ["incident", incidentId] });
+      }
     },
   });
 
@@ -129,6 +145,8 @@ function DecisionForm({
         {approving ? "Approve" : "Reject"} <strong className="font-semibold">{plainLabel(action.action_type)}</strong>{" "}
         on {action.resource_id}.
       </p>
+      <p className="m-0 text-sm">Impact score: {pending.impactScore}</p>
+      <HashLine hash={pending.actionHash} />
       <label className="grid gap-1 text-sm font-medium">
         Comment (optional)
         <textarea
@@ -152,12 +170,20 @@ function DecisionForm({
 }
 
 export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProps) {
-  const [decision, setDecision] = useState<ApprovalDecision | null>(null);
-  const now = Date.now();
+  const [pending, setPending] = useState<PendingDecision | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const expired = isExpired(action.approval_expires_at, now);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), EXPIRY_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <Card title="Waiting for your approval" className="grid gap-4 border-warning">
+      <p className="m-0 text-sm">
+        {canDecide ? "This incident is waiting for your decision." : "Waiting for an operator's decision."}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="warning" icon={TriangleAlert}>
           {actionStatusLabel(action.status)}
@@ -201,10 +227,10 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
       <HashLine hash={action.action_hash} />
       {canDecide ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" disabled={expired} onClick={() => setDecision("approved")}>
+          <Button variant="primary" disabled={expired} onClick={() => setPending(pendingFor("approved", action))}>
             Approve
           </Button>
-          <Button variant="danger" disabled={expired} onClick={() => setDecision("rejected")}>
+          <Button variant="danger" disabled={expired} onClick={() => setPending(pendingFor("rejected", action))}>
             Reject
           </Button>
         </div>
@@ -212,20 +238,20 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
         <p className="m-0 text-sm text-muted">Only an operator or an admin can approve or reject this action.</p>
       )}
       <Dialog
-        open={decision !== null}
+        open={pending !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setDecision(null);
+            setPending(null);
           }
         }}
-        title={decision === "rejected" ? "Reject this action" : "Approve this action"}
+        title={pending?.decision === "rejected" ? "Reject this action" : "Approve this action"}
       >
-        {decision !== null && (
+        {pending !== null && (
           <DecisionForm
             incidentId={incidentId}
             action={action}
-            decision={decision}
-            onDone={() => setDecision(null)}
+            pending={pending}
+            onDone={() => setPending(null)}
           />
         )}
       </Dialog>

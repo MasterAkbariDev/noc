@@ -16,7 +16,16 @@ const ACTION_STATUS_LABELS = new Map<string, string>([
   ["expired", "Expired"],
 ]);
 
-const EVENT_TYPE_LABELS = new Map<string, string>([
+export const EVENT_TYPE_LABELS = new Map<string, string>([
+  ["incident_opened", "Incident opened"],
+  ["alert_attached", "Alert added"],
+  ["state_changed", "Status changed"],
+  ["investigation_planned", "Investigation planned"],
+  ["specialist_finished", "Specialist finished"],
+  ["specialist_failed", "Specialist failed"],
+  ["specialist_unavailable", "Specialist unavailable"],
+  ["investigation_abandoned", "Investigation stopped"],
+  ["report_generated", "Report written"],
   ["approval_requested", "Approval requested"],
   ["approval_required", "Approval required"],
   ["approval_claim", "Approval claimed"],

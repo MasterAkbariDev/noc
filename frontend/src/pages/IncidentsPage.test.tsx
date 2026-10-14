@@ -47,8 +47,23 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+function answer(rows: IncidentSummary[], path: string): IncidentSummary[] {
+  const url = new URL(path, "http://noc.test");
+  const statuses = url.searchParams.getAll("statuses");
+  const needle = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  return rows.filter(
+    (row) =>
+      (statuses.length === 0 || statuses.includes(row.status)) &&
+      (needle === "" || row.title.toLowerCase().includes(needle) || row.target.toLowerCase().includes(needle)),
+  );
+}
+
 function serve(rows: IncidentSummary[]) {
-  fetchMock.mockResolvedValue(jsonResponse(rows));
+  fetchMock.mockImplementation(async (input) => jsonResponse(answer(rows, String(input))));
+}
+
+function requestedUrls(): URL[] {
+  return fetchMock.mock.calls.map(([input]) => new URL(String(input), "http://noc.test"));
 }
 
 function LocationProbe() {
@@ -102,13 +117,43 @@ afterEach(() => {
 });
 
 describe("IncidentsPage", () => {
-  it("fetches up to 200 incidents without a status and shows the open ones by default", async () => {
+  it("asks the server for up to 200 open incidents and shows them by default", async () => {
     renderList("/incidents");
 
     expect(await screen.findByRole("link", { name: "Disk almost full" })).toBeTruthy();
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/incidents?limit=200");
+    const first = requestedUrls()[0];
+    expect(first?.pathname).toBe("/api/incidents");
+    expect(first?.searchParams.get("limit")).toBe("200");
+    expect(first?.searchParams.getAll("statuses")).toContain("ESCALATED");
+    expect(first?.searchParams.getAll("statuses")).not.toContain("RESOLVED");
+    expect(first?.searchParams.has("q")).toBe(false);
     expect(titlesShown()).toEqual(["Disk almost full", "Service down", "Restore approval"]);
     expect(screen.getByRole("button", { name: "Open" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("sends the statuses of the chosen chip and no status filter for All", async () => {
+    renderList("/incidents?filter=needs-you");
+    await screen.findByRole("link", { name: "Service down" });
+
+    expect(requestedUrls().at(-1)?.searchParams.getAll("statuses")).toEqual(["ESCALATED", "AWAITING_APPROVAL"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    await waitFor(() => expect(requestedUrls().at(-1)?.searchParams.has("statuses")).toBe(false));
+  });
+
+  it("waits for the search to settle before asking the server, so each keystroke is not a request", async () => {
+    renderList("/incidents?filter=all");
+    await screen.findByRole("link", { name: "Backup late" });
+
+    const search = screen.getByRole("searchbox", { name: "Search" });
+    fireEvent.change(search, { target: { value: "d" } });
+    fireEvent.change(search, { target: { value: "db-1" } });
+
+    await waitFor(() => expect(titlesShown()).toEqual(["Restore approval"]));
+    const searches = requestedUrls().map((url) => url.searchParams.get("q"));
+    expect(searches).not.toContain("d");
+    expect(searches.at(-1)).toBe("db-1");
   });
 
   it("falls back to the open filter for an unknown filter in the URL", async () => {
@@ -125,7 +170,7 @@ describe("IncidentsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Needs you" }));
 
     await waitFor(() => expect(currentLocation()).toBe("/incidents?filter=needs-you"));
-    expect(titlesShown()).toEqual(["Service down", "Restore approval"]);
+    await waitFor(() => expect(titlesShown()).toEqual(["Service down", "Restore approval"]));
   });
 
   it("shows the resolved incidents for the resolved chip and everything for all", async () => {
@@ -147,7 +192,7 @@ describe("IncidentsPage", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search" }), { target: { value: "db-1" } });
 
     await waitFor(() => expect(currentLocation()).toBe("/incidents?filter=all&q=db-1"));
-    expect(titlesShown()).toEqual(["Restore approval"]);
+    await waitFor(() => expect(titlesShown()).toEqual(["Restore approval"]));
   });
 
   it("filters the rows by the severity named in the URL", async () => {

@@ -15,16 +15,20 @@ export const ME_QUERY_KEY = "me";
 type SessionActions = {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  retry: () => void;
 };
 
 export type SessionState =
   | ({ status: "loading"; me: null } & SessionActions)
   | ({ status: "anonymous"; me: null } & SessionActions)
+  | ({ status: "unreachable"; me: null } & SessionActions)
   | ({ status: "authenticated"; me: MeView } & SessionActions);
 
 export type AuthenticatedSession = Extract<SessionState, { status: "authenticated" }>;
 
-type SessionReading = { status: "loading" | "anonymous"; me: null } | { status: "authenticated"; me: MeView };
+type SessionReading =
+  | { status: "loading" | "anonymous" | "unreachable"; me: null }
+  | { status: "authenticated"; me: MeView };
 
 const SessionContext = createContext<SessionState | null>(null);
 
@@ -53,6 +57,9 @@ function readSession(query: { data: MeView | null | undefined; error: unknown; i
   }
   if (query.isPending) {
     return { status: "loading", me: null };
+  }
+  if (query.error !== null && query.error !== undefined) {
+    return { status: "unreachable", me: null };
   }
   return { status: "anonymous", me: null };
 }
@@ -101,7 +108,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [expire]);
 
-  const value: SessionState = { ...readSession(query), login, logout };
+  const { refetch } = query;
+  const retry = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+
+  const value: SessionState = { ...readSession(query), login, logout, retry };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

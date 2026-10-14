@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,6 +40,9 @@ router = APIRouter(
 Session = Annotated[AsyncSession, Depends(get_session)]
 OperatorPrincipal = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
 
+MAX_SEARCH_LENGTH = 100
+LIKE_ESCAPE = "\\"
+
 
 def summarize(incident: Incident, target_name: str) -> IncidentSummary:
     return IncidentSummary(
@@ -68,10 +71,21 @@ def diagnosis_view(diagnosis: DiagnosisRow | None) -> DiagnosisView | None:
     )
 
 
+def contains_pattern(text: str) -> str:
+    escaped = (
+        text.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", f"{LIKE_ESCAPE}%")
+        .replace("_", f"{LIKE_ESCAPE}_")
+    )
+    return f"%{escaped}%"
+
+
 @router.get("")
 async def list_incidents(
     session: Session,
     status: str | None = None,
+    statuses: Annotated[list[str] | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=MAX_SEARCH_LENGTH)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[IncidentSummary]:
     query = (
@@ -82,6 +96,17 @@ async def list_incidents(
     )
     if status:
         query = query.where(Incident.status == status.upper())
+    if statuses:
+        query = query.where(Incident.status.in_([value.upper() for value in statuses]))
+    needle = (q or "").strip()
+    if needle:
+        pattern = contains_pattern(needle)
+        query = query.join(Incident.target).where(
+            or_(
+                Incident.title.ilike(pattern, escape=LIKE_ESCAPE),
+                Target.name.ilike(pattern, escape=LIKE_ESCAPE),
+            )
+        )
     return [summarize(row, row.target.name) for row in await session.scalars(query)]
 
 

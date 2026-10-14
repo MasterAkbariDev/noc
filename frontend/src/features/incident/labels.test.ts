@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { actionStatusLabel, eventTypeLabel, plainLabel, runStatusTone, verdictTone } from "./labels";
+import {
+  actionStatusLabel,
+  EVENT_TYPE_LABELS,
+  eventTypeLabel,
+  plainLabel,
+  runStatusTone,
+  verdictTone,
+} from "./labels";
+
+const BACKEND_EVENT_TYPES = [
+  "incident_opened",
+  "alert_attached",
+  "state_changed",
+  "investigation_planned",
+  "specialist_unavailable",
+  "specialist_finished",
+  "specialist_failed",
+  "investigation_abandoned",
+  "action_authorized",
+  "action_dispatched",
+  "action_succeeded",
+  "action_failed",
+  "action_outcome_unknown",
+  "action_cancelled",
+  "verification_passed",
+  "verification_failed",
+  "approval_requested",
+  "approval_decided",
+  "approval_expired",
+  "report_generated",
+];
 
 describe("actionStatusLabel", () => {
   it("gives a plain label for a known action status", () => {
@@ -18,6 +48,13 @@ describe("eventTypeLabel", () => {
     expect(eventTypeLabel("approval_decided")).toBe("Decision recorded");
     expect(eventTypeLabel("action_authorized")).toBe("Action approved");
     expect(eventTypeLabel("verification_failed")).toBe("Check after the fix failed");
+  });
+
+  it("has a plain label for every event type the backend writes", () => {
+    for (const type of BACKEND_EVENT_TYPES) {
+      expect(EVENT_TYPE_LABELS.has(type), type).toBe(true);
+      expect(eventTypeLabel(type)).not.toMatch(/_/);
+    }
   });
 
   it("humanises an event type it does not know", () => {

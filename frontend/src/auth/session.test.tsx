@@ -111,4 +111,18 @@ describe("SessionProvider", () => {
     await waitFor(() => expect(screen.getByText("anonymous")).toBeTruthy());
     expect(screen.queryByText(/Signed in as/)).toBeNull();
   });
+
+  it("reports an unreachable NOC, not a signed-out visitor, when the server fails", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "upstream down" }, 502));
+    renderSession("/incidents", newQueryClient());
+
+    await waitFor(() => expect(screen.getByText("unreachable")).toBeTruthy());
+  });
+
+  it("reports an unreachable NOC when the request cannot be sent", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderSession("/incidents", newQueryClient());
+
+    await waitFor(() => expect(screen.getByText("unreachable")).toBeTruthy());
+  });
 });

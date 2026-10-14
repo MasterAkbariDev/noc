@@ -1,13 +1,43 @@
-import { Suspense, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 import { Skeleton } from "../ui/Skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
+const MENU_BUTTON_SELECTOR = 'button[aria-controls="app-sidebar"]';
+const SIDEBAR_SELECTOR = "#app-sidebar";
+
 export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        document.querySelector<HTMLButtonElement>(MENU_BUTTON_SELECTOR)?.focus();
+      }
+    }
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      const insideMenu =
+        target instanceof Element &&
+        (target.closest(SIDEBAR_SELECTOR) !== null || target.closest(MENU_BUTTON_SELECTOR) !== null);
+      if (!insideMenu) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [menuOpen]);
 
   return (
     <div className="min-h-screen md:flex">

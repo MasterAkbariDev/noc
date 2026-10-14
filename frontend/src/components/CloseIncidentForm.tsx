@@ -4,6 +4,7 @@ import { closeIncident } from "../api/client";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toaster";
 import { errorMessage } from "../lib/format";
+import { plainLabel } from "../features/incident/labels";
 
 export const RESOLUTION_NOTE_MAX_LENGTH = 2000;
 
@@ -95,7 +96,7 @@ export function CloseIncidentForm({ incidentId, status, onClosed }: CloseInciden
           <option value="">No change</option>
           {ROOT_CAUSE_CODES.map((code) => (
             <option key={code} value={code}>
-              {code}
+              {plainLabel(code)}
             </option>
           ))}
         </select>

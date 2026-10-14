@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
 import {
   absoluteTime,
-  durationMs,
   errorMessage,
   percentFromFraction,
   percentFromHundred,
@@ -60,18 +59,6 @@ describe("percent", () => {
   it("rounds a value between 0 and 100", () => {
     expect(percentFromHundred(92.4)).toBe("92%");
     expect(percentFromHundred(7)).toBe("7%");
-  });
-});
-
-describe("durationMs", () => {
-  it.each([
-    [-5, "0 ms"],
-    [250, "250 ms"],
-    [1_500, "1.5 s"],
-    [61_000, "1 min 1 s"],
-    [119_500, "2 min 0 s"],
-  ])("formats %i ms as %s", (ms, expected) => {
-    expect(durationMs(ms)).toBe(expected);
   });
 });
 

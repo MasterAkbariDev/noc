@@ -148,10 +148,10 @@ export function IncidentDetailPage() {
         serverId={serverIdFor(servers.data, data.target)}
       />
       <StoryProgress steps={data.steps} />
-      <StorySections story={data} onClose={canClose ? () => setClosing(true) : undefined} />
       {approvals.map((action) => (
         <ApprovalCard key={action.id} incidentId={id} action={action} canDecide={canDecide} />
       ))}
+      <StorySections story={data} onClose={canClose ? () => setClosing(true) : undefined} />
       <Tabs label="Incident details" items={items} value={tab} onValueChange={selectTab} />
       {canClose && (
         <Dialog open={closing} onOpenChange={setClosing} title="Close this incident">

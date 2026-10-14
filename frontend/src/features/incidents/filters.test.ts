@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IncidentSummary } from "../../api/types";
-import { matchesFilter, matchesSearch, matchesSeverity, parseFilter, rootCauseLabel } from "./filters";
+import { matchesSeverity, parseFilter, rootCauseLabel, statusesFor } from "./filters";
 
 function incident(status: string, overrides: Partial<IncidentSummary> = {}): IncidentSummary {
   return {
@@ -17,6 +17,8 @@ function incident(status: string, overrides: Partial<IncidentSummary> = {}): Inc
   };
 }
 
+const FINISHED = ["RESOLVED", "SELF_RESOLVED", "CLOSED"];
+
 describe("parseFilter", () => {
   it("accepts the four filters and falls back to open for anything else", () => {
     expect(parseFilter("needs-you")).toBe("needs-you");
@@ -28,42 +30,38 @@ describe("parseFilter", () => {
   });
 });
 
-describe("matchesFilter", () => {
+describe("statusesFor", () => {
   it("open is every status except the three finished ones", () => {
-    const open = ["NEW", "INVESTIGATING", "DIAGNOSED", "PLANNED", "AWAITING_APPROVAL", "REMEDIATING", "VERIFYING", "ESCALATED"];
-    for (const status of open) {
-      expect(matchesFilter(incident(status), "open")).toBe(true);
-    }
-    for (const status of ["RESOLVED", "SELF_RESOLVED", "CLOSED"]) {
-      expect(matchesFilter(incident(status), "open")).toBe(false);
+    const open = statusesFor("open");
+
+    expect(open).toEqual([
+      "NEW",
+      "INVESTIGATING",
+      "DIAGNOSED",
+      "PLANNED",
+      "AWAITING_APPROVAL",
+      "REMEDIATING",
+      "VERIFYING",
+      "ESCALATED",
+    ]);
+    for (const status of FINISHED) {
+      expect(open).not.toContain(status);
     }
   });
 
   it("needs you is escalated and waiting for approval", () => {
-    expect(matchesFilter(incident("ESCALATED"), "needs-you")).toBe(true);
-    expect(matchesFilter(incident("AWAITING_APPROVAL"), "needs-you")).toBe(true);
-    expect(matchesFilter(incident("INVESTIGATING"), "needs-you")).toBe(false);
-    expect(matchesFilter(incident("RESOLVED"), "needs-you")).toBe(false);
+    expect(statusesFor("needs-you")).toEqual(["ESCALATED", "AWAITING_APPROVAL"]);
   });
 
-  it("resolved is the three finished statuses and all shows everything", () => {
-    expect(matchesFilter(incident("RESOLVED"), "resolved")).toBe(true);
-    expect(matchesFilter(incident("SELF_RESOLVED"), "resolved")).toBe(true);
-    expect(matchesFilter(incident("CLOSED"), "resolved")).toBe(true);
-    expect(matchesFilter(incident("NEW"), "resolved")).toBe(false);
-    expect(matchesFilter(incident("NEW"), "all")).toBe(true);
-    expect(matchesFilter(incident("CLOSED"), "all")).toBe(true);
+  it("resolved is the three finished statuses and all sends no status filter", () => {
+    expect(statusesFor("resolved")).toEqual(FINISHED);
+    expect(statusesFor("all")).toEqual([]);
   });
-});
 
-describe("matchesSearch", () => {
-  const row = incident("NEW", { title: "Disk almost full", target: "demo-1" });
+  it("returns a fresh array each time so a caller cannot change the table", () => {
+    statusesFor("open").push("BOGUS");
 
-  it("matches the title or the target, ignoring case and surrounding spaces", () => {
-    expect(matchesSearch(row, "")).toBe(true);
-    expect(matchesSearch(row, "  DISK ")).toBe(true);
-    expect(matchesSearch(row, "demo")).toBe(true);
-    expect(matchesSearch(row, "backup")).toBe(false);
+    expect(statusesFor("open")).not.toContain("BOGUS");
   });
 });
 

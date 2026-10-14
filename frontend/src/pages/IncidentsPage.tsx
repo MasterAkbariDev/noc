@@ -1,17 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { ApiError } from "../api/client";
 import type { IncidentSummary } from "../api/types";
 import { IncidentFilters } from "../features/incidents/IncidentFilters";
 import { IncidentRows } from "../features/incidents/IncidentRows";
-import { listAllIncidents } from "../features/incidents/api";
-import {
-  FILTER_EMPTY_TEXT,
-  matchesFilter,
-  matchesSearch,
-  matchesSeverity,
-  parseFilter,
-} from "../features/incidents/filters";
+import { listIncidentRows } from "../features/incidents/api";
+import { FILTER_EMPTY_TEXT, matchesSeverity, parseFilter } from "../features/incidents/filters";
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../features/incidents/useDebouncedValue";
 import { useLivePollInterval } from "../live/useEventStream";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
 import { ErrorState, PageHeader, Skeleton } from "../ui";
@@ -38,11 +33,13 @@ export function IncidentsPage() {
   const filter = parseFilter(params.get("filter"));
   const severity = params.get("severity") ?? "";
   const search = params.get("q") ?? "";
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
 
   const query = useQuery({
-    queryKey: ["incidents", "list"],
-    queryFn: listAllIncidents,
+    queryKey: ["incidents", "list", filter, debouncedSearch],
+    queryFn: () => listIncidentRows(filter, debouncedSearch),
     refetchInterval,
+    placeholderData: keepPreviousData,
   });
 
   function setParam(key: string, value: string, replace: boolean) {
@@ -56,11 +53,12 @@ export function IncidentsPage() {
   }
 
   const incidents = query.data ?? [];
-  const inFilter = incidents.filter((incident) => matchesFilter(incident, filter));
-  const visible = inFilter.filter(
-    (incident) => matchesSeverity(incident, severity) && matchesSearch(incident, search),
-  );
-  const emptyText = inFilter.length === 0 ? FILTER_EMPTY_TEXT[filter] : "No incidents match these filters.";
+  const visible = incidents.filter((incident) => matchesSeverity(incident, severity));
+  const nothingNarrowsTheList = debouncedSearch.trim() === "" && severity === "";
+  const emptyText =
+    incidents.length === 0 && nothingNarrowsTheList
+      ? FILTER_EMPTY_TEXT[filter]
+      : "No incidents match these filters.";
 
   return (
     <>

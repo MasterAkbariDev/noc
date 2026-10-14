@@ -359,6 +359,17 @@ describe("IncidentDetailPage", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
+  it("puts the approval card under the progress line and before What happened", async () => {
+    serve({ ...defaultRoutes(), [DETAIL_PATH]: detailFixture({ actions: [pendingActionFixture()] }) });
+
+    renderPage();
+
+    const card = await screen.findByRole("heading", { name: "Waiting for your approval" });
+    const happened = await screen.findByRole("heading", { name: "What happened" });
+    expect(card.compareDocumentPosition(happened) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("This incident is waiting for your decision.")).toBeTruthy();
+  });
+
   it("shows no approval card when no action waits for approval", async () => {
     serve({
       ...defaultRoutes(),

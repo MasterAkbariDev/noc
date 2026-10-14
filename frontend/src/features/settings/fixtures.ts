@@ -16,5 +16,5 @@ export function userFixture(overrides: Partial<UserView> = {}): UserView {
 }
 
 export function sessionFor(me: MeView): AuthenticatedSession {
-  return { status: "authenticated", me, login: async () => undefined, logout: () => undefined };
+  return { status: "authenticated", me, login: async () => undefined, logout: () => undefined, retry: () => undefined };
 }

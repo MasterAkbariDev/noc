@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionView } from "../../api/types";
 import { TooltipProvider } from "../../ui/Tooltip";
@@ -52,17 +52,22 @@ function actionFixture(overrides: Partial<ActionView> = {}): ActionView {
   };
 }
 
-function renderCard(action: ActionView = actionFixture(), canDecide = true) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+function cardTree(queryClient: QueryClient, action: ActionView, canDecide: boolean) {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster>
           <ApprovalCard incidentId={INCIDENT_ID} action={action} canDecide={canDecide} />
         </Toaster>
       </TooltipProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+function renderCard(action: ActionView = actionFixture(), canDecide = true) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(cardTree(queryClient, action, canDecide));
+  return { ...view, queryClient };
 }
 
 function sentBody(): unknown {
@@ -110,6 +115,86 @@ describe("ApprovalCard", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
     expect(screen.getByText("Only an operator or an admin can approve or reject this action.")).toBeTruthy();
+    expect(screen.getByText("Waiting for an operator's decision.")).toBeTruthy();
+  });
+
+  it("tells an operator the incident is waiting for their decision", () => {
+    renderCard();
+
+    expect(screen.getByText("This incident is waiting for your decision.")).toBeTruthy();
+  });
+
+  it("shows the impact score and the hash inside the dialog it was captured for", () => {
+    renderCard(actionFixture({ impact_score: 7 }));
+
+    const dialog = openDecision("Approve");
+
+    expect(within(dialog).getByText("Impact score: 7")).toBeTruthy();
+    expect(within(dialog).getByText(HASH)).toBeTruthy();
+  });
+
+  it("sends the hash captured when the dialog opened, even if the action is refreshed meanwhile", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ approval_id: "ap-1", incident_status: "REMEDIATING" }));
+    const view = renderCard();
+    const dialog = openDecision("Approve");
+    const refreshedHash = "b".repeat(64);
+
+    view.rerender(cardTree(view.queryClient, actionFixture({ action_hash: refreshedHash }), true));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve action" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toEqual({ decision: "approved", action_hash: HASH, comment: null });
+  });
+
+  it("refetches the incident after a 409 so the page shows what changed", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "stale hash" }, 409));
+    const { queryClient } = renderCard();
+    const refetch = vi.spyOn(queryClient, "refetchQueries");
+
+    fireEvent.click(within(openDecision("Approve")).getByRole("button", { name: "Approve action" }));
+
+    expect(await screen.findByText(CHANGED_TEXT)).toBeTruthy();
+    expect(refetch).toHaveBeenCalledWith({ queryKey: ["incident", INCIDENT_ID] });
+  });
+
+  it("shows the server's validation message, not the status line, for a 422", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: [{ msg: "field required" }] }), {
+        status: 422,
+        statusText: "Unprocessable Content",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    renderCard();
+
+    fireEvent.click(within(openDecision("Approve")).getByRole("button", { name: "Approve action" }));
+
+    expect(await screen.findByText("field required")).toBeTruthy();
+    expect(screen.queryByText(/422/)).toBeNull();
+  });
+
+  it("turns to expired by itself as the clock passes the expiry, without a reload", () => {
+    vi.useFakeTimers();
+    try {
+      renderCard(actionFixture({ approval_expires_at: new Date(Date.now() + 90_000).toISOString() }));
+
+      expect(screen.getByText("Expires in 1 min")).toBeTruthy();
+      expect(buttonIsDisabled("Approve")).toBe(false);
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByText("Expires in under a minute")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByText("Expired")).toBeTruthy();
+      expect(buttonIsDisabled("Approve")).toBe(true);
+      expect(buttonIsDisabled("Reject")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens the approve dialog with an optional comment limited to 500 characters", () => {

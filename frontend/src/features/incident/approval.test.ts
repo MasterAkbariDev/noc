@@ -3,6 +3,7 @@ import { ApiError } from "../../api/client";
 import type { ActionView } from "../../api/types";
 import {
   CHANGED_REQUEST_TEXT,
+  INVALID_DECISION_TEXT,
   canDecideActions,
   decisionErrorMessage,
   expiryText,
@@ -94,6 +95,13 @@ describe("decisionErrorMessage", () => {
 
   it("shows the server detail for a 422", () => {
     expect(decisionErrorMessage(new ApiError(422, "comment is too long"))).toBe("comment is too long");
+  });
+
+  it("never shows the status line for a 422 whose body has no readable detail", () => {
+    const message = decisionErrorMessage(new ApiError(422, "422 Unprocessable Content"));
+
+    expect(message).toBe(INVALID_DECISION_TEXT);
+    expect(message).not.toContain("422");
   });
 
   it("falls back to the general message for other errors", () => {

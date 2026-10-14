@@ -46,14 +46,3 @@ export function percentFromHundred(value: number): string {
   return `${Math.round(value)}%`;
 }
 
-export function durationMs(ms: number): string {
-  const safe = Math.max(0, ms);
-  if (safe < 1_000) {
-    return `${Math.round(safe)} ms`;
-  }
-  if (safe < MINUTE_MS) {
-    return `${(safe / 1_000).toFixed(1)} s`;
-  }
-  const totalSeconds = Math.round(safe / 1_000);
-  return `${Math.floor(totalSeconds / 60)} min ${totalSeconds % 60} s`;
-}

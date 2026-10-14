@@ -17,7 +17,6 @@ import type {
   ServerSummary,
   StreamTicket,
   SystemHealth,
-  TargetView,
   UserView,
 } from "./types";
 
@@ -68,12 +67,25 @@ function pathname(path: string): string {
   return path.split("?", 1)[0] ?? path;
 }
 
+function detailText(detail: unknown): string | null {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (!Array.isArray(detail)) {
+    return null;
+  }
+  const messages = detail.flatMap((item: unknown) =>
+    typeof item === "object" && item !== null && "msg" in item && typeof item.msg === "string" ? [item.msg] : [],
+  );
+  return messages.length > 0 ? messages.join("; ") : null;
+}
+
 async function errorDetail(response: Response): Promise<string> {
   const fallback = `${response.status} ${response.statusText}`.trim();
   try {
     const body: unknown = await response.json();
-    if (typeof body === "object" && body !== null && "detail" in body && typeof body.detail === "string") {
-      return body.detail;
+    if (typeof body === "object" && body !== null && "detail" in body) {
+      return detailText(body.detail) ?? fallback;
     }
     return fallback;
   } catch {
@@ -132,9 +144,30 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
   return apiPost<void>("/api/auth/password", { current_password: currentPassword, new_password: newPassword });
 }
 
-export function listIncidents(status?: string): Promise<IncidentSummary[]> {
-  const query = status ? `?${new URLSearchParams({ status })}` : "";
-  return apiGet<IncidentSummary[]>(`/api/incidents${query}`);
+export type IncidentListQuery = {
+  status?: string;
+  statuses?: string[];
+  q?: string;
+  limit?: number;
+};
+
+export function listIncidents(query: IncidentListQuery = {}): Promise<IncidentSummary[]> {
+  const params = new URLSearchParams();
+  if (query.status) {
+    params.set("status", query.status);
+  }
+  for (const status of query.statuses ?? []) {
+    params.append("statuses", status);
+  }
+  if (query.q) {
+    params.set("q", query.q);
+  }
+  if (query.limit !== undefined) {
+    params.set("limit", String(query.limit));
+  }
+  const text = params.toString();
+  const suffix = text === "" ? "" : `?${text}`;
+  return apiGet<IncidentSummary[]>(`/api/incidents${suffix}`);
 }
 
 export function getIncident(id: string): Promise<IncidentDetail> {
@@ -143,10 +176,6 @@ export function getIncident(id: string): Promise<IncidentDetail> {
 
 export function getTrace(id: string): Promise<IncidentTrace> {
   return apiGet<IncidentTrace>(`/api/incidents/${encodeURIComponent(id)}/trace`);
-}
-
-export function getTargets(): Promise<TargetView[]> {
-  return apiGet<TargetView[]>("/api/targets");
 }
 
 export function closeIncident(id: string, body: IncidentResolutionBody): Promise<IncidentSummary> {
