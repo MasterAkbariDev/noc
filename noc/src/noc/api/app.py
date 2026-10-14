@@ -10,6 +10,7 @@ from noc.api.activity import router as activity_router
 from noc.api.auth import router as auth_router
 from noc.api.events import router as events_router
 from noc.api.incidents import router as incidents_router
+from noc.api.overview import router as overview_router
 from noc.api.prometheus import PrometheusReader
 from noc.api.servers import router as servers_router
 from noc.api.spa import SinglePageApp
@@ -49,6 +50,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(system_llm_router)
     app.include_router(system_router)
     app.include_router(activity_router)
+    app.include_router(overview_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

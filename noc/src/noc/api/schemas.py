@@ -389,3 +389,49 @@ class MeView(BaseModel):
     username: str
     role: Role
     via: Literal["session", "token"]
+
+
+OverviewLevel = Literal["ok", "attention", "degraded", "down"]
+ActivityKind = Literal["incident", "audit"]
+
+
+class OverviewVerdict(BaseModel):
+    level: OverviewLevel
+    sentence: str
+
+
+class Kpis(BaseModel):
+    open_incidents: int
+    needs_you: int
+    servers_up: int
+    servers_total: int
+    llm_keys_ok: int
+    llm_keys_total: int
+
+
+class AttentionItem(BaseModel):
+    incident_id: uuid.UUID
+    title: str
+    target: str
+    severity: str
+    status: str
+    status_label: str
+    since: datetime
+    summary: str
+    advice: str
+
+
+class ActivityItem(BaseModel):
+    ts: datetime
+    kind: ActivityKind
+    text: str
+    incident_id: uuid.UUID | None
+    actor: str
+
+
+class Overview(BaseModel):
+    verdict: OverviewVerdict
+    kpis: Kpis
+    needs_attention: list[AttentionItem]
+    activity: list[ActivityItem]
+    servers: list[ServerSummary]
