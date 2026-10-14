@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import get_session, require_role
 from noc.api.schemas import (
     IncidentStory,
     StepState,
@@ -19,13 +19,16 @@ from noc.api.schemas import (
     StoryStep,
     StoryText,
 )
+from noc.auth.roles import Role
 from noc.db.models import ActionRow, AlertEvent, DiagnosisRow, FindingRow, Incident, Target
 from noc.domain.incident_status import ACTIVE_STATUSES, CLOSED_STATUSES, IncidentStatus
 from noc.reporting import plain_language as words
 from noc.store.decisions import EXECUTED_STATUSES, IN_FLIGHT_STATUSES
 from noc_shared.taxonomy import RootCauseCode
 
-router = APIRouter(prefix="/api/incidents", tags=["story"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/incidents", tags=["story"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Step = tuple[str, StepState, datetime | None]

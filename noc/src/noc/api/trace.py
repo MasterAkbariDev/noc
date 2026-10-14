@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import get_session, require_role
 from noc.api.schemas import AgentRunView, IncidentTrace, LlmCallView, ToolCallView
+from noc.auth.roles import Role
 from noc.db.models import AgentRun, Incident, LlmCall, ToolCall
 
-router = APIRouter(prefix="/api/incidents", tags=["trace"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/incidents", tags=["trace"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

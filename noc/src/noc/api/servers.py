@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import get_session, require_role
 from noc.api.incidents import summarize
 from noc.api.prometheus import PrometheusReader, Sample, ScrapeTarget
 from noc.api.schemas import (
@@ -23,6 +23,7 @@ from noc.api.schemas import (
     ServiceState,
     TargetResourceView,
 )
+from noc.auth.roles import Role
 from noc.db.models import Incident, ManagedResourceRow, Target
 from noc.detection.alerts import PrometheusUnavailable
 from noc.domain.incident_status import OPEN_STATUSES
@@ -30,7 +31,9 @@ from noc.domain.severity import Severity
 from noc.reporting import plain_language as words
 from noc_shared.resources import ResourceKind
 
-router = APIRouter(prefix="/api/servers", tags=["servers"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/servers", tags=["servers"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

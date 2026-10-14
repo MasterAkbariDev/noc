@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from noc.api.app import create_app as create_api
 from noc.config import Settings
-from noc.db.models import ActionRow, Incident, IncidentEvent, Job, Report
+from noc.db.models import ActionRow, Approval, Incident, IncidentEvent, Job, Report
 from noc.db.session import SessionFactory, transaction
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
@@ -376,8 +376,10 @@ async def test_the_api_records_a_decision_and_refuses_a_stale_hash(
     pending = [a for a in detail["actions"] if a["status"] == "pending_approval"]
     assert len(pending) == 1
     path = f"/api/incidents/{incident_id}/actions/{pending[0]['id']}/decision"
-    body = {"decision": "approved", "action_hash": "0" * 64, "decided_by": "alice"}
+    body: dict[str, str] = {"decision": "approved", "action_hash": "0" * 64}
 
+    named = await api.post(path, json={**body, "decided_by": "alice"}, headers=API_AUTH)
+    assert named.status_code == 422
     stale = await api.post(path, json=body, headers=API_AUTH)
     assert stale.status_code == 409
     unauthenticated = await api.post(path, json=body)
@@ -387,5 +389,8 @@ async def test_the_api_records_a_decision_and_refuses_a_stale_hash(
     accepted = await api.post(path, json=body, headers=API_AUTH)
     assert accepted.status_code == 200
     assert accepted.json()["incident_status"] == "REMEDIATING"
+    async with approval_lab.sessions() as session:
+        approver = await session.scalar(select(Approval.decided_by))
+    assert approver == "api-token"
     again = await api.post(path, json=body, headers=API_AUTH)
     assert again.status_code == 409

@@ -108,7 +108,7 @@ async def test_api_closes_escalated_incident_and_keeps_agent_root_cause(
         actor = await session.scalar(
             select(AuditEntry.actor).where(AuditEntry.action == "incident_closed")
         )
-    assert actor == "api"
+    assert actor == "api-token"
 
 
 async def test_closing_a_new_incident_is_a_conflict(

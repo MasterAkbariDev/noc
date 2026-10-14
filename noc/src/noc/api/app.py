@@ -20,6 +20,7 @@ from noc.api.system_llm import router as system_llm_router
 from noc.api.targets import router as targets_router
 from noc.api.tickets import TicketStore, redact_tickets_in_access_log
 from noc.api.trace import router as trace_router
+from noc.api.users import router as users_router
 from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
@@ -51,6 +52,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(system_router)
     app.include_router(activity_router)
     app.include_router(overview_router)
+    app.include_router(users_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

@@ -307,7 +307,6 @@ class ApprovalRequest(BaseModel):
 
     decision: Literal["approved", "rejected"]
     action_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    decided_by: str = Field(min_length=1, max_length=64)
     comment: str | None = Field(default=None, max_length=500)
 
 
@@ -435,3 +434,28 @@ class Overview(BaseModel):
     needs_attention: list[AttentionItem]
     activity: list[ActivityItem]
     servers: list[ServerSummary]
+
+
+class UserView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username: str
+    role: Role
+    disabled: bool
+    created_at: datetime
+    last_login_at: datetime | None
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    role: Role
+
+
+class SetRoleRequest(BaseModel):
+    role: Role
+
+
+class SetUserPasswordRequest(BaseModel):
+    new_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import Principal, get_session, require_role
 from noc.api.schemas import (
     ActionView,
     ApprovalRequest,
@@ -19,6 +19,7 @@ from noc.api.schemas import (
     IncidentDetail,
     IncidentSummary,
 )
+from noc.auth.roles import Role
 from noc.db.models import (
     ActionRow,
     DiagnosisRow,
@@ -33,10 +34,11 @@ from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.remediation import ApprovalConflict, record_approval
 
 router = APIRouter(
-    prefix="/api/incidents", tags=["incidents"], dependencies=[Depends(require_token)]
+    prefix="/api/incidents", tags=["incidents"], dependencies=[Depends(require_role(Role.VIEWER))]
 )
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+OperatorPrincipal = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
 
 
 def summarize(incident: Incident, target_name: str) -> IncidentSummary:
@@ -136,10 +138,13 @@ async def get_report(incident_id: uuid.UUID, session: Session) -> str:
 
 @router.post("/{incident_id}/close")
 async def close_escalated_incident(
-    incident_id: uuid.UUID, resolution: IncidentResolution, session: Session
+    incident_id: uuid.UUID,
+    resolution: IncidentResolution,
+    session: Session,
+    operator: OperatorPrincipal,
 ) -> IncidentSummary:
     try:
-        incident = await close_incident(session, incident_id, resolution, "api")
+        incident = await close_incident(session, incident_id, resolution, operator.username)
     except LookupError as error:
         raise HTTPException(404, "incident not found") from error
     except InvalidTransition as error:
@@ -151,7 +156,11 @@ async def close_escalated_incident(
 
 @router.post("/{incident_id}/actions/{action_id}/decision")
 async def decide_on_action(
-    incident_id: uuid.UUID, action_id: uuid.UUID, request: ApprovalRequest, session: Session
+    incident_id: uuid.UUID,
+    action_id: uuid.UUID,
+    request: ApprovalRequest,
+    session: Session,
+    operator: OperatorPrincipal,
 ) -> ApprovalView:
     try:
         recorded = await record_approval(
@@ -159,7 +168,7 @@ async def decide_on_action(
             incident_id,
             action_id,
             request.decision,
-            request.decided_by,
+            operator.username,
             request.action_hash,
             request.comment,
         )

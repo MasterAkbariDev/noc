@@ -13,9 +13,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import get_session, require_role
 from noc.api.prometheus import PrometheusReader
 from noc.api.schemas import ComponentHealth, ComponentStatus, StuckIncident, SystemHealth, Verdict
+from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.base import utc_now
 from noc.db.models import Incident, IncidentEvent, Job, Target, WorkerHeartbeat
@@ -23,7 +24,9 @@ from noc.detection.alerts import PrometheusUnavailable
 from noc.domain.incident_status import ACTIVE_STATUSES
 from noc.llm.providers import ProvidersDocument, load_providers
 
-router = APIRouter(prefix="/api/system", tags=["system"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/system", tags=["system"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Connect = Callable[[str, int], Awaitable[object]]

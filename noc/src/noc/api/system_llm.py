@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, get_settings_dep, require_token
+from noc.api.deps import get_session, get_settings_dep, require_role
 from noc.api.schemas import LlmKeyView, LlmModelUsage, LlmStatus
+from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.models import LlmKeyStatus, LlmQuotaUsage
 from noc.llm.providers import (
@@ -19,7 +20,9 @@ from noc.llm.providers import (
     load_providers,
 )
 
-router = APIRouter(prefix="/api/system", tags=["system"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/system", tags=["system"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 AppSettings = Annotated[Settings, Depends(get_settings_dep)]

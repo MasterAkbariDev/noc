@@ -5,13 +5,16 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_token
+from noc.api.deps import get_session, require_role
 from noc.api.schemas import ActivityEntry, ActivityPage, ChainVerification
 from noc.audit.chain import verify_chain
+from noc.auth.roles import Role
 from noc.db.models import AuditEntry
 from noc.reporting import plain_language as words
 
-router = APIRouter(prefix="/api/activity", tags=["activity"], dependencies=[Depends(require_token)])
+router = APIRouter(
+    prefix="/api/activity", tags=["activity"], dependencies=[Depends(require_role(Role.VIEWER))]
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Limit = Annotated[int, Query(ge=1, le=200)]
