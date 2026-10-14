@@ -68,6 +68,16 @@ async def load_session(
     return row, user
 
 
+async def is_session_live(
+    session: AsyncSession, id_hash: str, settings: Settings, now: datetime
+) -> bool:
+    row = await session.get(AuthSession, id_hash)
+    if row is None or is_expired(row, settings, now):
+        return False
+    user = await session.get(User, row.user_id)
+    return user is not None and not user.disabled
+
+
 async def delete_session(session: AsyncSession, token_hash: str) -> None:
     await session.execute(delete(AuthSession).where(AuthSession.id_hash == token_hash))
 

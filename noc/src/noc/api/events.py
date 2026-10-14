@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -9,10 +9,12 @@ from fastapi.responses import StreamingResponse
 from psycopg import sql
 from pydantic import BaseModel
 
-from noc.api.deps import get_settings_dep, require_role, require_token
-from noc.api.tickets import TICKET_TTL_SECONDS, TicketStore
+from noc.api.deps import Principal, get_settings_dep, require_role, require_token
+from noc.api.tickets import TICKET_TTL_SECONDS, TicketGrant, TicketStore
 from noc.auth.roles import Role
+from noc.auth.sessions import is_session_live
 from noc.config import Settings
+from noc.db.base import utc_now
 from noc.db.models import IncidentEvent
 from noc.db.session import SessionFactory
 from noc.store.incidents import EVENTS_CHANNEL
@@ -43,11 +45,27 @@ def require_stream_access(
     settings: Annotated[Settings, Depends(get_settings_dep)],
     authorization: Annotated[str | None, Header()] = None,
     ticket: Annotated[str | None, Query()] = None,
-) -> None:
+) -> TicketGrant:
     tickets: TicketStore = request.app.state.tickets
-    if ticket is not None and tickets.consume(ticket):
-        return
+    if ticket is not None:
+        grant = tickets.consume(ticket)
+        if grant is not None:
+            return grant
     require_token(settings, authorization)
+    return TicketGrant(session_hash=None)
+
+
+StillAllowed = Callable[[], Awaitable[bool]]
+
+
+def session_check(sessions: SessionFactory, settings: Settings, grant: TicketGrant) -> StillAllowed:
+    async def still_allowed() -> bool:
+        if grant.session_hash is None:
+            return True
+        async with sessions() as session:
+            return await is_session_live(session, grant.session_hash, settings, utc_now())
+
+    return still_allowed
 
 
 def parse_notification(payload: str) -> tuple[uuid.UUID, int] | None:
@@ -85,7 +103,9 @@ async def load_event_frame(sessions: SessionFactory, payload: str) -> str | None
     )
 
 
-async def event_frames(settings: Settings, sessions: SessionFactory) -> AsyncIterator[str]:
+async def event_frames(
+    settings: Settings, sessions: SessionFactory, still_allowed: StillAllowed
+) -> AsyncIterator[str]:
     connection = await psycopg.AsyncConnection.connect(settings.libpq_url, autocommit=True)
     try:
         await connection.execute(sql.SQL("LISTEN {}").format(sql.Identifier(EVENTS_CHANNEL)))
@@ -95,24 +115,30 @@ async def event_frames(settings: Settings, sessions: SessionFactory) -> AsyncIte
                 frame = await load_event_frame(sessions, notification.payload)
                 if frame is not None:
                     yield frame
+            if not await still_allowed():
+                return
             yield PING_FRAME
     finally:
         await connection.close()
 
 
-@router.post("/ticket", dependencies=[Depends(require_role(Role.VIEWER))])
-async def issue_stream_ticket(request: Request) -> StreamTicket:
+@router.post("/ticket")
+async def issue_stream_ticket(
+    request: Request, principal: Annotated[Principal, Depends(require_role(Role.VIEWER))]
+) -> StreamTicket:
     tickets: TicketStore = request.app.state.tickets
-    return StreamTicket(ticket=tickets.issue(), expires_in=TICKET_TTL_SECONDS)
+    return StreamTicket(ticket=tickets.issue(principal.session_hash), expires_in=TICKET_TTL_SECONDS)
 
 
-@router.get("/stream", dependencies=[Depends(require_stream_access)])
+@router.get("/stream")
 async def stream_events(
     settings: Annotated[Settings, Depends(get_settings_dep)],
     request: Request,
+    grant: Annotated[TicketGrant, Depends(require_stream_access)],
 ) -> StreamingResponse:
+    sessions: SessionFactory = request.app.state.sessions
     return StreamingResponse(
-        event_frames(settings, request.app.state.sessions),
+        event_frames(settings, sessions, session_check(sessions, settings, grant)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache"},
     )

@@ -136,6 +136,7 @@ async def test_disabled_user_cannot_log_in_even_with_the_right_password(
     client: httpx.AsyncClient, sessions: SessionFactory
 ) -> None:
     async with transaction(sessions) as session:
+        await create_user(session, "backup-admin", PASSWORD, Role.ADMIN, "cli")
         await set_disabled(session, USERNAME, True, "cli")
     response = await login(client)
     assert response.status_code == 401
@@ -326,6 +327,7 @@ async def test_disabling_a_user_ends_their_session_at_once(
 ) -> None:
     assert (await login(client)).status_code == 200
     async with transaction(sessions) as session:
+        await create_user(session, "backup-admin", PASSWORD, Role.ADMIN, "cli")
         await set_disabled(session, USERNAME, True, "cli")
     assert (await client.get(ME_PATH)).status_code == 401
     assert await session_hashes(sessions) == []

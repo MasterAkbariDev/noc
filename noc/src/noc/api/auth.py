@@ -1,14 +1,22 @@
 import asyncio
+import hmac
+import ipaddress
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import Principal, current_principal, get_session, get_settings_dep
 from noc.api.schemas import LoginRequest, MeView, PasswordChangeRequest
 from noc.audit.chain import append_audit
-from noc.auth.login_limits import USERNAME_MAX_LENGTH, WINDOW, is_blocked, record_failure
+from noc.auth.login_limits import (
+    USERNAME_MAX_LENGTH,
+    WINDOW,
+    drop_attempt,
+    over_limit,
+    record_attempt,
+)
 from noc.auth.passwords import (
     DUMMY_HASH,
     check_password_rules,
@@ -19,6 +27,7 @@ from noc.auth.passwords import (
 from noc.auth.roles import Role
 from noc.auth.sessions import (
     CSRF_COOKIE,
+    CSRF_HEADER,
     SESSION_COOKIE,
     create_session,
     delete_session,
@@ -40,12 +49,19 @@ INVALID_LOGIN = "invalid username or password"
 CURRENT_MISMATCH = "current password is wrong"
 TOO_MANY_ATTEMPTS = "too many attempts, try again later"
 JSON_MEDIA_TYPE = "application/json"
+IP_MAX_LENGTH = 64
+UNKNOWN_CLIENT = "unknown"
+CSRF_FAILED = "csrf token missing or invalid"
 ANONYMOUS_ACTOR = "anonymous"
 SECONDS_PER_HOUR = 3600
 
 
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "unknown"
+    host = request.client.host if request.client is not None else ""
+    try:
+        return str(ipaddress.ip_address(host))[:IP_MAX_LENGTH]
+    except ValueError:
+        return UNKNOWN_CLIENT
 
 
 def login_key(username: str) -> str:
@@ -126,15 +142,16 @@ async def drop_presented_session(session: AsyncSession, request: Request) -> Non
         await delete_session(session, sha256_hex(presented))
 
 
-async def end_session(session: AsyncSession, token: str) -> None:
-    row = await session.get(AuthSession, sha256_hex(token))
-    if row is None:
-        return
+async def end_session(session: AsyncSession, row: AuthSession) -> None:
     user = await session.get(User, row.user_id)
     await delete_session(session, row.id_hash)
     if user is not None:
         await append_audit(session, user.username, "logout", subject_for(user.username), {})
     await session.commit()
+
+
+def csrf_matches(row: AuthSession, supplied: str | None) -> bool:
+    return supplied is not None and hmac.compare_digest(sha256_hex(supplied), row.csrf_hash)
 
 
 @router.post("/login", response_model=MeView)
@@ -148,16 +165,18 @@ async def login(
     key = login_key(body.username)
     ip = client_ip(request)
     now = utc_now()
-    if await is_blocked(session, key, ip, now):
+    attempt_id = await record_attempt(session, key, ip, now)
+    if await over_limit(session, key, ip, now):
+        await drop_attempt(session, attempt_id)
         raise too_many_attempts()
     user = await find_login_user(session, key)
     checked_hash = user.password_hash if user is not None and not user.disabled else DUMMY_HASH
     verified = await asyncio.to_thread(verify_password, checked_hash, body.password)
     if user is None or user.disabled or not verified:
-        await record_failure(session, key, ip, now)
         await append_audit(session, ANONYMOUS_ACTOR, "login_failed", subject_for(key), {})
         await session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, INVALID_LOGIN)
+    await drop_attempt(session, attempt_id)
     if needs_rehash(user.password_hash):
         user.password_hash = await asyncio.to_thread(hash_password, body.password)
     await drop_presented_session(session, request)
@@ -175,10 +194,14 @@ async def logout(
     response: Response,
     session: Session,
     settings: Config,
+    csrf_token: Annotated[str | None, Header(alias=CSRF_HEADER)] = None,
 ) -> None:
     presented = request.cookies.get(SESSION_COOKIE)
-    if presented is not None:
-        await end_session(session, presented)
+    row = await session.get(AuthSession, sha256_hex(presented)) if presented is not None else None
+    if row is not None:
+        if not csrf_matches(row, csrf_token):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, CSRF_FAILED)
+        await end_session(session, row)
     clear_session_cookies(response, settings)
 
 
@@ -205,14 +228,16 @@ async def change_password(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not logged in")
     ip = client_ip(request)
     now = utc_now()
-    if await is_blocked(session, user.username, ip, now):
+    attempt_id = await record_attempt(session, user.username, ip, now)
+    if await over_limit(session, user.username, ip, now):
+        await drop_attempt(session, attempt_id)
         raise too_many_attempts()
     verified = await asyncio.to_thread(verify_password, user.password_hash, body.current_password)
     if not verified:
-        await record_failure(session, user.username, ip, now)
         await append_audit(session, user.username, "login_failed", subject_for(user.username), {})
         await session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, CURRENT_MISMATCH)
+    await drop_attempt(session, attempt_id)
     user.password_hash = await asyncio.to_thread(hash_password, body.new_password)
     user.password_changed_at = now
     await delete_user_sessions(session, user.id, keep_hash=principal.session_hash)

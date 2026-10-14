@@ -40,7 +40,14 @@ def create_app(settings: Settings) -> FastAPI:
         await engine.dispose()
 
     redact_tickets_in_access_log()
-    app = FastAPI(title="Multi-Agent NOC", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Multi-Agent NOC",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.include_router(auth_router)
     app.include_router(incidents_router)
     app.include_router(trace_router)

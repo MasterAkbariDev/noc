@@ -35,7 +35,7 @@ def require_token(
     if expected is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "NOC_API_TOKEN is not configured")
     supplied = (authorization or "").removeprefix("Bearer ").strip()
-    if not hmac.compare_digest(supplied, expected.get_secret_value()):
+    if not hmac.compare_digest(supplied.encode(), expected.get_secret_value().encode()):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
 
 

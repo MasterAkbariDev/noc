@@ -77,6 +77,8 @@ There are three roles, each one including the ones before it:
 
 The API token is for the CLI and automation only. People sign in to the panel with their username and password.
 
+If Safari keeps returning to the login page, set `NOC_SESSION_COOKIE_SECURE=false` in `/opt/noc/.env` (Chrome and Firefox accept the secure cookie on `localhost`). An account locked by failed logins is opened again with `noc users unlock <name>` on the server.
+
 ## Configuration
 
 All settings use the `NOC_` prefix; see `.env.example`. LLM keys go in `GEMINI_API_KEYS` / `GROQ_API_KEYS`, one per line inside double quotes. Without keys, `NOC_LLM_MODE=replay` answers from recorded responses.

@@ -14,7 +14,14 @@ from sqlalchemy import select
 from noc.api.app import create_app
 from noc.audit.chain import append_audit, verify_chain
 from noc.auth.roles import Role
-from noc.auth.users import create_user, list_users, reset_password, set_disabled, set_role
+from noc.auth.users import (
+    create_user,
+    list_users,
+    reset_password,
+    set_disabled,
+    set_role,
+    unlock_user,
+)
 from noc.config import PACKAGE_DIR, get_settings
 from noc.db.base import utc_now
 from noc.db.models import ActionRow, Incident, Report, ScenarioRun, Target, User
@@ -83,7 +90,7 @@ def with_admin_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[Resu
 @app.command()
 def api(host: str = "127.0.0.1", port: int = 8000) -> None:
     configure_logging()
-    uvicorn.run(create_app(get_settings()), host=host, port=port)
+    uvicorn.run(create_app(get_settings()), host=host, port=port, proxy_headers=False)
 
 
 @app.command()
@@ -480,6 +487,19 @@ def users_set_role(username: str, role: Role) -> None:
             except LookupError as error:
                 raise typer.BadParameter(str(error)) from error
             return describe_user(user)
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("unlock")
+def users_unlock(username: str) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                cleared = await unlock_user(session, username, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return f"{username}: cleared {cleared} failed login(s)"
 
     typer.echo(with_admin_sessions(work))
 

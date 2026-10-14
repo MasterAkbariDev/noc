@@ -21,18 +21,31 @@ async def count_recent(session: AsyncSession, now: datetime, criterion: ColumnEl
     return int(await session.scalar(statement) or 0)
 
 
-async def is_blocked(session: AsyncSession, username: str, ip: str, now: datetime) -> bool:
-    failures_for_user = await count_recent(session, now, LoginFailure.username == username)
-    if failures_for_user >= USERNAME_LIMIT:
+async def over_limit(session: AsyncSession, username: str, ip: str, now: datetime) -> bool:
+    attempts_for_user = await count_recent(session, now, LoginFailure.username == username)
+    if attempts_for_user > USERNAME_LIMIT:
         return True
-    failures_from_ip = await count_recent(session, now, LoginFailure.ip == ip)
-    return failures_from_ip >= IP_LIMIT
+    attempts_from_ip = await count_recent(session, now, LoginFailure.ip == ip)
+    return attempts_from_ip > IP_LIMIT
 
 
-async def record_failure(session: AsyncSession, username: str, ip: str, now: datetime) -> None:
-    session.add(LoginFailure(username=username[:USERNAME_MAX_LENGTH], ip=ip, ts=now))
+async def record_attempt(session: AsyncSession, username: str, ip: str, now: datetime) -> int:
+    attempt = LoginFailure(username=username[:USERNAME_MAX_LENGTH], ip=ip, ts=now)
+    session.add(attempt)
     await session.flush()
     await prune(session, now)
+    await session.commit()
+    return attempt.id
+
+
+async def drop_attempt(session: AsyncSession, attempt_id: int) -> None:
+    await session.execute(delete(LoginFailure).where(LoginFailure.id == attempt_id))
+    await session.commit()
+
+
+async def clear_failures(session: AsyncSession, username: str) -> int:
+    result = await session.execute(delete(LoginFailure).where(LoginFailure.username == username))
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def prune(session: AsyncSession, now: datetime) -> None:

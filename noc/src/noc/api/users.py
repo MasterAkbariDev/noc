@@ -2,12 +2,14 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import Principal, get_session, require_role
 from noc.api.schemas import CreateUserRequest, SetRoleRequest, SetUserPasswordRequest, UserView
 from noc.auth.roles import Role, role_allows
 from noc.auth.users import (
+    LastAdmin,
     UserExists,
     create_user,
     list_users,
@@ -25,6 +27,7 @@ AdminPrincipal = Annotated[Principal, Depends(require_role(Role.ADMIN))]
 NOT_FOUND = "user not found"
 SELF_DISABLE = "an admin cannot disable their own account"
 SELF_DEMOTE = "an admin cannot lower their own role"
+SELF_RESET = "use Settings > Change password for your own account"
 
 
 async def load_user(session: AsyncSession, user_id: uuid.UUID) -> User:
@@ -51,7 +54,12 @@ async def add_user(body: CreateUserRequest, admin: AdminPrincipal, session: Sess
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"user {body.username} already exists"
+        ) from error
     return UserView.model_validate(user)
 
 
@@ -62,7 +70,10 @@ async def change_role(
     user = await load_user(session, user_id)
     if is_caller(admin, user) and not role_allows(body.role, Role.ADMIN):
         raise HTTPException(status.HTTP_409_CONFLICT, SELF_DEMOTE)
-    changed = await set_role(session, user.username, body.role, admin.username)
+    try:
+        changed = await set_role(session, user.username, body.role, admin.username)
+    except LastAdmin as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     await session.commit()
     return UserView.model_validate(changed)
 
@@ -72,7 +83,10 @@ async def disable_user(user_id: uuid.UUID, admin: AdminPrincipal, session: Sessi
     user = await load_user(session, user_id)
     if is_caller(admin, user):
         raise HTTPException(status.HTTP_409_CONFLICT, SELF_DISABLE)
-    changed = await set_disabled(session, user.username, True, admin.username)
+    try:
+        changed = await set_disabled(session, user.username, True, admin.username)
+    except LastAdmin as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     await session.commit()
     return UserView.model_validate(changed)
 
@@ -93,6 +107,8 @@ async def set_user_password(
     session: Session,
 ) -> None:
     user = await load_user(session, user_id)
+    if is_caller(admin, user):
+        raise HTTPException(status.HTTP_409_CONFLICT, SELF_RESET)
     try:
         await reset_password(session, user.username, body.new_password, admin.username)
     except ValueError as error:
