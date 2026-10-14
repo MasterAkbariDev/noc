@@ -7,8 +7,10 @@ import { SessionProvider } from "./auth/session";
 import { Toaster, TooltipProvider } from "./ui";
 import "./styles.css";
 
+const QUERY_STALE_MS = 10_000;
+
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1 } },
+  defaultOptions: { queries: { retry: 1, staleTime: QUERY_STALE_MS } },
 });
 
 const rootElement = document.getElementById("root");

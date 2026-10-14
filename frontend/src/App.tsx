@@ -1,22 +1,26 @@
-import { lazy } from "react";
+import { lazy, useEffect } from "react";
 import { Navigate, Outlet, Route, Routes, useParams } from "react-router";
 import { RequireAuth } from "./auth/RequireAuth";
 import { useSessionState } from "./auth/session";
 import { StreamConnectedContext, useEventStream } from "./live/useEventStream";
+import { ActivityPage } from "./pages/ActivityPage";
+import { IncidentsPage } from "./pages/IncidentsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { ServerPage } from "./pages/ServerPage";
+import { ServersPage } from "./pages/ServersPage";
+import { SystemPage } from "./pages/SystemPage";
 import { AppShell } from "./shell/AppShell";
 
-const ActivityPage = lazy(() => import("./pages/ActivityPage").then((module) => ({ default: module.ActivityPage })));
-const IncidentDetailPage = lazy(() =>
-  import("./pages/IncidentDetailPage").then((module) => ({ default: module.IncidentDetailPage })),
-);
-const IncidentsPage = lazy(() => import("./pages/IncidentsPage").then((module) => ({ default: module.IncidentsPage })));
+const loadIncidentDetailPage = () =>
+  import("./pages/IncidentDetailPage").then((module) => ({ default: module.IncidentDetailPage }));
+const loadSettingsPage = () => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage }));
+
+const PAGE_LOADERS = [loadIncidentDetailPage, loadSettingsPage];
+
+const IncidentDetailPage = lazy(loadIncidentDetailPage);
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
-const ServerPage = lazy(() => import("./pages/ServerPage").then((module) => ({ default: module.ServerPage })));
-const ServersPage = lazy(() => import("./pages/ServersPage").then((module) => ({ default: module.ServersPage })));
-const SettingsPage = lazy(() => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
-const SystemPage = lazy(() => import("./pages/SystemPage").then((module) => ({ default: module.SystemPage })));
+const SettingsPage = lazy(loadSettingsPage);
 const UiKitPage = import.meta.env.DEV
   ? lazy(() => import("./pages/UiKitPage").then((module) => ({ default: module.UiKitPage })))
   : null;
@@ -29,6 +33,12 @@ function TraceRedirect() {
 export function App() {
   const { status } = useSessionState();
   const connected = useEventStream(status === "authenticated");
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      PAGE_LOADERS.forEach((load) => void load());
+    }
+  }, [status]);
 
   return (
     <StreamConnectedContext.Provider value={connected}>
