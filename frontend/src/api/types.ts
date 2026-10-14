@@ -50,6 +50,14 @@ export type FindingView = {
 };
 
 export type ActionView = {
+  id: string;
+  action_hash: string;
+  rung: number;
+  authorization: string | null;
+  approval_expires_at: string | null;
+  dispatched_at: string | null;
+  finished_at: string | null;
+  result_code: string | null;
   action_type: string;
   resource_id: string;
   status: string;
