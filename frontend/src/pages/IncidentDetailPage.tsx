@@ -7,6 +7,8 @@ import { useSession } from "../auth/session";
 import { CloseIncidentForm } from "../components/CloseIncidentForm";
 import { errorMessage } from "../components/format";
 import { AgentActivityTab } from "../features/incident/AgentActivityTab";
+import { ApprovalCard } from "../features/incident/ApprovalCard";
+import { canDecideActions, pendingApprovals } from "../features/incident/approval";
 import { EvidenceTab } from "../features/incident/EvidenceTab";
 import { ReportTab } from "../features/incident/ReportTab";
 import { StoryHeader } from "../features/incident/StoryHeader";
@@ -103,6 +105,8 @@ export function IncidentDetailPage() {
 
   const data = story.data;
   const canClose = data.status === "ESCALATED" && me.role !== "viewer";
+  const canDecide = canDecideActions(me.role);
+  const approvals = pendingApprovals(incident.data?.actions ?? []);
   const tab = tabFrom(searchParams.get("tab"));
 
   function selectTab(value: string) {
@@ -145,6 +149,9 @@ export function IncidentDetailPage() {
       />
       <StoryProgress steps={data.steps} />
       <StorySections story={data} onClose={canClose ? () => setClosing(true) : undefined} />
+      {approvals.map((action) => (
+        <ApprovalCard key={action.id} incidentId={id} action={action} canDecide={canDecide} />
+      ))}
       <Tabs label="Incident details" items={items} value={tab} onValueChange={selectTab} />
       {canClose && (
         <Dialog open={closing} onOpenChange={setClosing} title="Close this incident">

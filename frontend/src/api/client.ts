@@ -1,6 +1,8 @@
 import type {
   ActivityPage,
   ActivityVerify,
+  ApprovalDecisionBody,
+  ApprovalView,
   CreateUserBody,
   IncidentDetail,
   IncidentResolutionBody,
@@ -221,4 +223,15 @@ export function enableUser(id: string): Promise<UserView> {
 
 export function resetUserPassword(id: string, newPassword: string): Promise<UserView> {
   return apiPost<UserView>(`/api/users/${encodedId(id)}/password`, { new_password: newPassword });
+}
+
+export function decideOnAction(
+  incidentId: string,
+  actionId: string,
+  body: ApprovalDecisionBody,
+): Promise<ApprovalView> {
+  return apiPost<ApprovalView>(
+    `/api/incidents/${encodedId(incidentId)}/actions/${encodedId(actionId)}/decision`,
+    body,
+  );
 }

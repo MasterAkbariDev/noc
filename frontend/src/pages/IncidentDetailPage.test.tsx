@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
-import type { IncidentDetail, IncidentStory, IncidentTrace } from "../api/types";
+import type { ActionView, IncidentDetail, IncidentStory, IncidentTrace } from "../api/types";
+import { Toaster } from "../ui/Toaster";
 import { TooltipProvider } from "../ui/Tooltip";
 import { IncidentDetailPage } from "./IncidentDetailPage";
 
@@ -143,6 +144,30 @@ function detailFixture(overrides: Partial<IncidentDetail> = {}): IncidentDetail 
   };
 }
 
+function pendingActionFixture(): ActionView {
+  return {
+    id: "act-1",
+    action_hash: "b".repeat(64),
+    rung: 1,
+    authorization: null,
+    approval_expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    dispatched_at: null,
+    finished_at: null,
+    result_code: null,
+    action_type: "restart_service",
+    resource_id: "web-1:nginx",
+    status: "pending_approval",
+    permission_class: "REQUIRES_APPROVAL",
+    eligible: true,
+    gate_failures: [],
+    reasons: [],
+    impact_score: 3,
+    high_impact: false,
+    auto_executable: false,
+    policy_version: "2026-10-skeleton-1",
+  };
+}
+
 function traceFixture(): IncidentTrace {
   return {
     agent_runs: [],
@@ -180,11 +205,13 @@ function renderPage(path = "/incidents/abc") {
   return render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-          </Routes>
-        </MemoryRouter>
+        <Toaster>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </Toaster>
       </TooltipProvider>
     </QueryClientProvider>,
   );
@@ -310,6 +337,38 @@ describe("IncidentDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "What you should do" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Close incident" })).toBeNull();
+  });
+
+  it("shows an approval card for an action waiting for approval, with Approve and Reject for an operator", async () => {
+    serve({ ...defaultRoutes(), [DETAIL_PATH]: detailFixture({ actions: [pendingActionFixture()] }) });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Waiting for your approval" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+  });
+
+  it("shows the approval card to a viewer without the buttons", async () => {
+    session.role = "viewer";
+    serve({ ...defaultRoutes(), [DETAIL_PATH]: detailFixture({ actions: [pendingActionFixture()] }) });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Waiting for your approval" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+
+  it("shows no approval card when no action waits for approval", async () => {
+    serve({
+      ...defaultRoutes(),
+      [DETAIL_PATH]: detailFixture({ actions: [{ ...pendingActionFixture(), status: "succeeded" }] }),
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "What you should do" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Waiting for your approval" })).toBeNull();
   });
 
   it("shows an error with a retry button when the story cannot be loaded", async () => {

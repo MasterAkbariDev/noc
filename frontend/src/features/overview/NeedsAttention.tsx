@@ -81,7 +81,7 @@ function AttentionRow({
       </p>
       <div className="flex flex-wrap gap-2">
         <Link to={`/incidents/${encodeURIComponent(item.incident_id)}`} className={buttonClass({ size: "sm" })}>
-          Open
+          {item.status === "AWAITING_APPROVAL" ? "Review and approve" : "Open"}
         </Link>
         {canResolve && (
           <Button variant="primary" size="sm" onClick={onResolve}>

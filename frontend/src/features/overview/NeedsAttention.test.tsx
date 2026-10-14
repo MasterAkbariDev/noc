@@ -36,6 +36,15 @@ describe("NeedsAttention", () => {
     );
   });
 
+  it("links an incident waiting for approval to its page as Review and approve", () => {
+    renderList([attentionItem({ status: "AWAITING_APPROVAL", status_label: "Waiting for approval" })], true);
+
+    expect(screen.getByRole("link", { name: "Review and approve" }).getAttribute("href")).toBe(
+      "/incidents/11111111-1111-1111-1111-111111111111",
+    );
+    expect(screen.queryByRole("button", { name: "Mark resolved" })).toBeNull();
+  });
+
   it("hides Mark resolved for a viewer", () => {
     renderList([attentionItem()], false);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionStatusLabel, runStatusTone, verdictTone } from "./labels";
+import { actionStatusLabel, eventTypeLabel, plainLabel, runStatusTone, verdictTone } from "./labels";
 
 describe("actionStatusLabel", () => {
   it("gives a plain label for a known action status", () => {
@@ -9,6 +9,30 @@ describe("actionStatusLabel", () => {
 
   it("humanises a status it does not know", () => {
     expect(actionStatusLabel("some_new_state")).toBe("Some new state");
+  });
+});
+
+describe("eventTypeLabel", () => {
+  it("gives plain labels for approval and action events", () => {
+    expect(eventTypeLabel("approval_requested")).toBe("Approval requested");
+    expect(eventTypeLabel("approval_decided")).toBe("Decision recorded");
+    expect(eventTypeLabel("action_authorized")).toBe("Action approved");
+    expect(eventTypeLabel("verification_failed")).toBe("Check after the fix failed");
+  });
+
+  it("humanises an event type it does not know", () => {
+    expect(eventTypeLabel("note")).toBe("Note");
+  });
+
+  it("does not treat object property names as event types", () => {
+    expect(eventTypeLabel("constructor")).toBe("Constructor");
+  });
+});
+
+describe("plainLabel", () => {
+  it("turns a machine code into a sentence-case label", () => {
+    expect(plainLabel("restart_service")).toBe("Restart service");
+    expect(plainLabel("REQUIRES_APPROVAL")).toBe("Requires approval");
   });
 });
 

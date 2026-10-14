@@ -94,6 +94,19 @@ export type IncidentResolutionBody = {
   corrected_root_cause_code: string | null;
 };
 
+export type ApprovalDecision = "approved" | "rejected";
+
+export type ApprovalDecisionBody = {
+  decision: ApprovalDecision;
+  action_hash: string;
+  comment: string | null;
+};
+
+export type ApprovalView = {
+  approval_id: string;
+  incident_status: string;
+};
+
 export type AgentRunView = {
   id: string;
   agent: string;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   apiPost,
+  decideOnAction,
   changePassword,
   createUser,
   disableUser,
@@ -326,5 +327,31 @@ describe("v2 user functions", () => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/users/u1/password");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ new_password: "another-long-pw" }));
+  });
+});
+
+describe("decideOnAction", () => {
+  it("posts the decision with the hash unchanged and the CSRF header", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ approval_id: "a1", incident_status: "REMEDIATING" }));
+    const hash = "a".repeat(64);
+
+    const result = await decideOnAction("inc-1", "act-1", { decision: "approved", action_hash: hash, comment: null });
+
+    expect(result).toEqual({ approval_id: "a1", incident_status: "REMEDIATING" });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/incidents/inc-1/actions/act-1/decision");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ decision: "approved", action_hash: hash, comment: null }));
+    expect(sentHeaders().get("X-CSRF-Token")).toBe("csrf-value");
+  });
+
+  it("sends no decided_by field and encodes both ids in the path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ approval_id: "a1", incident_status: "REMEDIATING" }));
+
+    await decideOnAction("inc/1", "act 1", { decision: "rejected", action_hash: "b".repeat(64), comment: "no" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/incidents/inc%2F1/actions/act%201/decision");
+    expect(String(init?.body)).not.toContain("decided_by");
   });
 });
