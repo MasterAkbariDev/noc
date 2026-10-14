@@ -62,7 +62,7 @@ export function VerdictBanner({ verdict }: { verdict: BannerVerdict }) {
       )}
     >
       <Icon aria-hidden="true" size={24} strokeWidth={2.25} className={ICON_CLASSES[tone]} />
-      <div className="grid min-w-0 flex-1 gap-1">
+      <div className="grid min-w-0 flex-1 basis-48 gap-1">
         <p className="m-0 text-lg font-semibold break-words">{primary}</p>
         {secondary !== null && <p className="m-0 text-sm break-words">{secondary}</p>}
       </div>
