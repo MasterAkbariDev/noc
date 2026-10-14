@@ -378,6 +378,9 @@ class User(CreatedAt, Base):
     disabled: Mapped[bool] = mapped_column(default=False)
     last_login_at: Mapped[datetime | None]
     password_changed_at: Mapped[datetime] = mapped_column(default=utc_now)
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enabled: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class WorkerHeartbeat(Base):

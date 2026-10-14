@@ -100,12 +100,24 @@ async def audit_rows(sessions: SessionFactory) -> list[tuple[str, str, dict[str,
 async def test_login_sets_both_cookies_and_me_answers(client: httpx.AsyncClient) -> None:
     response = await login(client)
     assert response.status_code == 200
-    assert response.json() == {"username": USERNAME, "role": "admin", "via": "session"}
+    assert response.json() == {
+        "username": USERNAME,
+        "role": "admin",
+        "via": "session",
+        "totp_enabled": False,
+        "totp_required": False,
+    }
     assert client.cookies.get(SESSION_COOKIE)
     assert client.cookies.get(CSRF_COOKIE)
     me = await client.get(ME_PATH)
     assert me.status_code == 200
-    assert me.json() == {"username": USERNAME, "role": "admin", "via": "session"}
+    assert me.json() == {
+        "username": USERNAME,
+        "role": "admin",
+        "via": "session",
+        "totp_enabled": False,
+        "totp_required": False,
+    }
 
 
 async def test_me_without_a_login_is_401(client: httpx.AsyncClient) -> None:
@@ -220,7 +232,13 @@ async def test_a_wrong_bearer_header_never_falls_back_to_the_cookie(
 async def test_bearer_token_is_an_admin_principal(client: httpx.AsyncClient) -> None:
     response = await client.get(ME_PATH, headers=BEARER)
     assert response.status_code == 200
-    assert response.json() == {"username": "api-token", "role": "admin", "via": "token"}
+    assert response.json() == {
+        "username": "api-token",
+        "role": "admin",
+        "via": "token",
+        "totp_enabled": False,
+        "totp_required": False,
+    }
 
 
 @pytest.mark.usefixtures("alice")

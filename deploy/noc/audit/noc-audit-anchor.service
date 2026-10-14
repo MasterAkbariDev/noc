@@ -1,0 +1,8 @@
+[Unit]
+Description=Sign the NOC audit chain head and copy it off the host
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/noc-audit-anchor

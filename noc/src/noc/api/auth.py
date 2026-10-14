@@ -8,7 +8,15 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import Principal, current_principal, get_session, get_settings_dep
-from noc.api.schemas import LoginRequest, MeView, PasswordChangeRequest
+from noc.api.schemas import (
+    LoginRequest,
+    MeView,
+    PasswordChangeRequest,
+    TotpDisableRequest,
+    TotpEnableRequest,
+    TotpSetupRequest,
+    TotpSetupView,
+)
 from noc.audit.chain import append_audit
 from noc.auth.login_limits import (
     USERNAME_MAX_LENGTH,
@@ -34,7 +42,15 @@ from noc.auth.sessions import (
     delete_user_sessions,
     sha256_hex,
 )
-from noc.auth.users import find_user, subject_for
+from noc.auth.totp import matching_step, provisioning_uri
+from noc.auth.users import (
+    begin_totp_setup,
+    claim_totp_step,
+    clear_totp,
+    enable_totp,
+    find_user,
+    subject_for,
+)
 from noc.config import Settings
 from noc.db.base import utc_now
 from noc.db.models import AuthSession, User
@@ -47,6 +63,14 @@ CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
 
 INVALID_LOGIN = "invalid username or password"
 CURRENT_MISMATCH = "current password is wrong"
+TOTP_REQUIRED = "authentication code required"
+TOTP_INVALID = "invalid authentication code"
+TOTP_ENROLMENT_REQUIRED = (
+    "two-factor authentication is required for your role; ask an admin to enrol you"
+)
+TOTP_NOT_STARTED = "start the setup first"
+TOTP_ALREADY_ON = "two-factor authentication is already on"
+TOTP_REQUIRED_FOR_ROLE = "two-factor authentication cannot be turned off for your role"
 TOO_MANY_ATTEMPTS = "too many attempts, try again later"
 JSON_MEDIA_TYPE = "application/json"
 IP_MAX_LENGTH = 64
@@ -154,6 +178,80 @@ def csrf_matches(row: AuthSession, supplied: str | None) -> bool:
     return supplied is not None and hmac.compare_digest(sha256_hex(supplied), row.csrf_hash)
 
 
+def totp_required_for(user: User, settings: Settings) -> bool:
+    return Role(user.role) in settings.totp_required_roles
+
+
+def me_view(user: User, settings: Settings) -> MeView:
+    return MeView(
+        username=user.username,
+        role=Role(user.role),
+        via="session",
+        totp_enabled=user.totp_enabled,
+        totp_required=totp_required_for(user, settings),
+    )
+
+
+async def refuse_second_factor(
+    session: AsyncSession, username: str, status_code: int, detail: str, reason: str
+) -> HTTPException:
+    await append_audit(
+        session, ANONYMOUS_ACTOR, "login_failed", subject_for(username), {"reason": reason}
+    )
+    await session.commit()
+    return HTTPException(status_code, detail)
+
+
+async def check_second_factor(
+    session: AsyncSession, user: User, code: str | None, attempt_id: int, settings: Settings
+) -> None:
+    if not user.totp_enabled:
+        if totp_required_for(user, settings):
+            raise await refuse_second_factor(
+                session,
+                user.username,
+                status.HTTP_403_FORBIDDEN,
+                TOTP_ENROLMENT_REQUIRED,
+                "totp_not_enrolled",
+            )
+        return
+    if not code:
+        await drop_attempt(session, attempt_id)
+        await session.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, TOTP_REQUIRED)
+    step = matching_step(user.totp_secret or "", code, utc_now(), user.totp_last_step)
+    if step is None or not await claim_totp_step(session, user.id, step):
+        raise await refuse_second_factor(
+            session, user.username, status.HTTP_401_UNAUTHORIZED, TOTP_INVALID, "totp"
+        )
+
+
+async def confirm_password(
+    request: Request, session: AsyncSession, user: User, password: str, settings: Settings
+) -> None:
+    ip = client_ip(request)
+    now = utc_now()
+    attempt_id = await record_attempt(session, user.username, ip, now)
+    if await over_limit(session, user.username, ip, now, settings.login_ip_limit):
+        await drop_attempt(session, attempt_id)
+        raise too_many_attempts()
+    verified = await asyncio.to_thread(verify_password, user.password_hash, password)
+    if not verified:
+        await append_audit(session, user.username, "login_failed", subject_for(user.username), {})
+        await session.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, CURRENT_MISMATCH)
+    await drop_attempt(session, attempt_id)
+
+
+async def session_user(session: AsyncSession, principal: Principal) -> User:
+    if principal.via != "session" or principal.user_id is None or principal.session_hash is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "this needs a browser session")
+    user = await session.get(User, principal.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not logged in")
+    return user
+
+
 @router.post("/login", response_model=MeView)
 async def login(
     request: Request,
@@ -176,6 +274,7 @@ async def login(
         await append_audit(session, ANONYMOUS_ACTOR, "login_failed", subject_for(key), {})
         await session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, INVALID_LOGIN)
+    await check_second_factor(session, user, body.totp, attempt_id, settings)
     await drop_attempt(session, attempt_id)
     if needs_rehash(user.password_hash):
         user.password_hash = await asyncio.to_thread(hash_password, body.password)
@@ -185,7 +284,7 @@ async def login(
     await append_audit(session, user.username, "login", subject_for(user.username), {})
     await session.commit()
     set_session_cookies(response, settings, created.token, created.csrf_token)
-    return MeView(username=user.username, role=Role(user.role), via="session")
+    return me_view(user, settings)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -206,8 +305,14 @@ async def logout(
 
 
 @router.get("/me", response_model=MeView)
-async def me(principal: CurrentPrincipal) -> MeView:
-    return MeView(username=principal.username, role=principal.role, via=principal.via)
+async def me(principal: CurrentPrincipal, settings: Config) -> MeView:
+    return MeView(
+        username=principal.username,
+        role=principal.role,
+        via=principal.via,
+        totp_enabled=principal.totp_enabled,
+        totp_required=principal.role in settings.totp_required_roles,
+    )
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
@@ -218,29 +323,77 @@ async def change_password(
     session: Session,
     settings: Config,
 ) -> None:
-    if principal.via != "session" or principal.user_id is None or principal.session_hash is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "password change needs a browser session")
+    user = await session_user(session, principal)
     try:
         check_password_rules(body.new_password)
     except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
-    user = await session.get(User, principal.user_id)
-    if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not logged in")
-    ip = client_ip(request)
-    now = utc_now()
-    attempt_id = await record_attempt(session, user.username, ip, now)
-    if await over_limit(session, user.username, ip, now, settings.login_ip_limit):
-        await drop_attempt(session, attempt_id)
-        raise too_many_attempts()
-    verified = await asyncio.to_thread(verify_password, user.password_hash, body.current_password)
-    if not verified:
-        await append_audit(session, user.username, "login_failed", subject_for(user.username), {})
-        await session.commit()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, CURRENT_MISMATCH)
-    await drop_attempt(session, attempt_id)
+    await confirm_password(request, session, user, body.current_password, settings)
     user.password_hash = await asyncio.to_thread(hash_password, body.new_password)
-    user.password_changed_at = now
+    user.password_changed_at = utc_now()
     await delete_user_sessions(session, user.id, keep_hash=principal.session_hash)
     await append_audit(session, user.username, "password_changed", subject_for(user.username), {})
     await session.commit()
+
+
+@router.post("/totp/setup", response_model=TotpSetupView)
+async def totp_setup(
+    request: Request,
+    body: TotpSetupRequest,
+    principal: CurrentPrincipal,
+    session: Session,
+    settings: Config,
+) -> TotpSetupView:
+    user = await session_user(session, principal)
+    if user.totp_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, TOTP_ALREADY_ON)
+    await confirm_password(request, session, user, body.current_password, settings)
+    secret = await begin_totp_setup(session, user)
+    await session.commit()
+    return TotpSetupView(
+        secret=secret, uri=provisioning_uri(settings.totp_issuer, user.username, secret)
+    )
+
+
+@router.post("/totp/enable", status_code=status.HTTP_204_NO_CONTENT)
+async def totp_enable(
+    body: TotpEnableRequest,
+    principal: CurrentPrincipal,
+    session: Session,
+) -> None:
+    user = await session_user(session, principal)
+    if user.totp_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, TOTP_ALREADY_ON)
+    if user.totp_secret is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, TOTP_NOT_STARTED)
+    step = matching_step(user.totp_secret, body.code, utc_now(), user.totp_last_step)
+    if step is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, TOTP_INVALID)
+    await enable_totp(session, user, step, user.username)
+    await delete_user_sessions(session, user.id, keep_hash=principal.session_hash)
+    await session.commit()
+
+
+@router.post("/totp/disable", status_code=status.HTTP_204_NO_CONTENT)
+async def totp_disable(
+    request: Request,
+    response: Response,
+    body: TotpDisableRequest,
+    principal: CurrentPrincipal,
+    session: Session,
+    settings: Config,
+) -> None:
+    user = await session_user(session, principal)
+    if not user.totp_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, TOTP_NOT_STARTED)
+    if totp_required_for(user, settings):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, TOTP_REQUIRED_FOR_ROLE)
+    await confirm_password(request, session, user, body.current_password, settings)
+    step = matching_step(user.totp_secret or "", body.code, utc_now(), user.totp_last_step)
+    if step is None or not await claim_totp_step(session, user.id, step):
+        raise await refuse_second_factor(
+            session, user.username, status.HTTP_401_UNAUTHORIZED, TOTP_INVALID, "totp"
+        )
+    await clear_totp(session, user, user.username)
+    await session.commit()
+    clear_session_cookies(response, settings)

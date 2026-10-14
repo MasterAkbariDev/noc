@@ -46,6 +46,7 @@ class Principal:
     user_id: uuid.UUID | None
     session_hash: str | None
     via: Literal["session", "token"]
+    totp_enabled: bool = False
 
 
 def token_principal(settings: Settings, authorization: str) -> Principal:
@@ -94,6 +95,7 @@ async def current_principal(
         user_id=user.id,
         session_hash=auth_session.id_hash,
         via="session",
+        totp_enabled=user.totp_enabled,
     )
 
 

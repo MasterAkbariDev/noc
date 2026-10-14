@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from noc.auth.login_limits import clear_failures
 from noc.auth.passwords import check_password_rules, hash_password, normalize_username
 from noc.auth.roles import Role
 from noc.auth.sessions import delete_user_sessions
+from noc.auth.totp import new_secret
 from noc.db.base import utc_now
 from noc.db.models import User
 
@@ -125,3 +126,47 @@ async def unlock_user(session: AsyncSession, username: str, actor: str) -> int:
         session, actor, "user_unlocked", subject_for(user.username), {"cleared": cleared}
     )
     return cleared
+
+
+async def claim_totp_step(session: AsyncSession, user_id: uuid.UUID, step: int) -> bool:
+    claimed = await session.scalar(
+        update(User)
+        .where(User.id == user_id, (User.totp_last_step.is_(None)) | (User.totp_last_step < step))
+        .values(totp_last_step=step)
+        .returning(User.id)
+    )
+    return claimed is not None
+
+
+async def begin_totp_setup(session: AsyncSession, user: User) -> str:
+    user.totp_secret = new_secret()
+    user.totp_enabled = False
+    user.totp_last_step = None
+    await session.flush()
+    return user.totp_secret
+
+
+async def enable_totp(session: AsyncSession, user: User, step: int, actor: str) -> None:
+    user.totp_enabled = True
+    user.totp_last_step = step
+    await session.flush()
+    await append_audit(session, actor, "totp_enabled", subject_for(user.username), {})
+
+
+async def clear_totp(session: AsyncSession, user: User, actor: str) -> None:
+    user.totp_secret = None
+    user.totp_enabled = False
+    user.totp_last_step = None
+    await session.flush()
+    await delete_user_sessions(session, user.id)
+    await append_audit(session, actor, "totp_cleared", subject_for(user.username), {})
+
+
+async def enroll_totp(session: AsyncSession, username: str, actor: str) -> tuple[User, str]:
+    user = await require_user(session, username)
+    secret = await begin_totp_setup(session, user)
+    user.totp_enabled = True
+    await session.flush()
+    await delete_user_sessions(session, user.id)
+    await append_audit(session, actor, "totp_enrolled", subject_for(user.username), {})
+    return user, secret

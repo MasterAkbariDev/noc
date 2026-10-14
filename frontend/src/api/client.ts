@@ -17,6 +17,7 @@ import type {
   ServerSummary,
   StreamTicket,
   SystemHealth,
+  TotpSetup,
   UserView,
 } from "./types";
 
@@ -128,8 +129,23 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return apiRequest<T>("POST", path, body);
 }
 
-export function login(username: string, password: string): Promise<MeView> {
-  return apiPost<MeView>("/api/auth/login", { username, password });
+export const TOTP_REQUIRED_DETAIL = "authentication code required";
+
+export function login(username: string, password: string, totp?: string): Promise<MeView> {
+  const body = totp === undefined || totp === "" ? { username, password } : { username, password, totp };
+  return apiPost<MeView>("/api/auth/login", body);
+}
+
+export function totpSetup(currentPassword: string): Promise<TotpSetup> {
+  return apiPost<TotpSetup>("/api/auth/totp/setup", { current_password: currentPassword });
+}
+
+export function totpEnable(code: string): Promise<void> {
+  return apiPost<void>("/api/auth/totp/enable", { code });
+}
+
+export function totpDisable(currentPassword: string, code: string): Promise<void> {
+  return apiPost<void>("/api/auth/totp/disable", { current_password: currentPassword, code });
 }
 
 export function logout(): Promise<void> {

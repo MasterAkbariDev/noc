@@ -10,6 +10,7 @@ ComponentStatus = Literal["ok", "degraded", "down", "unknown"]
 Verdict = Literal["ok", "degraded", "down"]
 
 
+MAX_TOTP_FIELD_LENGTH = 16
 MAX_LOGIN_FIELD_LENGTH = 256
 
 
@@ -377,6 +378,25 @@ class ChainVerification(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
     password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    totp: str | None = Field(default=None, max_length=MAX_TOTP_FIELD_LENGTH)
+
+
+class TotpSetupRequest(BaseModel):
+    current_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+
+
+class TotpSetupView(BaseModel):
+    secret: str
+    uri: str
+
+
+class TotpEnableRequest(BaseModel):
+    code: str = Field(max_length=MAX_TOTP_FIELD_LENGTH)
+
+
+class TotpDisableRequest(BaseModel):
+    current_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+    code: str = Field(max_length=MAX_TOTP_FIELD_LENGTH)
 
 
 class PasswordChangeRequest(BaseModel):
@@ -388,6 +408,8 @@ class MeView(BaseModel):
     username: str
     role: Role
     via: Literal["session", "token"]
+    totp_enabled: bool = False
+    totp_required: bool = False
 
 
 OverviewLevel = Literal["ok", "working", "attention", "degraded", "down"]

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router";
-import { ApiError } from "../api/client";
+import { ApiError, TOTP_REQUIRED_DETAIL } from "../api/client";
 import { useSessionState } from "../auth/session";
 import { safeNext } from "../auth/safeNext";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
@@ -10,9 +10,21 @@ const FIELD_MAX_LENGTH = 256;
 const INPUT_CLASS =
   "rounded-control border border-border bg-bg px-3 py-2 text-fg placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-function loginFailureText(error: unknown): string {
+const CODE_MAX_LENGTH = 16;
+
+function isCodeRequest(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401 && error.detail === TOTP_REQUIRED_DETAIL;
+}
+
+function loginFailureText(error: unknown, codeStep: boolean): string {
+  if (error instanceof ApiError && error.status === 401 && codeStep) {
+    return "That code was not accepted. Wait for the next one and try again.";
+  }
   if (error instanceof ApiError && error.status === 401) {
     return "Invalid username or password.";
+  }
+  if (error instanceof ApiError && error.status === 403) {
+    return error.detail;
   }
   if (error instanceof ApiError && error.status === 429) {
     return "Too many attempts. Wait 15 minutes and try again.";
@@ -28,6 +40,8 @@ export function LoginPage() {
   const expired = params.get("expired") === "1";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [codeStep, setCodeStep] = useState(false);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -40,10 +54,17 @@ export function LoginPage() {
     setPending(true);
     setFailure(null);
     try {
-      await session.login(username.trim(), password);
+      await session.login(username.trim(), password, codeStep ? code.trim() : undefined);
     } catch (error) {
-      setFailure(loginFailureText(error));
-      setPassword("");
+      if (isCodeRequest(error)) {
+        setCodeStep(true);
+      } else {
+        setFailure(loginFailureText(error, codeStep));
+        setCode("");
+        if (!codeStep) {
+          setPassword("");
+        }
+      }
     } finally {
       setPending(false);
     }
@@ -90,6 +111,23 @@ export function LoginPage() {
               className={INPUT_CLASS}
             />
           </label>
+          {codeStep && (
+            <label className="grid gap-1 text-sm font-medium text-fg">
+              Authentication code
+              <input
+                name="totp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+                autoFocus
+                maxLength={CODE_MAX_LENGTH}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                className={INPUT_CLASS}
+              />
+            </label>
+          )}
           {failure !== null && (
             <p role="alert" className="text-sm text-critical">
               {failure}

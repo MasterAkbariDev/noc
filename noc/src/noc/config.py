@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from noc.auth.roles import Role
+
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 LlmMode = Literal["live", "record", "replay"]
@@ -25,6 +27,8 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12
     login_ip_limit: int = Field(20, ge=0)
+    totp_required_roles: list[Role] = []
+    totp_issuer: str = "Multi-Agent NOC"
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2
@@ -62,6 +66,7 @@ class Settings(BaseSettings):
     sentinel_ca_file: Path | None = None
     sentinel_timeout_seconds: float = 10.0
 
+    audit_anchor_key_file: Path = Path("/etc/noc/keys/audit-anchor.key")
     chaos_key_id: str = "noc-chaos"
     chaos_key_dir: Path | None = None
     scenarios_dir: Path = Path("scenarios")

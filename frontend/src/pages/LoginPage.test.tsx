@@ -158,3 +158,63 @@ describe("LoginPage success", () => {
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/"));
   });
 });
+
+describe("LoginPage second factor", () => {
+  const CODE_REQUIRED = jsonResponse({ detail: "authentication code required" }, 401);
+
+  it("asks for the code after a correct password and keeps the password", async () => {
+    serve(ANONYMOUS, CODE_REQUIRED);
+    renderLogin("/login");
+    await screen.findByRole("heading", { level: 1, name: "Sign in" });
+
+    fillAndSubmit(USERNAME, PASSWORD);
+
+    expect(await screen.findByLabelText("Authentication code")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(PASSWORD);
+  });
+
+  it("sends the code with the password on the second submit", async () => {
+    serve(ANONYMOUS, CODE_REQUIRED);
+    renderLogin("/login");
+    await screen.findByRole("heading", { level: 1, name: "Sign in" });
+    fillAndSubmit(USERNAME, PASSWORD);
+    await screen.findByLabelText("Authentication code");
+
+    serve(ANONYMOUS, SIGNED_IN);
+    fireEvent.change(screen.getByLabelText("Authentication code"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Home page")).toBeTruthy();
+    const loginCall = fetchMock.mock.calls.filter(([url]) => String(url) === "/api/auth/login").at(-1);
+    expect(loginCall?.[1]?.body).toBe(JSON.stringify({ username: USERNAME, password: PASSWORD, totp: "123456" }));
+  });
+
+  it("says the code was not accepted and clears only the code", async () => {
+    serve(ANONYMOUS, CODE_REQUIRED);
+    renderLogin("/login");
+    await screen.findByRole("heading", { level: 1, name: "Sign in" });
+    fillAndSubmit(USERNAME, PASSWORD);
+    await screen.findByLabelText("Authentication code");
+
+    serve(ANONYMOUS, jsonResponse({ detail: "invalid authentication code" }, 401));
+    fireEvent.change(screen.getByLabelText("Authentication code"), { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That code was not accepted. Wait for the next one and try again.",
+    );
+    expect((screen.getByLabelText("Authentication code") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(PASSWORD);
+  });
+
+  it("shows the server's text when the role must enrol first", async () => {
+    serve(ANONYMOUS, jsonResponse({ detail: "two-factor authentication is required for your role" }, 403));
+    renderLogin("/login");
+    await screen.findByRole("heading", { level: 1, name: "Sign in" });
+
+    fillAndSubmit(USERNAME, PASSWORD);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("two-factor authentication is required");
+  });
+});

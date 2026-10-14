@@ -1,6 +1,7 @@
 import { useSession } from "../../auth/session";
 import { Card } from "../../ui/Card";
 import { ChangePasswordForm } from "./ChangePasswordForm";
+import { TwoFactorCard } from "./TwoFactorCard";
 import { roleLabel } from "./accountView";
 
 export function MyAccount() {
@@ -16,6 +17,9 @@ export function MyAccount() {
       </dl>
       <div className="mt-6 border-t border-border pt-6">
         <ChangePasswordForm />
+      </div>
+      <div className="mt-6 border-t border-border pt-6">
+        <TwoFactorCard />
       </div>
     </Card>
   );

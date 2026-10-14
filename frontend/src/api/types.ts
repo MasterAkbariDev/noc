@@ -175,6 +175,13 @@ export type MeView = {
   username: string;
   role: Role;
   via: "session" | "token";
+  totp_enabled?: boolean;
+  totp_required?: boolean;
+};
+
+export type TotpSetup = {
+  secret: string;
+  uri: string;
 };
 
 export type UserView = {

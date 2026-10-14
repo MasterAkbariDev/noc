@@ -13,7 +13,7 @@ import type { MeView } from "../api/types";
 export const ME_QUERY_KEY = "me";
 
 type SessionActions = {
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, totp?: string) => Promise<void>;
   logout: () => void;
   retry: () => void;
 };
@@ -82,8 +82,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   });
 
   const login = useCallback(
-    async (username: string, password: string) => {
-      const me = await loginRequest(username, password);
+    async (username: string, password: string, totp?: string) => {
+      const me = await loginRequest(username, password, totp);
       replaceSession(queryClient, me);
     },
     [queryClient],

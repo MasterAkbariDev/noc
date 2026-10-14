@@ -197,5 +197,46 @@ async def test_cli_list_prints_header_and_users(
     result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "list"])
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
-    assert lines[0].split() == ["username", "role", "disabled", "last_login"]
-    assert lines[1].split() == ["alice", "viewer", "no", "-"]
+    assert lines[0].split() == ["username", "role", "disabled", "2fa", "last_login"]
+    assert lines[1].split() == ["alice", "viewer", "no", "no", "-"]
+
+
+async def test_cli_totp_enroll_turns_it_on_and_prints_the_secret(
+    sessions: SessionFactory, cli_settings: None
+) -> None:
+    async with transaction(sessions) as session:
+        await create_user(session, "alice", PASSWORD, Role.OPERATOR, "cli")
+    runner = CliRunner()
+    result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "totp-enroll", "alice"])
+    assert result.exit_code == 0, result.output
+    user = await load_user(sessions, "alice")
+    assert user.totp_enabled is True
+    assert user.totp_secret is not None
+    assert f"secret {user.totp_secret}" in result.output
+    assert "otpauth://totp/" in result.output
+    actions = [row[0] for row in await audit_rows(sessions)]
+    assert "totp_enrolled" in actions
+
+
+async def test_cli_totp_reset_clears_it_and_ends_sessions(
+    sessions: SessionFactory, cli_settings: None
+) -> None:
+    async with transaction(sessions) as session:
+        await create_user(session, "alice", PASSWORD, Role.OPERATOR, "cli")
+    runner = CliRunner()
+    await asyncio.to_thread(runner.invoke, cli_app, ["users", "totp-enroll", "alice"])
+    result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "totp-reset", "alice"])
+    assert result.exit_code == 0, result.output
+    user = await load_user(sessions, "alice")
+    assert user.totp_enabled is False
+    assert user.totp_secret is None
+    assert user.totp_last_step is None
+
+
+async def test_cli_totp_enroll_unknown_user_is_a_usage_error(
+    sessions: SessionFactory, cli_settings: None
+) -> None:
+    runner = CliRunner()
+    result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "totp-enroll", "ghost"])
+    assert result.exit_code == 2
+    assert "unknown user ghost" in result.output

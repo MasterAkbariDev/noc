@@ -14,11 +14,23 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import select
 
 from noc.api.app import create_app
+from noc.audit.anchor import (
+    AnchorError,
+    anchor_filename,
+    check_anchors,
+    create_anchor,
+    load_anchors,
+    read_key,
+)
 from noc.audit.chain import append_audit, verify_chain
 from noc.auth.roles import Role
+from noc.auth.totp import provisioning_uri
 from noc.auth.users import (
+    clear_totp,
     create_user,
+    enroll_totp,
     list_users,
+    require_user,
     reset_password,
     set_disabled,
     set_role,
@@ -477,17 +489,63 @@ def incidents_actions(incident_id: uuid.UUID) -> None:
 
 
 @audit_app.command("verify")
-def audit_verify() -> None:
-    async def work(sessions: SessionFactory) -> int | None:
-        async with sessions() as session:
-            return await verify_chain(session)
+def audit_verify(
+    anchors: Annotated[
+        Path | None,
+        typer.Option(help="Directory of anchor files to check the chain against"),
+    ] = None,
+) -> None:
+    key_file = get_settings().audit_anchor_key_file
+    loaded = [] if anchors is None else load_anchors(anchors)
 
-    broken = with_sessions(work)
-    if broken is None:
-        typer.echo("audit chain intact")
+    async def work(sessions: SessionFactory) -> tuple[int | None, list[str]]:
+        async with sessions() as session:
+            broken = await verify_chain(session)
+            if anchors is None:
+                return broken, []
+            checks = await check_anchors(session, read_key(key_file), loaded)
+        return broken, [f"{check.name}: {check.problem}" for check in checks if check.problem]
+
+    try:
+        broken, problems = with_sessions(work)
+    except AnchorError as error:
+        raise typer.BadParameter(str(error)) from error
+    if broken is not None:
+        typer.echo(f"audit chain broken at entry {broken}", err=True)
+        raise typer.Exit(1)
+    for problem in problems:
+        typer.echo(f"anchor problem, {problem}", err=True)
+    if problems:
+        raise typer.Exit(1)
+    typer.echo(
+        "audit chain intact" if anchors is None else "audit chain intact and matches its anchors"
+    )
+
+
+@audit_app.command("anchor")
+def audit_anchor(
+    out: Annotated[
+        Path | None, typer.Option(help="Directory to write the anchor file to; prints when unset")
+    ] = None,
+) -> None:
+    key_file = get_settings().audit_anchor_key_file
+
+    async def work(sessions: SessionFactory) -> tuple[str, str]:
+        async with sessions() as session:
+            anchor = await create_anchor(session, read_key(key_file), utc_now())
+        return anchor_filename(anchor.body), anchor.model_dump_json(indent=2)
+
+    try:
+        name, text = with_sessions(work)
+    except AnchorError as error:
+        raise typer.BadParameter(str(error)) from error
+    if out is None:
+        typer.echo(text)
         return
-    typer.echo(f"audit chain broken at entry {broken}", err=True)
-    raise typer.Exit(1)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / name
+    target.write_text(text + "\n", encoding="utf-8")
+    typer.echo(f"wrote {target}")
 
 
 def read_password(password_stdin: bool) -> str:
@@ -503,7 +561,11 @@ def describe_user(user: User) -> str:
 
 def user_line(user: User) -> str:
     disabled = "yes" if user.disabled else "no"
-    return f"{user.username:<32} {user.role:<10} {disabled:<8} {user.last_login_at or '-'}"
+    second_factor = "yes" if user.totp_enabled else "no"
+    return (
+        f"{user.username:<32} {user.role:<10} {disabled:<8} {second_factor:<4} "
+        f"{user.last_login_at or '-'}"
+    )
 
 
 @users_app.command("create")
@@ -530,7 +592,7 @@ def users_list() -> None:
         async with sessions() as session:
             return [user_line(user) for user in await list_users(session)]
 
-    typer.echo(f"{'username':<32} {'role':<10} {'disabled':<8} last_login")
+    typer.echo(f"{'username':<32} {'role':<10} {'disabled':<8} {'2fa':<4} last_login")
     for line in with_sessions(work):
         typer.echo(line)
 
@@ -583,6 +645,41 @@ def users_unlock(username: str) -> None:
             except LookupError as error:
                 raise typer.BadParameter(str(error)) from error
             return f"{username}: cleared {cleared} failed login(s)"
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("totp-enroll")
+def users_totp_enroll(username: str) -> None:
+    issuer = get_settings().totp_issuer
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user, secret = await enroll_totp(session, username, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return "\n".join(
+                [
+                    f"{user.username}: two-factor authentication is on, other sessions ended",
+                    f"secret {secret}",
+                    provisioning_uri(issuer, user.username, secret),
+                ]
+            )
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("totp-reset")
+def users_totp_reset(username: str) -> None:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                user = await require_user(session, username)
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            await clear_totp(session, user, "cli")
+            return f"{user.username}: two-factor authentication is off, sessions ended"
 
     typer.echo(with_admin_sessions(work))
 
