@@ -114,16 +114,22 @@ class SentinelDirectory:
         )
 
 
+def build_ssl_context(
+    ca_file: Path | None, client_cert: Path | None, client_key: Path | None
+) -> ssl.SSLContext | None:
+    if ca_file is None:
+        return None
+    context = ssl.create_default_context(cafile=str(ca_file))
+    if client_cert is not None and client_key is not None:
+        context.load_cert_chain(str(client_cert), str(client_key))
+    return context
+
+
 def build_sentinel_http(
     ca_file: Path | None,
     client_cert: Path | None,
     client_key: Path | None,
     timeout_seconds: float,
 ) -> httpx.AsyncClient:
-    verify: ssl.SSLContext | bool = True
-    if ca_file is not None:
-        context = ssl.create_default_context(cafile=str(ca_file))
-        if client_cert is not None and client_key is not None:
-            context.load_cert_chain(str(client_cert), str(client_key))
-        verify = context
-    return httpx.AsyncClient(verify=verify, timeout=timeout_seconds)
+    context = build_ssl_context(ca_file, client_cert, client_key)
+    return httpx.AsyncClient(verify=True if context is None else context, timeout=timeout_seconds)

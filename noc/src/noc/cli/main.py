@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -9,6 +10,7 @@ import typer
 import uvicorn
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import select
 
 from noc.api.app import create_app
@@ -27,6 +29,14 @@ from noc.db.base import utc_now
 from noc.db.models import ActionRow, Incident, Report, ScenarioRun, Target, User
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
+from noc.doctor import (
+    CheckResult,
+    check_database,
+    check_llm,
+    check_policy,
+    check_prometheus,
+    check_targets,
+)
 from noc.domain.incident_status import InvalidTransition
 from noc.logging import configure_logging
 from noc.policy.loader import load_policy
@@ -109,6 +119,29 @@ def alembic_config() -> Config:
     config = Config(str(PACKAGE_DIR / "db" / "alembic.ini"))
     config.set_main_option("script_location", str(PACKAGE_DIR / "db" / "migrations"))
     return config
+
+
+@app.command()
+def doctor() -> None:
+    settings = get_settings()
+    expected_head = ScriptDirectory.from_config(alembic_config()).get_current_head() or ""
+
+    async def work(sessions: SessionFactory) -> list[CheckResult]:
+        async with sessions() as session:
+            targets = list(await session.scalars(select(Target).order_by(Target.name)))
+        return [
+            await check_database(sessions, expected_head),
+            check_policy(settings.policy_file),
+            await check_prometheus(settings.prometheus_url),
+            check_llm(settings, dict(os.environ)),
+            *await check_targets(settings, targets),
+        ]
+
+    results = with_sessions(work)
+    for result in results:
+        typer.echo(f"{result.status.upper():<5} {result.name:<28} {result.detail}")
+    if any(result.status == "fail" for result in results):
+        raise typer.Exit(code=1)
 
 
 @db_app.command("upgrade")
