@@ -14,11 +14,13 @@ from noc.orchestration.nodes import (
     route_after_execute,
 )
 from noc.orchestration.remediation_nodes import RemediationNodes
+from noc.orchestration.runbook_nodes import RunbookNodes
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
 
 IncidentGraph = CompiledStateGraph[IncidentState, None, IncidentState, IncidentState]
 PLAN = "plan"
+RUNBOOK_DIAGNOSE = "runbook_diagnose"
 
 
 def build_incident_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
@@ -34,6 +36,7 @@ def build_variant_graphs(
         "single": build_single_graph(runtime, checkpointer),
         "multi": build_multi_graph(runtime, checkpointer),
         "multi-strong": build_multi_graph(runtime.with_strong_specialists(), checkpointer),
+        "runbook": build_runbook_graph(runtime, checkpointer),
     }
 
 
@@ -48,6 +51,21 @@ def build_single_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any])
         "begin", route_after_begin, {"investigate": "investigate", "report": "report"}
     )
     graph.add_edge("investigate", "decide")
+    add_remediation(graph, RemediationNodes(runtime), nodes)
+    return graph.compile(checkpointer=checkpointer)
+
+
+def build_runbook_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
+    nodes = IncidentNodes(runtime)
+    graph = StateGraph(IncidentState)
+    graph.add_node("begin", nodes.begin)
+    graph.add_node(RUNBOOK_DIAGNOSE, RunbookNodes(runtime).diagnose)
+    graph.add_node("decide", nodes.decide)
+    graph.add_edge(START, "begin")
+    graph.add_conditional_edges(
+        "begin", route_after_begin, {"investigate": RUNBOOK_DIAGNOSE, "report": "report"}
+    )
+    graph.add_edge(RUNBOOK_DIAGNOSE, "decide")
     add_remediation(graph, RemediationNodes(runtime), nodes)
     return graph.compile(checkpointer=checkpointer)
 

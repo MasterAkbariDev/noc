@@ -22,6 +22,7 @@ from noc.db.models import (
     IncidentEvent,
     LlmCall,
     Report,
+    ToolCall,
 )
 from noc.db.session import SessionFactory, transaction
 from noc.detection.correlator import INVESTIGATE_JOB
@@ -460,13 +461,28 @@ async def test_multi_strong_override_runs_specialists_on_the_strong_tier(
     assert {r.tier for r in scripts["diagnosis"].requests} == {"strong"}
 
 
-async def test_a_variant_without_a_graph_fails_loudly_instead_of_running_another_one(
+async def test_a_known_variant_missing_from_the_worker_fails_loudly(
     skeleton: MultiSkeleton,
 ) -> None:
     job = await open_with_override(skeleton, "runbook")
     llm, scripts = routed_scripts()
+    runtime = build_runtime(
+        skeleton.settings,
+        skeleton.sessions,
+        skeleton.sentinel_http,
+        RecordingLLM(llm, skeleton.sessions),
+    )
+    graphs = build_variant_graphs(runtime, skeleton.checkpointer)
+    del graphs["runbook"]
+    worker = Worker(
+        skeleton.settings,
+        skeleton.sessions,
+        build_incident_graph(runtime, skeleton.checkpointer),
+        skeleton.ingestor,
+        variant_graphs=graphs,
+    )
     with pytest.raises(VariantUnavailable):
-        await variant_worker(skeleton, llm)._run_job(job)
+        await worker._run_job(job)
     assert all(script.requests == [] for script in scripts.values())
     assert await skeleton.scalar(select(Incident.status)) == "NEW"
 
@@ -500,3 +516,63 @@ async def test_single_override_selects_the_single_investigator_graph(
     await worker._run_job(job)
     assert seen == [worker._variant_graphs["single"]]
     assert seen[0] is not worker._graph
+
+
+async def test_runbook_variant_diagnoses_from_the_alert_with_one_tool_call_and_no_llm(
+    skeleton: MultiSkeleton,
+) -> None:
+    job = await open_with_override(skeleton, "runbook")
+    llm = RoutedLLM({})
+    await variant_worker(skeleton, llm)._run_job(job)
+
+    assert await skeleton.scalar(select(Incident.mode)) == "runbook"
+    assert await skeleton.scalar(select(Incident.root_cause_code)) == "service_crashed"
+    assert await skeleton.scalar(select(Incident.confidence)) == 1.0
+    assert await skeleton.scalar(select(func.count()).select_from(LlmCall)) == 0
+
+    calls = await skeleton.rows(select(ToolCall))
+    assert [(c.agent, c.tool, c.ok) for c in calls] == [("runbook", "get_service_status", True)]
+
+    findings = await skeleton.rows(select(FindingRow))
+    assert [(f.agent, f.label, f.grounded) for f in findings] == [("runbook", "F1", True)]
+    assert findings[0].evidence[0]["tool_call_ref"] == calls[0].ref
+
+    runs = await skeleton.rows(select(AgentRun))
+    assert [(r.agent, r.status, r.llm_calls, r.tool_calls) for r in runs] == [
+        ("runbook", "succeeded", 0, 1)
+    ]
+    assert await skeleton.scalar(select(func.count()).select_from(Report)) == 1
+
+
+async def test_runbook_evidence_clears_the_evidence_gates_of_the_policy(
+    skeleton: MultiSkeleton,
+) -> None:
+    job = await open_with_override(skeleton, "runbook")
+    await variant_worker(skeleton, RoutedLLM({}))._run_job(job)
+
+    actions = await skeleton.rows(select(ActionRow))
+    assert actions
+    for action in actions:
+        assert "no_evidence" not in action.gate_failures
+        assert "stale_evidence" not in action.gate_failures
+
+
+async def test_runbook_variant_escalates_an_alert_it_has_no_entry_for(
+    skeleton: MultiSkeleton,
+) -> None:
+    async with transaction(skeleton.sessions) as session:
+        await set_variant_override(session, "demo-1", "runbook", "tester")
+    ingestor = AlertIngestor(
+        skeleton.source, skeleton.sessions, 2, ModePolicy(default="multi", honour_override=True)
+    )
+    skeleton.source.alerts = [prometheus_alert("CertExpiringSoon")]
+    await ingestor.poll_once()
+    async with transaction(skeleton.sessions) as session:
+        job = await queue.claim(session, "test-worker", [INVESTIGATE_JOB], 60)
+    assert job is not None
+    await variant_worker(skeleton, RoutedLLM({}))._run_job(job)
+
+    assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
+    assert await skeleton.scalar(select(Incident.escalation_reason)) == "unknown_root_cause"
+    assert await skeleton.scalar(select(func.count()).select_from(ToolCall)) == 0
+    assert await skeleton.scalar(select(func.count()).select_from(LlmCall)) == 0

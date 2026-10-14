@@ -18,6 +18,7 @@ METRICS = "metrics"
 LOGS = "logs"
 NETWORK = "network"
 SECURITY = "security"
+RUNBOOK = "runbook"
 PORT_AGENTS = frozenset({NETWORK, SECURITY})
 NETWORK_AGENTS = frozenset({NETWORK})
 
@@ -75,7 +76,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "active/sub state, restart count, main process exit status, active since, memory."
             ),
             args_model=GetServiceStatusArgs,
-            agents=frozenset({INVESTIGATOR, METRICS, LOGS, EXECUTOR}),
+            agents=frozenset({INVESTIGATOR, METRICS, LOGS, EXECUTOR, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -98,7 +99,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "steal and iowait percent, load averages (1, 5, 15 minutes). One 0.5 s sample."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS}),
+            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -108,7 +109,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "bytes, swap total and used bytes."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS}),
+            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -118,7 +119,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "percent full and inode counts."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS}),
+            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
