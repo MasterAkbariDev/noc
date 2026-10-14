@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 
@@ -67,13 +68,13 @@ async def test_seed_builds_every_demo_state_and_second_run_changes_nothing(
 ) -> None:
     seed = load_seed_script()
 
-    assert await seed.seed(sessions) == 4
+    assert await seed.seed(sessions) == 6
     first = await row_counts(sessions)
     assert await seed.seed(sessions) == 0
     assert await row_counts(sessions) == first
 
-    assert first["targets"] == 3
-    assert first["incidents"] == 4
+    assert first["targets"] == 4
+    assert first["incidents"] == 6
     async with sessions() as session:
         statuses = set(await session.scalars(select(Incident.status)))
         halted = set(await session.scalars(select(Target.name).where(Target.halted.is_(True))))
@@ -96,7 +97,13 @@ async def test_seed_builds_every_demo_state_and_second_run_changes_nothing(
             select(DiagnosisRow).where(DiagnosisRow.incident_id == multi.id)
         )
 
-    assert statuses == {"ESCALATED", "RESOLVED", "INVESTIGATING", "DIAGNOSED"}
+    assert statuses == {
+        "ESCALATED",
+        "RESOLVED",
+        "INVESTIGATING",
+        "DIAGNOSED",
+        "AWAITING_APPROVAL",
+    }
     assert halted == {"demo-2"}
     assert injected == ["T4"]
     assert failed == 1
@@ -105,6 +112,42 @@ async def test_seed_builds_every_demo_state_and_second_run_changes_nothing(
     assert {"metrics", "logs", "security", "diagnosis"} <= set(agents)
     assert diagnosis is not None
     assert len(diagnosis.hypotheses) == 3
+
+
+async def test_seeded_approvals_are_one_fresh_and_one_already_expired(
+    sessions: SessionFactory,
+) -> None:
+    seed = load_seed_script()
+    await seed.seed(sessions)
+
+    async with sessions() as session:
+        waiting = await session.scalar(
+            select(Incident).where(Incident.title == seed.AWAITING_TITLE)
+        )
+        expired = await session.scalar(select(Incident).where(Incident.title == seed.EXPIRED_TITLE))
+        assert waiting is not None
+        assert expired is not None
+        pending = list(
+            await session.scalars(select(ActionRow).where(ActionRow.status == "pending_approval"))
+        )
+        requested = await session.scalar(
+            select(func.count())
+            .select_from(IncidentEvent)
+            .where(IncidentEvent.type == "approval_requested")
+        )
+
+    assert waiting.status == "AWAITING_APPROVAL"
+    assert expired.status == "AWAITING_APPROVAL"
+    expiry_by_incident = {action.incident_id: action.approval_expires_at for action in pending}
+    assert set(expiry_by_incident) == {waiting.id, expired.id}
+    now = datetime.now(UTC)
+    fresh = expiry_by_incident[waiting.id]
+    assert fresh is not None
+    assert timedelta(minutes=59) < fresh - now <= timedelta(hours=1, minutes=1)
+    past = expiry_by_incident[expired.id]
+    assert past is not None
+    assert past < now
+    assert requested == 2
 
 
 def test_refuses_a_remote_database_without_force(monkeypatch: pytest.MonkeyPatch) -> None:

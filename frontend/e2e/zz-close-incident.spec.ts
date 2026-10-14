@@ -1,4 +1,4 @@
-import { USERS, expect, openEscalatedIncident, signIn, test } from "./support";
+import { ESCALATED_TITLE, USERS, expect, openEscalatedIncident, signIn, test } from "./support";
 
 test("an operator closes the escalated incident", async ({ page }) => {
   await signIn(page, USERS.operator);
@@ -13,5 +13,5 @@ test("an operator closes the escalated incident", async ({ page }) => {
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Close incident" })).toHaveCount(0);
   await page.goto("/");
-  await expect(page.getByText("Nothing needs you right now.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: ESCALATED_TITLE })).toHaveCount(0);
 });
