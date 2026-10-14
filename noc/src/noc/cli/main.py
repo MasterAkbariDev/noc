@@ -1,5 +1,7 @@
 import asyncio
 import os
+import re
+import secrets
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -36,7 +38,7 @@ from noc.auth.users import (
     set_role,
     unlock_user,
 )
-from noc.config import PACKAGE_DIR, get_settings
+from noc.config import PACKAGE_DIR, Settings, get_settings
 from noc.db.base import utc_now
 from noc.db.models import ActionRow, Incident, Report, ScenarioRun, Target, User
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
@@ -67,6 +69,7 @@ from noc.store.targets import (
     find_target,
     get_target,
     list_resources,
+    rotate_hmac_key,
     set_auto_actions,
     set_automation,
     set_profile,
@@ -286,6 +289,91 @@ def targets_sync(name: str) -> None:
             return f"{name}: {count} managed resources, halted={inventory.halted}"
 
     typer.echo(with_sessions(work))
+
+
+KEY_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
+GENERATED_KEY_BYTES = 32
+KEY_FILE_MODE = 0o600
+
+
+@targets_app.command("rotate-key")
+def targets_rotate_key(
+    name: str,
+    new_key_id: Annotated[str, typer.Option(help="Id of the new HMAC key")],
+    generate: Annotated[
+        bool, typer.Option("--generate", help="Create the new key file in the key directory")
+    ] = False,
+    activate: Annotated[
+        bool, typer.Option("--activate", help="Start signing with the new key after a live check")
+    ] = False,
+) -> None:
+    if generate == activate:
+        raise typer.BadParameter("use exactly one of --generate and --activate")
+    if re.fullmatch(KEY_ID_PATTERN, new_key_id) is None:
+        raise typer.BadParameter("key ids use letters, digits, dot, dash and underscore")
+    settings = get_settings()
+    key_file = settings.sentinel_key_dir / f"{new_key_id}.key"
+    if generate:
+        typer.echo(generate_key_file(key_file))
+        return
+    typer.echo(activate_key(settings, name, new_key_id))
+
+
+def generate_key_file(key_file: Path) -> str:
+    if key_file.exists():
+        raise typer.BadParameter(f"{key_file} already exists; refusing to overwrite a key")
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, KEY_FILE_MODE)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(secrets.token_hex(GENERATED_KEY_BYTES) + "\n")
+    return (
+        f"wrote {key_file} (owner only)\n"
+        f"next: copy the file to the target, add it to key_files in the sentinel config next to "
+        f"the old key, restart the sentinel, then run this command again with --activate"
+    )
+
+
+def activate_key(settings: Settings, name: str, new_key_id: str) -> str:
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            target = await find_target(session, name)
+            if target is None:
+                raise typer.BadParameter(f"unknown target {name}")
+            reference = TargetRef(
+                id=target.id,
+                name=target.name,
+                sentinel_url=target.sentinel_url,
+                hmac_key_id=new_key_id,
+                environment=target.environment,
+                data_policy=target.llm_data_policy,
+            )
+            http = build_sentinel_http(
+                settings.sentinel_ca_file,
+                settings.sentinel_client_cert,
+                settings.sentinel_client_key,
+                settings.sentinel_timeout_seconds,
+            )
+            try:
+                async with http:
+                    await (
+                        SentinelDirectory(settings.sentinel_key_dir, http)
+                        .client_for(reference)
+                        .inventory()
+                    )
+            except Exception as error:
+                raise typer.BadParameter(
+                    f"the sentinel did not accept key {new_key_id}: {type(error).__name__}: {error}"
+                ) from error
+            try:
+                previous = await rotate_hmac_key(session, name, new_key_id, "cli")
+            except ValueError as error:
+                raise typer.BadParameter(str(error)) from error
+            return (
+                f"{name}: now signing with {new_key_id} (was {previous}). Remove {previous} "
+                f"from the sentinel's key_files and delete its file once nothing uses it."
+            )
+
+    return with_sessions(work)
 
 
 @targets_app.command("render-sd")

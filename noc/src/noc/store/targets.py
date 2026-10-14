@@ -1,6 +1,7 @@
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from noc.audit.chain import append_audit
 from noc.db.base import utc_now
 from noc.db.models import ManagedResourceRow, Target
 from noc.policy.models import AutomationLevel, Environment, ServiceProfile
@@ -116,3 +117,20 @@ async def set_profile(
     row.profile = profile.model_dump(mode="json")
     await session.flush()
     return row
+
+
+async def rotate_hmac_key(session: AsyncSession, name: str, new_key_id: str, actor: str) -> str:
+    target = await get_target(session, name)
+    previous = target.hmac_key_id
+    if new_key_id == previous:
+        raise ValueError(f"{name} already uses key {new_key_id}")
+    target.hmac_key_id = new_key_id
+    await session.flush()
+    await append_audit(
+        session,
+        actor,
+        "target_key_rotated",
+        f"target:{name}",
+        {"from": previous, "to": new_key_id},
+    )
+    return previous
