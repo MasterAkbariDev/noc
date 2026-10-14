@@ -52,6 +52,7 @@ from noc.doctor import (
     check_targets,
 )
 from noc.domain.incident_status import InvalidTransition
+from noc.domain.variants import VARIANTS, parse_variant
 from noc.evaluation.metrics import summarize_all, to_csv
 from noc.evaluation.plan import load_plan
 from noc.evaluation.store import load_records, materialize, status_counts
@@ -73,6 +74,7 @@ from noc.store.targets import (
     set_auto_actions,
     set_automation,
     set_profile,
+    set_variant_override,
 )
 from noc.tools.sentinel_client import SentinelDirectory, build_sentinel_http
 from noc.tools.spec import TargetRef
@@ -401,6 +403,7 @@ def targets_show(name: str) -> None:
                 f"data policy    {target.llm_data_policy}",
                 f"hmac key       {target.hmac_key_id}",
                 f"auto actions   {', '.join(target.auto_actions) or '-'}",
+                f"variant        {target.variant_override or '-'}",
                 f"halted         {target.halted}",
                 f"last inventory {target.last_inventory_at or '-'}",
                 "",
@@ -415,6 +418,33 @@ def targets_show(name: str) -> None:
 
     for line in with_admin_sessions(work):
         typer.echo(line)
+
+
+@targets_app.command("set-variant")
+def targets_set_variant(
+    name: str,
+    variant: Annotated[
+        str | None, typer.Argument(help="single, multi, multi-strong or runbook")
+    ] = None,
+    clear: Annotated[bool, typer.Option("--clear", help="Remove the override")] = False,
+) -> None:
+    if clear == (variant is not None):
+        raise typer.BadParameter("give a variant or --clear, not both and not neither")
+    chosen = parse_variant(variant)
+    if variant is not None and chosen is None:
+        raise typer.BadParameter(f"unknown variant {variant}; use {', '.join(VARIANTS)}")
+    if chosen is not None and not get_settings().eval_mode:
+        raise typer.BadParameter("set NOC_EVAL_MODE=true before overriding the variant")
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                target = await set_variant_override(session, name, chosen, "cli")
+            except ValueError as error:
+                raise typer.BadParameter(str(error)) from error
+            return f"{target.name}: variant override={target.variant_override or '-'}"
+
+    typer.echo(with_admin_sessions(work))
 
 
 @targets_app.command("set-automation")

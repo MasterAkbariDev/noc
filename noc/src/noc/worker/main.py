@@ -20,6 +20,7 @@ from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.file_sd import refresh_file_sd
 from noc.detection.ingest import AlertIngestor
 from noc.domain.incident_status import EscalationReason
+from noc.domain.variants import ModePolicy
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
@@ -264,7 +265,12 @@ async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) 
         graph = build_incident_graph(runtime, checkpointer)
         remediation_graph = build_remediation_graph(runtime, checkpointer)
         source = PrometheusAlertSource(prometheus_http, settings.prometheus_url)
-        ingestor = AlertIngestor(source, sessions, settings.missing_polls_to_resolve)
+        ingestor = AlertIngestor(
+            source,
+            sessions,
+            settings.missing_polls_to_resolve,
+            ModePolicy(default=settings.agent_mode, honour_override=settings.eval_mode),
+        )
         worker = Worker(settings, sessions, graph, ingestor, remediation_graph)
         if shutdown is None:
             loop = asyncio.get_running_loop()

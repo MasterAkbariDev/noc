@@ -40,6 +40,7 @@ class Target(CreatedAt, Base):
     auto_actions: Mapped[list[str]] = mapped_column(JSONB, default=list)
     halted: Mapped[bool] = mapped_column(default=False)
     last_inventory_at: Mapped[datetime | None]
+    variant_override: Mapped[str | None] = mapped_column(String(16))
 
     resources: Mapped[list["ManagedResourceRow"]] = relationship(
         back_populates="target", cascade="all, delete-orphan"

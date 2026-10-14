@@ -72,7 +72,6 @@ async def create_plan(
             await add_event(
                 session, incident.id, UNAVAILABLE_EVENT, SUPERVISOR, {"specialist": name}
             )
-    incident.mode = "multi"
     return plan
 
 

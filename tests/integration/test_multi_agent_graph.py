@@ -26,6 +26,7 @@ from noc.db.models import (
 from noc.db.session import SessionFactory, transaction
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
+from noc.domain.variants import ModePolicy
 from noc.jobs import queue
 from noc.llm.client import LLMClient, LLMUnavailable
 from noc.llm.fake import ScriptedLLM, answer, call_tools
@@ -131,7 +132,7 @@ async def skeleton(
             sentinel_http=sentinel_http,
             systemctl=systemctl,
             source=source,
-            ingestor=AlertIngestor(source, sessions, 2),
+            ingestor=AlertIngestor(source, sessions, 2, ModePolicy(default="multi")),
             checkpointer=checkpointer,
         )
 
@@ -233,6 +234,7 @@ async def test_service_down_fans_out_to_metrics_and_logs_then_diagnoses(
 
     assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
     assert await skeleton.scalar(select(Incident.root_cause_code)) == "service_crashed"
+    assert await skeleton.scalar(select(Incident.mode)) == "multi"
 
     succeeded = await skeleton.rows(select(AgentRun.agent).where(AgentRun.status == "succeeded"))
     assert sorted(succeeded) == ["diagnosis", "logs", "metrics", "network"]

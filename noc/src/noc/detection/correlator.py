@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from noc.db.models import AlertEvent, Incident, Target
 from noc.domain.incident_status import IncidentStatus
 from noc.domain.severity import Severity
+from noc.domain.variants import ModePolicy, mode_for_new_incident
 from noc.jobs.queue import enqueue
 from noc.store.incidents import add_event, find_active_incident
 
@@ -38,7 +39,9 @@ async def lock_target(session: AsyncSession, target_id: uuid.UUID) -> None:
     )
 
 
-async def correlate(session: AsyncSession, alert: AlertEvent) -> Correlation | None:
+async def correlate(
+    session: AsyncSession, alert: AlertEvent, mode_policy: ModePolicy
+) -> Correlation | None:
     target_name = alert.labels.get("target")
     target = await session.scalar(select(Target).where(Target.name == target_name))
     if target is None:
@@ -64,6 +67,7 @@ async def correlate(session: AsyncSession, alert: AlertEvent) -> Correlation | N
         severity=severity.value,
         title=incident_title(alert, target),
         trace_id=uuid.uuid4().hex,
+        mode=mode_for_new_incident(mode_policy, target.variant_override),
     )
     session.add(incident)
     await session.flush()

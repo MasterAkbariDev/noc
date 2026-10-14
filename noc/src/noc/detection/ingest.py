@@ -14,6 +14,7 @@ from noc.detection.correlator import correlate
 from noc.detection.reconcile import OpenAlertState, plan_reconciliation
 from noc.domain.incident_status import CLOSED_STATUSES
 from noc.domain.severity import Severity
+from noc.domain.variants import ModePolicy
 
 logger = structlog.get_logger(__name__)
 
@@ -32,10 +33,12 @@ class AlertIngestor:
         source: AlertSource,
         sessions: SessionFactory,
         missing_polls_to_resolve: int,
+        mode_policy: ModePolicy | None = None,
     ) -> None:
         self._source = source
         self._sessions = sessions
         self._missing_polls_to_resolve = missing_polls_to_resolve
+        self._mode_policy = mode_policy or ModePolicy()
 
     async def poll_once(self) -> bool:
         try:
@@ -70,7 +73,11 @@ class AlertIngestor:
             row.last_seen_at = now
             row.missed_polls = 0
             row.value = alert.value
-        await recorrelate_orphans(session, [open_rows[a.fingerprint] for a in plan.still_firing])
+        await recorrelate_orphans(
+            session,
+            [open_rows[a.fingerprint] for a in plan.still_firing],
+            self._mode_policy,
+        )
 
         for fingerprint in plan.missed:
             open_rows[fingerprint].missed_polls += 1
@@ -84,10 +91,12 @@ class AlertIngestor:
             row = new_alert_event(alert, now)
             session.add(row)
             await session.flush()
-            await correlate(session, row)
+            await correlate(session, row, self._mode_policy)
 
 
-async def recorrelate_orphans(session: AsyncSession, rows: list[AlertEvent]) -> None:
+async def recorrelate_orphans(
+    session: AsyncSession, rows: list[AlertEvent], mode_policy: ModePolicy
+) -> None:
     incident_ids = {row.incident_id for row in rows if row.incident_id is not None}
     closed_values = [status.value for status in CLOSED_STATUSES]
     closed = (
@@ -104,7 +113,7 @@ async def recorrelate_orphans(session: AsyncSession, rows: list[AlertEvent]) -> 
     for row in rows:
         if row.incident_id is None or row.incident_id in closed:
             row.incident_id = None
-            await correlate(session, row)
+            await correlate(session, row, mode_policy)
 
 
 def new_alert_event(alert: PrometheusAlert, now: datetime) -> AlertEvent:

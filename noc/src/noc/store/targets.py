@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from noc.audit.chain import append_audit
 from noc.db.base import utc_now
 from noc.db.models import ManagedResourceRow, Target
+from noc.domain.variants import Variant
 from noc.policy.models import AutomationLevel, Environment, ServiceProfile
 from noc_shared.resources import Inventory
 
@@ -134,3 +135,23 @@ async def rotate_hmac_key(session: AsyncSession, name: str, new_key_id: str, act
         {"from": previous, "to": new_key_id},
     )
     return previous
+
+
+async def set_variant_override(
+    session: AsyncSession, name: str, variant: Variant | None, actor: str
+) -> Target:
+    target = await get_target(session, name)
+    if variant is not None and target.environment != Environment.LAB.value:
+        raise ValueError(f"{name} is not a lab target; a variant override is only for lab")
+    previous = target.variant_override
+    target.variant_override = variant
+    await session.flush()
+    action = "target_variant_cleared" if variant is None else "target_variant_set"
+    await append_audit(
+        session,
+        actor,
+        action,
+        f"target:{name}",
+        {"from": previous, "to": variant},
+    )
+    return target

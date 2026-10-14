@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     investigator_max_rounds: int = 3
     investigator_max_tool_calls: int = 8
     agent_mode: AgentMode = "single"
+    eval_mode: bool = False
     specialist_max_rounds: int = 3
     specialist_max_tool_calls: int = 6
     policy_file: Path = PACKAGE_DIR / "policy" / "default_policy.yaml"
