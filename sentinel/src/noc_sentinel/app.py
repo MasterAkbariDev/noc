@@ -3,7 +3,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from prometheus_client.registry import CollectorRegistry
 
@@ -62,6 +64,15 @@ def create_app(
     sessions: SessionReader | None = None,
 ) -> FastAPI:
     app = FastAPI(title="noc-sentinel", version=SENTINEL_VERSION, docs_url=None, redoc_url=None)
+
+    @app.exception_handler(RequestValidationError)
+    def invalid_request(_: Request, error: RequestValidationError) -> JSONResponse:
+        problems = [
+            {"loc": [str(part) for part in item["loc"]], "msg": str(item["msg"])}
+            for item in error.errors()
+        ]
+        return JSONResponse({"detail": problems}, status_code=422)
+
     verifier = RequestVerifier(secrets, nonce_store, clock, config.max_skew_seconds)
     toolbox = Toolbox(
         config,
