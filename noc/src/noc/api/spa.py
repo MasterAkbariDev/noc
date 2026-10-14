@@ -11,6 +11,8 @@ CONTENT_SECURITY_POLICY = (
     "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
     "frame-ancestors 'none'"
 )
+ASSETS_DIRECTORY = "assets"
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
 
 class SinglePageApp(StaticFiles):
@@ -28,6 +30,10 @@ def harden(response: Response) -> Response:
     response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
-    if isinstance(response, FileResponse) and Path(response.path).name == "index.html":
-        response.headers["Cache-Control"] = "no-cache"
+    if isinstance(response, FileResponse):
+        file_path = Path(response.path)
+        if file_path.name == "index.html":
+            response.headers["Cache-Control"] = "no-cache"
+        elif file_path.parent.name == ASSETS_DIRECTORY:
+            response.headers["Cache-Control"] = IMMUTABLE_CACHE_CONTROL
     return response

@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from noc.api.app import create_app
-from noc.api.spa import CONTENT_SECURITY_POLICY
+from noc.api.spa import CONTENT_SECURITY_POLICY, IMMUTABLE_CACHE_CONTROL
 from noc.config import Settings
 
 
@@ -66,7 +66,7 @@ def test_asset_response_carries_csp_and_hardening_headers(tmp_path: Path) -> Non
         assert response.headers["Content-Security-Policy"] == CONTENT_SECURITY_POLICY
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Referrer-Policy"] == "no-referrer"
-        assert "Cache-Control" not in response.headers
+        assert response.headers["Cache-Control"] == IMMUTABLE_CACHE_CONTROL
 
 
 def test_index_and_spa_fallback_carry_headers_and_no_cache(tmp_path: Path) -> None:
@@ -86,3 +86,15 @@ def test_api_routes_do_not_get_the_panel_csp(tmp_path: Path) -> None:
         response = client.get("/healthz")
         assert response.status_code == 200
         assert "Content-Security-Policy" not in response.headers
+
+
+def test_large_static_assets_are_gzipped_when_the_browser_accepts_it(tmp_path: Path) -> None:
+    dist = make_dist_with_asset(tmp_path)
+    (dist / "assets" / "big.js").write_text("console.log('panel');" * 500, encoding="utf-8")
+    settings = Settings(frontend_dist=dist, _env_file=None)
+    with TestClient(create_app(settings)) as client:
+        compressed = client.get("/assets/big.js", headers={"Accept-Encoding": "gzip"})
+        assert compressed.headers["Content-Encoding"] == "gzip"
+        assert compressed.headers["Cache-Control"] == IMMUTABLE_CACHE_CONTROL
+        plain = client.get("/assets/big.js", headers={"Accept-Encoding": "identity"})
+        assert "Content-Encoding" not in plain.headers

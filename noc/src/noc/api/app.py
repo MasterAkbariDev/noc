@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
@@ -25,6 +26,7 @@ from noc.config import Settings
 from noc.db.session import create_engine, create_session_factory
 
 PROMETHEUS_READ_TIMEOUT_SECONDS = 3.0
+COMPRESSION_MINIMUM_BYTES = 1024
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -48,6 +50,7 @@ def create_app(settings: Settings) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=COMPRESSION_MINIMUM_BYTES)
     app.include_router(auth_router)
     app.include_router(incidents_router)
     app.include_router(trace_router)
