@@ -47,6 +47,7 @@ known-first-party = ["noc", "noc_shared", "noc_sentinel", "tests"]
 "noc/src/noc/policy/engine.py" = ["BLE001"]
 "noc/src/noc/db/migrations/env.py" = ["F401"]
 "noc/src/noc/db/models.py" = ["S608"]
+"noc/src/noc/evaluation/plan.py" = ["S311"]
 
 [tool.mypy]
 python_version = "3.12"

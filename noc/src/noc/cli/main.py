@@ -38,6 +38,9 @@ from noc.doctor import (
     check_targets,
 )
 from noc.domain.incident_status import InvalidTransition
+from noc.evaluation.metrics import summarize_all, to_csv
+from noc.evaluation.plan import load_plan
+from noc.evaluation.store import load_records, materialize, status_counts
 from noc.logging import configure_logging
 from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment
@@ -71,12 +74,14 @@ scenario_app = typer.Typer(
     help="Inject and score deterministic failure scenarios", no_args_is_help=True
 )
 users_app = typer.Typer(help="Manage dashboard users", no_args_is_help=True)
+eval_app = typer.Typer(help="Plan and summarize evaluation runs", no_args_is_help=True)
 app.add_typer(targets_app, name="targets")
 app.add_typer(incidents_app, name="incidents")
 app.add_typer(db_app, name="db")
 app.add_typer(audit_app, name="audit")
 app.add_typer(scenario_app, name="scenario")
 app.add_typer(users_app, name="users")
+app.add_typer(eval_app, name="eval")
 
 
 def with_sessions[ResultT](work: Callable[[SessionFactory], Awaitable[ResultT]]) -> ResultT:
@@ -119,6 +124,51 @@ def alembic_config() -> Config:
     config = Config(str(PACKAGE_DIR / "db" / "alembic.ini"))
     config.set_main_option("script_location", str(PACKAGE_DIR / "db" / "migrations"))
     return config
+
+
+@eval_app.command("plan")
+def eval_plan(plan_file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
+    plan = load_plan(plan_file)
+
+    async def work(sessions: SessionFactory) -> tuple[int, dict[str, int]]:
+        async with transaction(sessions) as session:
+            created = await materialize(session, plan)
+            return created, await status_counts(session, plan.name)
+
+    created, counts = with_sessions(work)
+    typer.echo(f"{plan.name}: {created} new runs scheduled")
+    for status, count in sorted(counts.items()):
+        typer.echo(f"  {status:<8} {count}")
+
+
+@eval_app.command("status")
+def eval_status(plan_name: str) -> None:
+    async def work(sessions: SessionFactory) -> dict[str, int]:
+        async with sessions() as session:
+            return await status_counts(session, plan_name)
+
+    counts = with_sessions(work)
+    if not counts:
+        raise typer.BadParameter(f"no runs for plan {plan_name}")
+    for status, count in sorted(counts.items()):
+        typer.echo(f"{status:<8} {count}")
+
+
+@eval_app.command("export")
+def eval_export(
+    plan_file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    scenarios_dir: Path | None = None,
+) -> None:
+    plan = load_plan(plan_file)
+    definitions = load_scenarios(scenarios_dir or get_settings().scenarios_dir)
+    expected = {name: item.ground_truth.expected_outcome for name, item in definitions.items()}
+
+    async def work(sessions: SessionFactory) -> str:
+        async with sessions() as session:
+            records = await load_records(session, plan.name, expected)
+        return to_csv(summarize_all(records))
+
+    typer.echo(with_sessions(work), nl=False)
 
 
 @app.command()

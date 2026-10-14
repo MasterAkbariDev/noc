@@ -335,6 +335,26 @@ class ScenarioRun(Base):
     finished_at: Mapped[datetime | None]
 
 
+class EvalRun(CreatedAt, Base):
+    __tablename__ = "eval_runs"
+    __table_args__ = (
+        UniqueConstraint("plan", "scenario", "variant", "repetition", name="uq_eval_runs_cell"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    plan: Mapped[str] = mapped_column(String(64), index=True)
+    scenario: Mapped[str] = mapped_column(String(64))
+    variant: Mapped[str] = mapped_column(String(16))
+    repetition: Mapped[int] = mapped_column(Integer)
+    seed: Mapped[int] = mapped_column(BigInteger)
+    position: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    scenario_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scenario_runs.id"))
+    error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None]
+
+
 class LlmKeyStatus(Base):
     __tablename__ = "llm_key_status"
 
