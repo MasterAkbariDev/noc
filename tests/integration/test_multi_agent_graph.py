@@ -28,14 +28,16 @@ from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
 from noc.domain.variants import ModePolicy
 from noc.jobs import queue
+from noc.jobs.queue import ClaimedJob
 from noc.llm.client import LLMClient, LLMUnavailable
 from noc.llm.fake import ScriptedLLM, answer, call_tools
 from noc.llm.recording import RecordingLLM
 from noc.llm.types import LLMRequest, LLMResponse, Role
-from noc.orchestration.graph import build_incident_graph, run_incident
+from noc.orchestration.graph import build_incident_graph, build_variant_graphs, run_incident
 from noc.orchestration.runtime import build_runtime
 from noc.policy.models import AutomationLevel, Environment
-from noc.store.targets import add_target, apply_inventory
+from noc.store.targets import add_target, apply_inventory, set_variant_override
+from noc.worker.main import VariantUnavailable, Worker
 from noc_sentinel.app import create_app
 from noc_sentinel.nonce_store import NonceStore
 from noc_shared.resources import Inventory
@@ -386,3 +388,115 @@ async def test_all_specialists_failing_on_the_llm_escalates_as_llm_unavailable(
     assert await skeleton.scalar(select(Incident.escalation_reason)) == "llm_unavailable"
     assert diagnosis.requests == []
     assert await skeleton.scalar(select(func.count()).select_from(Report)) == 1
+
+
+async def open_with_override(skeleton: MultiSkeleton, variant: str) -> ClaimedJob:
+    async with transaction(skeleton.sessions) as session:
+        await set_variant_override(session, "demo-1", variant, "tester")
+    ingestor = AlertIngestor(
+        skeleton.source,
+        skeleton.sessions,
+        2,
+        ModePolicy(default="multi", honour_override=True),
+    )
+    skeleton.source.alerts = [prometheus_alert("ServiceDown")]
+    await ingestor.poll_once()
+    async with transaction(skeleton.sessions) as session:
+        job = await queue.claim(session, "test-worker", [INVESTIGATE_JOB], 60)
+    assert job is not None
+    return job
+
+
+def variant_worker(skeleton: MultiSkeleton, llm: LLMClient) -> Worker:
+    runtime = build_runtime(
+        skeleton.settings,
+        skeleton.sessions,
+        skeleton.sentinel_http,
+        RecordingLLM(llm, skeleton.sessions),
+    )
+    return Worker(
+        skeleton.settings,
+        skeleton.sessions,
+        build_incident_graph(runtime, skeleton.checkpointer),
+        skeleton.ingestor,
+        variant_graphs=build_variant_graphs(runtime, skeleton.checkpointer),
+    )
+
+
+def routed_scripts() -> tuple[RoutedLLM, dict[str, ScriptedLLM]]:
+    scripts = {
+        "metrics": ScriptedLLM(specialist_script()),
+        "logs": ScriptedLLM(specialist_script()),
+        "network": ScriptedLLM(quiet_network_script()),
+        "diagnosis": ScriptedLLM([answer(diagnosis_payload(["M1", "L1"]))]),
+    }
+    return RoutedLLM(dict(scripts)), scripts
+
+
+async def test_default_variant_uses_the_small_tier_for_specialists(
+    skeleton: MultiSkeleton,
+) -> None:
+    incident_id = await skeleton.open_incident()
+    llm, scripts = routed_scripts()
+    job = ClaimedJob(1, INVESTIGATE_JOB, {"incident_id": str(incident_id)}, 1, 3)
+    await variant_worker(skeleton, llm)._run_job(job)
+
+    assert await skeleton.scalar(select(Incident.mode)) == "multi"
+    assert {r.tier for r in scripts["metrics"].requests} == {"small"}
+    assert {r.tier for r in scripts["diagnosis"].requests} == {"strong"}
+
+
+async def test_multi_strong_override_runs_specialists_on_the_strong_tier(
+    skeleton: MultiSkeleton,
+) -> None:
+    job = await open_with_override(skeleton, "multi-strong")
+    llm, scripts = routed_scripts()
+    await variant_worker(skeleton, llm)._run_job(job)
+
+    assert await skeleton.scalar(select(Incident.mode)) == "multi-strong"
+    assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
+    for name in ("metrics", "logs", "network"):
+        assert {r.tier for r in scripts[name].requests} == {"strong"}
+    assert {r.tier for r in scripts["diagnosis"].requests} == {"strong"}
+
+
+async def test_a_variant_without_a_graph_fails_loudly_instead_of_running_another_one(
+    skeleton: MultiSkeleton,
+) -> None:
+    job = await open_with_override(skeleton, "runbook")
+    llm, scripts = routed_scripts()
+    with pytest.raises(VariantUnavailable):
+        await variant_worker(skeleton, llm)._run_job(job)
+    assert all(script.requests == [] for script in scripts.values())
+    assert await skeleton.scalar(select(Incident.status)) == "NEW"
+
+
+async def test_an_unrecognised_mode_value_falls_back_to_the_default_graph(
+    skeleton: MultiSkeleton,
+) -> None:
+    incident_id = await skeleton.open_incident()
+    async with transaction(skeleton.sessions) as session:
+        incident = await session.get_one(Incident, incident_id)
+        incident.mode = "something-old"
+    llm, _ = routed_scripts()
+    job = ClaimedJob(1, INVESTIGATE_JOB, {"incident_id": str(incident_id)}, 1, 3)
+    await variant_worker(skeleton, llm)._run_job(job)
+    assert await skeleton.scalar(select(Incident.status)) == "ESCALATED"
+
+
+async def test_single_override_selects_the_single_investigator_graph(
+    skeleton: MultiSkeleton, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job = await open_with_override(skeleton, "single")
+    llm, _ = routed_scripts()
+    worker = variant_worker(skeleton, llm)
+    seen: list[object] = []
+
+    async def record(graph: object, incident_id: uuid.UUID, suffix: str = "") -> dict[str, object]:
+        seen.append(graph)
+        return {}
+
+    monkeypatch.setattr("noc.worker.main.run_incident", record)
+    await worker._run_job(job)
+    assert seen == [worker._variant_graphs["single"]]
+    assert seen[0] is not worker._graph

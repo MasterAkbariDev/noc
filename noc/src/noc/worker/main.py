@@ -3,7 +3,7 @@ import os
 import signal
 import socket
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
 
@@ -11,16 +11,18 @@ import httpx
 import structlog
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from prometheus_client import Counter, start_http_server
+from sqlalchemy import select
 
 from noc.config import Settings
 from noc.db.base import utc_now
+from noc.db.models import Incident
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.alerts import PrometheusAlertSource
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.file_sd import refresh_file_sd
 from noc.detection.ingest import AlertIngestor
 from noc.domain.incident_status import EscalationReason
-from noc.domain.variants import ModePolicy
+from noc.domain.variants import ModePolicy, parse_variant
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
@@ -28,6 +30,7 @@ from noc.orchestration.graph import (
     IncidentGraph,
     build_incident_graph,
     build_remediation_graph,
+    build_variant_graphs,
     run_incident,
 )
 from noc.orchestration.runtime import build_runtime
@@ -56,6 +59,10 @@ def worker_identity() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
 
 
+class VariantUnavailable(Exception):
+    pass
+
+
 class Worker:
     def __init__(
         self,
@@ -64,10 +71,12 @@ class Worker:
         graph: IncidentGraph,
         ingestor: AlertIngestor,
         remediation_graph: IncidentGraph | None = None,
+        variant_graphs: Mapping[str, IncidentGraph] | None = None,
     ) -> None:
         self._settings = settings
         self._sessions = sessions
         self._graph = graph
+        self._variant_graphs = variant_graphs or {}
         self._remediation_graph = remediation_graph
         self._ingestor = ingestor
         self._identity = worker_identity()
@@ -191,7 +200,20 @@ class Worker:
         if job.kind == REMEDIATE_JOB and self._remediation_graph is not None:
             await run_incident(self._remediation_graph, incident_id, job.payload["action_id"])
             return
-        await run_incident(self._graph, incident_id)
+        await run_incident(await self._investigation_graph(incident_id), incident_id)
+
+    async def _investigation_graph(self, incident_id: uuid.UUID) -> IncidentGraph:
+        if not self._variant_graphs:
+            return self._graph
+        async with self._sessions() as session:
+            mode = await session.scalar(select(Incident.mode).where(Incident.id == incident_id))
+        graph = self._variant_graphs.get(mode or "")
+        if graph is not None:
+            return graph
+        if parse_variant(mode) is not None:
+            raise VariantUnavailable(f"variant {mode} has no graph in this worker")
+        logger.warning("unknown_variant", incident_id=str(incident_id), mode=mode)
+        return self._graph
 
     async def _handle(self, job: ClaimedJob) -> None:
         heartbeat = asyncio.create_task(self._heartbeat(job.id))
@@ -263,6 +285,7 @@ async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) 
             prometheus_url=settings.prometheus_url,
         )
         graph = build_incident_graph(runtime, checkpointer)
+        variant_graphs = build_variant_graphs(runtime, checkpointer)
         remediation_graph = build_remediation_graph(runtime, checkpointer)
         source = PrometheusAlertSource(prometheus_http, settings.prometheus_url)
         ingestor = AlertIngestor(
@@ -271,7 +294,7 @@ async def run_worker(settings: Settings, shutdown: asyncio.Event | None = None) 
             settings.missing_polls_to_resolve,
             ModePolicy(default=settings.agent_mode, honour_override=settings.eval_mode),
         )
-        worker = Worker(settings, sessions, graph, ingestor, remediation_graph)
+        worker = Worker(settings, sessions, graph, ingestor, remediation_graph, variant_graphs)
         if shutdown is None:
             loop = asyncio.get_running_loop()
             for signum in (signal.SIGINT, signal.SIGTERM):

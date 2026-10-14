@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import httpx
@@ -13,6 +13,7 @@ from noc.config import Settings
 from noc.db.session import SessionFactory
 from noc.llm.client import LLMClient
 from noc.llm.factory import build_llm
+from noc.llm.types import Tier
 from noc.policy.loader import PolicyDocument, load_policy
 from noc.tools.catalog import build_metric_tools, build_read_tools
 from noc.tools.prometheus_tools import DatabaseResourceLookup, PrometheusClient
@@ -24,6 +25,17 @@ from noc.tools.spec import ToolSpec
 ROUTING_FILE = Path(__file__).parent / "routing.yaml"
 SPECIALIST_PROMPTS = Path(specialist_module.__file__).parent / "prompts"
 IMPLEMENTED_SPECIALISTS: tuple[Specialist, ...] = ("metrics", "logs", "network", "security")
+
+
+def build_specialists(
+    llm_client: LLMClient, registry: ToolRegistry, limits: AgentLimits, tier: Tier
+) -> dict[Specialist, SpecialistAgent]:
+    return {
+        name: SpecialistAgent(
+            llm_client, registry, name, SPECIALIST_PROMPTS / f"{name}.md", limits, tier
+        )
+        for name in IMPLEMENTED_SPECIALISTS
+    }
 
 
 @dataclass(frozen=True)
@@ -38,6 +50,10 @@ class Runtime:
     specialists: dict[Specialist, SpecialistAgent]
     diagnoser: DiagnosisAgent
     sentinels: SentinelDirectory
+    strong_specialists: dict[Specialist, SpecialistAgent] = field(default_factory=dict)
+
+    def with_strong_specialists(self) -> "Runtime":
+        return replace(self, specialists=self.strong_specialists)
 
 
 def build_runtime(
@@ -63,12 +79,8 @@ def build_runtime(
         max_rounds=settings.specialist_max_rounds,
         max_tool_calls=settings.specialist_max_tool_calls,
     )
-    specialists = {
-        name: SpecialistAgent(
-            llm_client, registry, name, SPECIALIST_PROMPTS / f"{name}.md", specialist_limits
-        )
-        for name in IMPLEMENTED_SPECIALISTS
-    }
+    specialists = build_specialists(llm_client, registry, specialist_limits, "small")
+    strong_specialists = build_specialists(llm_client, registry, specialist_limits, "strong")
     return Runtime(
         settings=settings,
         sessions=sessions,
@@ -80,4 +92,5 @@ def build_runtime(
         specialists=specialists,
         diagnoser=DiagnosisAgent(llm_client),
         sentinels=sentinels,
+        strong_specialists=strong_specialists,
     )

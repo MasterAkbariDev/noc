@@ -27,6 +27,16 @@ def build_incident_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any
     return build_single_graph(runtime, checkpointer)
 
 
+def build_variant_graphs(
+    runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]
+) -> dict[str, IncidentGraph]:
+    return {
+        "single": build_single_graph(runtime, checkpointer),
+        "multi": build_multi_graph(runtime, checkpointer),
+        "multi-strong": build_multi_graph(runtime.with_strong_specialists(), checkpointer),
+    }
+
+
 def build_single_graph(runtime: Runtime, checkpointer: BaseCheckpointSaver[Any]) -> IncidentGraph:
     nodes = IncidentNodes(runtime)
     graph = StateGraph(IncidentState)
