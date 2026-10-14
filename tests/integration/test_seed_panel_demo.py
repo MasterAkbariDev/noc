@@ -6,6 +6,7 @@ from types import ModuleType
 import pytest
 from sqlalchemy import func, select
 
+from noc.auth.passwords import verify_password
 from noc.db.models import (
     ActionRow,
     AgentRun,
@@ -17,6 +18,7 @@ from noc.db.models import (
     Report,
     Target,
     ToolCall,
+    User,
 )
 from noc.db.session import SessionFactory
 
@@ -24,6 +26,10 @@ pytestmark = pytest.mark.integration
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "seed_panel_demo.py"
 REMOTE_URL = "postgresql+psycopg://noc:noc@db.example.com:5432/noc"
+LOCAL_URL = "postgresql+psycopg://noc:noc@127.0.0.1:5432/noc"
+FIRST_PASSWORD = "first e2e password"
+SECOND_PASSWORD = "second e2e password"
+E2E_ROLES = {"e2e-admin": "admin", "e2e-operator": "operator", "e2e-viewer": "viewer"}
 
 
 def load_seed_script() -> ModuleType:
@@ -109,3 +115,47 @@ def test_refuses_a_remote_database_without_force(monkeypatch: pytest.MonkeyPatch
     assert seed.refuses_remote(REMOTE_URL, force=False)
     assert not seed.refuses_remote(REMOTE_URL, force=True)
     assert not seed.refuses_remote("postgresql+psycopg://noc:noc@127.0.0.1:5432/noc", force=False)
+
+
+def test_e2e_password_must_be_at_least_twelve_characters() -> None:
+    seed = load_seed_script()
+
+    assert seed.e2e_password({"NOC_E2E_PASSWORD": "x" * 11}) is None
+    assert seed.e2e_password({}) is None
+    assert seed.e2e_password({"NOC_E2E_PASSWORD": "x" * 12}) == "x" * 12
+
+
+def test_with_users_refuses_a_missing_or_short_password(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seed = load_seed_script()
+    monkeypatch.setenv("NOC_DATABASE_URL", LOCAL_URL)
+    monkeypatch.delenv("NOC_E2E_PASSWORD", raising=False)
+
+    assert seed.main(["--with-users"]) == 2
+
+    monkeypatch.setenv("NOC_E2E_PASSWORD", "short-pass")
+    assert seed.main(["--with-users"]) == 2
+    captured = capsys.readouterr()
+    assert "NOC_E2E_PASSWORD must be set" in captured.err
+    assert "short-pass" not in captured.out + captured.err
+
+
+async def test_with_users_creates_three_roles_and_a_rerun_resets_the_password(
+    sessions: SessionFactory, database_url: str
+) -> None:
+    seed = load_seed_script()
+
+    await seed.run(database_url, FIRST_PASSWORD)
+    async with sessions() as session:
+        first_ids = {user.username: user.id for user in await session.scalars(select(User))}
+        roles = {user.username: user.role for user in await session.scalars(select(User))}
+    assert roles == E2E_ROLES
+
+    await seed.run(database_url, SECOND_PASSWORD)
+    async with sessions() as session:
+        users = {user.username: user for user in await session.scalars(select(User))}
+    assert {name: user.id for name, user in users.items()} == first_ids
+    admin = users["e2e-admin"]
+    assert verify_password(admin.password_hash, SECOND_PASSWORD)
+    assert not verify_password(admin.password_hash, FIRST_PASSWORD)

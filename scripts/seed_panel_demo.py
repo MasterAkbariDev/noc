@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -15,6 +15,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.agents.schemas import InvestigationReport
+from noc.auth.roles import Role
+from noc.auth.users import create_user, find_user, reset_password
 from noc.db.base import utc_now
 from noc.db.models import ActionRow, AgentRun, Incident, LlmCall, Report, Target, ToolCall
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
@@ -29,6 +31,14 @@ from noc_shared.permissions import PermissionClass
 from noc_shared.resources import Inventory, ManagedResource, ResourceKind
 
 DATABASE_ENV = "NOC_DATABASE_URL"
+E2E_CREDENTIAL_ENV = "NOC_E2E_PASSWORD"
+E2E_PASSWORD_MIN_LENGTH = 12
+SEED_ACTOR = "seed"
+E2E_USERS: tuple[tuple[str, Role], ...] = (
+    ("e2e-admin", Role.ADMIN),
+    ("e2e-operator", Role.OPERATOR),
+    ("e2e-viewer", Role.VIEWER),
+)
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1"})
 KEY_ID = "noc-demo-key"
 DEMO_SHOP = "svc:demo-shop"
@@ -686,14 +696,38 @@ async def seed(sessions: SessionFactory) -> int:
     return inserted
 
 
+async def ensure_user(session: AsyncSession, username: str, role: Role, password: str) -> None:
+    if await find_user(session, username) is None:
+        await create_user(session, username, password, role, SEED_ACTOR)
+    else:
+        await reset_password(session, username, password, SEED_ACTOR)
+
+
+async def seed_users(sessions: SessionFactory, password: str) -> None:
+    for username, role in E2E_USERS:
+        async with transaction(sessions) as session:
+            await ensure_user(session, username, role, password)
+
+
+def e2e_password(environ: Mapping[str, str]) -> str | None:
+    password = environ.get(E2E_CREDENTIAL_ENV, "")
+    if len(password) < E2E_PASSWORD_MIN_LENGTH:
+        return None
+    return password
+
+
 def refuses_remote(url: str, force: bool) -> bool:
     return not force and make_url(url).host not in LOCAL_HOSTS
 
 
-async def run(url: str) -> int:
+async def run(url: str, password: str | None) -> int:
     engine = create_engine(url)
     try:
-        return await seed(create_session_factory(engine))
+        sessions = create_session_factory(engine)
+        inserted = await seed(sessions)
+        if password is not None:
+            await seed_users(sessions, password)
+        return inserted
     finally:
         await engine.dispose()
 
@@ -703,7 +737,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--force", action="store_true", help="seed even when the database is not on localhost"
     )
+    parser.add_argument(
+        "--with-users",
+        action="store_true",
+        help=f"create or reset the e2e users; the password comes from {E2E_CREDENTIAL_ENV}",
+    )
     args = parser.parse_args(argv)
+    password: str | None = None
+    if args.with_users:
+        password = e2e_password(os.environ)
+        if password is None:
+            print(
+                f"{E2E_CREDENTIAL_ENV} must be set to at least "
+                f"{E2E_PASSWORD_MIN_LENGTH} characters for --with-users",
+                file=sys.stderr,
+            )
+            return 2
     url = os.environ.get(DATABASE_ENV)
     if not url:
         print(f"{DATABASE_ENV} is not set", file=sys.stderr)
@@ -714,8 +763,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    inserted = asyncio.run(run(url))
+    inserted = asyncio.run(run(url, password))
     print(f"panel demo seeded: {inserted} new incident(s)")
+    if args.with_users:
+        print("e2e users ready: " + ", ".join(username for username, _ in E2E_USERS))
     return 0
 
 
