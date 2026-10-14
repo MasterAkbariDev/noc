@@ -1,71 +1,88 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
-import { listIncidents } from "../api/client";
-import { INCIDENT_STATUSES } from "../api/types";
-import { IncidentTable } from "../components/IncidentTable";
-import { errorMessage } from "../components/format";
+import { ApiError } from "../api/client";
+import type { IncidentSummary } from "../api/types";
+import { IncidentFilters } from "../features/incidents/IncidentFilters";
+import { IncidentRows } from "../features/incidents/IncidentRows";
+import { listAllIncidents } from "../features/incidents/api";
+import {
+  FILTER_EMPTY_TEXT,
+  matchesFilter,
+  matchesSearch,
+  matchesSeverity,
+  parseFilter,
+} from "../features/incidents/filters";
 import { useLivePollInterval } from "../live/useEventStream";
+import { useDocumentTitle } from "../shell/useDocumentTitle";
+import { ErrorState, PageHeader, Skeleton } from "../ui";
+
+function severityOptions(incidents: IncidentSummary[], selected: string): string[] {
+  const values = new Set(incidents.map((incident) => incident.severity));
+  if (selected !== "") {
+    values.add(selected);
+  }
+  return [...values].sort();
+}
+
+function failureText(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.detail;
+  }
+  return "Could not reach the NOC. Try again.";
+}
 
 export function IncidentsPage() {
+  useDocumentTitle("Incidents");
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") ?? "";
-  const severity = params.get("severity") ?? "";
   const refetchInterval = useLivePollInterval();
+  const filter = parseFilter(params.get("filter"));
+  const severity = params.get("severity") ?? "";
+  const search = params.get("q") ?? "";
 
   const query = useQuery({
-    queryKey: ["incidents", status],
-    queryFn: () => listIncidents(status || undefined),
+    queryKey: ["incidents", "list"],
+    queryFn: listAllIncidents,
     refetchInterval,
   });
 
-  function changeFilter(key: "status" | "severity", value: string) {
+  function setParam(key: string, value: string, replace: boolean) {
     const next = new URLSearchParams(params);
-    if (value) {
-      next.set(key, value);
-    } else {
+    if (value === "") {
       next.delete(key);
+    } else {
+      next.set(key, value);
     }
-    setParams(next);
+    setParams(next, { replace });
   }
 
   const incidents = query.data ?? [];
-  const visible = severity ? incidents.filter((incident) => incident.severity === severity) : incidents;
-  const severities = [
-    ...new Set([...incidents.map((incident) => incident.severity), ...(severity ? [severity] : [])]),
-  ].sort();
+  const inFilter = incidents.filter((incident) => matchesFilter(incident, filter));
+  const visible = inFilter.filter(
+    (incident) => matchesSeverity(incident, severity) && matchesSearch(incident, search),
+  );
+  const emptyText = inFilter.length === 0 ? FILTER_EMPTY_TEXT[filter] : "No incidents match these filters.";
 
   return (
-    <section>
-      <div className="page-head">
-        <h1>Incidents</h1>
-        <div className="filters">
-          <label>
-            Status{" "}
-            <select value={status} onChange={(event) => changeFilter("status", event.target.value)}>
-              <option value="">All</option>
-              {INCIDENT_STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Severity{" "}
-            <select value={severity} onChange={(event) => changeFilter("severity", event.target.value)}>
-              <option value="">All</option>
-              {severities.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-      {query.isPending && <p className="muted">Loading incidents...</p>}
-      {query.isError && <p role="alert" className="error">{errorMessage(query.error)}</p>}
-      {query.data && <IncidentTable incidents={visible} />}
-    </section>
+    <>
+      <PageHeader title="Incidents" />
+      <IncidentFilters
+        filter={filter}
+        severity={severity}
+        severities={severityOptions(incidents, severity)}
+        search={search}
+        onFilterChange={(value) => setParam("filter", value, false)}
+        onSeverityChange={(value) => setParam("severity", value, false)}
+        onSearchChange={(value) => setParam("q", value, true)}
+      />
+      {query.isPending && <Skeleton lines={5} />}
+      {query.isError && (
+        <ErrorState
+          title="Incidents did not load"
+          message={failureText(query.error)}
+          onRetry={() => void query.refetch()}
+        />
+      )}
+      {query.isSuccess && <IncidentRows incidents={visible} emptyText={emptyText} />}
+    </>
   );
 }
