@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from noc.scenarios.definitions import (
+    AppFaultInjection,
     CpuBurnInjection,
     DiskFillInjection,
     injection_summary,
@@ -174,3 +175,44 @@ def test_injection_summary_describes_each_kind() -> None:
     assert injection_summary(parse_scenario(VALID).injection) == "svc:demo-shop"
     assert injection_summary(parse_scenario(cpu_scenario()).injection) == "workers=2"
     assert injection_summary(parse_scenario(disk_scenario()).injection) == "fill to 92%"
+
+
+def leak_scenario(**injection: Any) -> dict[str, Any]:
+    raw = copy.deepcopy(VALID)
+    raw["name"] = "memory-leak"
+    raw["injection"] = {
+        "type": "app_fault",
+        "resource_id": "svc:demo-shop",
+        "fault": "memory_leak",
+        "ttl_seconds": 900,
+        **injection,
+    }
+    raw["ground_truth"]["root_cause_code"] = "memory_leak"
+    return raw
+
+
+def test_memory_leak_scenario_file_matches_the_plan() -> None:
+    scenario = load_scenario(SCENARIOS_DIR / "memory-leak.yaml")
+    assert isinstance(scenario.injection, AppFaultInjection)
+    assert scenario.injection.fault == "memory_leak"
+    assert scenario.injection.resource_id == "svc:demo-shop"
+    assert scenario.ground_truth.root_cause_code == "memory_leak"
+    assert scenario.ground_truth.acceptable_actions == ["restart_service"]
+    assert scenario.ground_truth.expected_outcome == "resolved"
+
+
+def test_app_fault_rejects_an_unknown_fault() -> None:
+    with pytest.raises(ValidationError):
+        parse_scenario(leak_scenario(fault="fork_bomb"))
+
+
+def test_app_fault_ground_truth_must_name_the_injected_service() -> None:
+    raw = leak_scenario()
+    raw["ground_truth"]["resource_id"] = "svc:other"
+    with pytest.raises(ValidationError, match="resource_id"):
+        parse_scenario(raw)
+
+
+def test_app_fault_summary_names_the_fault_and_the_service() -> None:
+    summary = injection_summary(parse_scenario(leak_scenario()).injection)
+    assert summary == "memory_leak in svc:demo-shop"

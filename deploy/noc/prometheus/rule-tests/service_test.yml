@@ -22,3 +22,26 @@ tests:
               resource: svc:demo-shop
             exp_annotations:
               summary: "Registered service svc:demo-shop on demo-1 is not active"
+
+  - interval: 15s
+    input_series:
+      - series: 'noc_service_memory_bytes{target="demo-1", resource="svc:demo-shop"}'
+        values: "300000000 400000000 500000000 510000000 520000000 530000000 540000000 550000000 560000000 570000000"
+      - series: 'noc_service_memory_max_bytes{target="demo-1", resource="svc:demo-shop"}'
+        values: "600000000x9"
+      - series: 'noc_service_memory_bytes{target="demo-1", resource="svc:demo-reports"}'
+        values: "500000000x9"
+    alert_rule_test:
+      - eval_time: 60s
+        alertname: ServiceMemoryHigh
+        exp_alerts: []
+      - eval_time: 105s
+        alertname: ServiceMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: service
+              target: demo-1
+              resource: svc:demo-shop
+            exp_annotations:
+              summary: "Service svc:demo-shop on demo-1 uses 91.67% of its memory limit"

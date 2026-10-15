@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import subprocess
@@ -6,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +24,9 @@ FALLOCATE_PATH = "/usr/bin/fallocate"
 RM_PATH = "/usr/bin/rm"
 YES_PATH = "/usr/bin/yes"
 BASH_PATH = "/bin/bash"
+CURL_PATH = "/usr/bin/curl"
+APP_CHAOS_HOST = "127.0.0.1"
+APP_FAULT = "app-fault"
 RESTORE_UNIT_PREFIX = "noc-chaos-restore-"
 CPU_BURN_UNIT = "noc-chaos-cpu-burn"
 CPU_BURN_RESTORE_UNIT = "noc-chaos-restore-cpu-burn"
@@ -83,9 +87,27 @@ class DiskFillStart(BaseModel):
     ttl_seconds: int = Field(ge=1)
 
 
+AppFault = Literal["memory_leak", "upstream_delay", "connection_leak"]
+
+
+class AppFaultStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: ResourceId
+    fault: AppFault
+    ttl_seconds: int = Field(ge=1)
+
+
+class AppFaultStop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: ResourceId
+
+
 class ChaosStatus(BaseModel):
     active: bool
     scenario: str | None = None
+    fault: str | None = None
     resource_id: str | None = None
     unit: str | None = None
     started_at: datetime | None = None
@@ -108,6 +130,7 @@ class ActiveChaos:
     expires_at: datetime
     resource_id: str | None = None
     unit: str | None = None
+    fault: str | None = None
 
 
 def restore_unit_name(unit: str) -> str:
@@ -162,6 +185,37 @@ def fallocate_argv(path: Path, size_bytes: int) -> tuple[str, ...]:
 
 def remove_fill_argv(path: Path) -> tuple[str, ...]:
     return (RM_PATH, "-f", str(path))
+
+
+def app_chaos_url(port: int) -> str:
+    return f"http://{APP_CHAOS_HOST}:{port}/chaos"
+
+
+def app_fault_body(fault: AppFault, upstream_delay_ms: int) -> str:
+    settings: dict[str, bool | int] = (
+        {"upstream_delay_ms": upstream_delay_ms} if fault == "upstream_delay" else {fault: True}
+    )
+    return json.dumps(settings, sort_keys=True)
+
+
+def set_app_fault_argv(port: int, body: str) -> tuple[str, ...]:
+    return (
+        CURL_PATH,
+        "-fsS",
+        "--max-time",
+        "5",
+        "-X",
+        "PUT",
+        "-H",
+        "Content-Type: application/json",
+        "--data",
+        body,
+        app_chaos_url(port),
+    )
+
+
+def reset_app_fault_argv(port: int) -> tuple[str, ...]:
+    return (CURL_PATH, "-fsS", "--max-time", "5", "-X", "POST", app_chaos_url(port) + "/reset")
 
 
 def fill_bytes(total: int, used: int, available: int, target_percent: int, min_free: int) -> int:
@@ -263,6 +317,42 @@ class ChaosController:
     def stop_disk_fill(self) -> ChaosStatus:
         return self._stop_scenario(DISK_FILL, None)
 
+    def start_app_fault(self, resource_id: str, fault: AppFault, ttl_seconds: int) -> ChaosStatus:
+        self._check_ttl(ttl_seconds)
+        port = self._app_port(resource_id)
+        with self._lock:
+            now = self._clock()
+            self._claim_slot(now)
+            restore_unit = restore_unit_name(f"app-{resource_id}")
+            reset = reset_app_fault_argv(port)
+            active = ActiveChaos(
+                scenario=APP_FAULT,
+                restore_unit=restore_unit,
+                undo_argv=reset,
+                started_at=now,
+                expires_at=now + timedelta(seconds=ttl_seconds),
+                resource_id=resource_id,
+                fault=fault,
+            )
+            body = app_fault_body(fault, self._config.chaos.upstream_delay_ms)
+            return self._launch(
+                active,
+                schedule_restore_argv(restore_unit, reset, ttl_seconds),
+                set_app_fault_argv(port, body),
+                reset,
+            )
+
+    def stop_app_fault(self, resource_id: str) -> ChaosStatus:
+        return self._stop_scenario(APP_FAULT, resource_id)
+
+    def _app_port(self, resource_id: str) -> int:
+        if self._config.resource(resource_id) is None:
+            raise ChaosFailure(404, "NOT_FOUND")
+        port = self._config.chaos.app_chaos_ports.get(resource_id)
+        if port is None:
+            raise ChaosFailure(403, "NOT_ALLOWED")
+        return port
+
     def _check_ttl(self, ttl_seconds: int) -> None:
         if ttl_seconds > self._config.chaos.max_ttl_seconds:
             raise ChaosFailure(422, "VALIDATION")
@@ -363,6 +453,7 @@ def status_of(active: ActiveChaos | None) -> ChaosStatus:
         scenario=active.scenario,
         resource_id=active.resource_id,
         unit=active.unit,
+        fault=active.fault,
         started_at=active.started_at,
         expires_at=active.expires_at,
     )
@@ -404,6 +495,18 @@ def build_chaos_router(controller: ChaosController, verifier: RequestVerifier) -
         return run_guarded(
             lambda: controller.start_disk_fill(request.target_percent, request.ttl_seconds)
         )
+
+    @router.post("/app-fault/start")
+    def start_app_fault(request: AppFaultStart, _: Signed) -> ChaosStatus:
+        return run_guarded(
+            lambda: controller.start_app_fault(
+                request.resource_id, request.fault, request.ttl_seconds
+            )
+        )
+
+    @router.post("/app-fault/stop")
+    def stop_app_fault(request: AppFaultStop, _: Signed) -> ChaosStatus:
+        return run_guarded(lambda: controller.stop_app_fault(request.resource_id))
 
     @router.post("/disk-fill/stop")
     def stop_disk_fill(_body: EmptyRequest, _: Signed) -> ChaosStatus:

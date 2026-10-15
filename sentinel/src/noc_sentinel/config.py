@@ -39,6 +39,15 @@ class ChaosConfig(BaseModel):
     max_ttl_seconds: int = Field(CHAOS_TTL_CEILING_SECONDS, ge=1, le=CHAOS_TTL_CEILING_SECONDS)
     disk_fill_dir: Path | None = None
     disk_fill_min_free_bytes: int = Field(GIB_BYTES, ge=0)
+    app_chaos_ports: dict[str, int] = Field(default_factory=dict)
+    upstream_delay_ms: int = Field(2500, ge=1, le=30000)
+
+    @field_validator("app_chaos_ports")
+    @classmethod
+    def app_ports_are_unprivileged(cls, value: dict[str, int]) -> dict[str, int]:
+        if any(not 1024 <= port <= 65535 for port in value.values()):
+            raise ValueError("chaos.app_chaos_ports must be ports between 1024 and 65535")
+        return value
 
     @field_validator("disk_fill_dir")
     @classmethod

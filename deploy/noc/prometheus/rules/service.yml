@@ -11,6 +11,16 @@ groups:
         annotations:
           summary: "Registered service {{ $labels.resource }} on {{ $labels.target }} is not active"
 
+      - alert: ServiceMemoryHigh
+        expr: noc_service_memory_bytes / noc_service_memory_max_bytes > 0.8
+        for: 1m
+        keep_firing_for: 2m
+        labels:
+          severity: warning
+          category: service
+        annotations:
+          summary: "Service {{ $labels.resource }} on {{ $labels.target }} uses {{ $value | humanizePercentage }} of its memory limit"
+
       - alert: SentinelDown
         expr: up{job="sentinel"} == 0
         for: 2m

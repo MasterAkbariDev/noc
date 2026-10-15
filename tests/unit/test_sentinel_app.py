@@ -80,6 +80,23 @@ def test_metrics_expose_service_state(client: TestClient) -> None:
     assert "noc_sentinel_halted 0.0" in text
 
 
+def test_metrics_expose_service_memory_and_its_limit(tmp_path: Path) -> None:
+    config = sentinel_config(tmp_path)
+    store = NonceStore(tmp_path / "n.sqlite3", 300)
+    systemctl = FakeSystemctl("active", memory_current="524288000", memory_max="629145600")
+    text = (
+        TestClient(create_app(config, systemctl, store, config.load_secrets())).get("/metrics").text
+    )
+    assert 'noc_service_memory_bytes{resource="svc:demo-shop"} 5.24288e+08' in text
+    assert 'noc_service_memory_max_bytes{resource="svc:demo-shop"} 6.291456e+08' in text
+
+
+def test_unset_memory_and_an_infinite_limit_are_left_out(client: TestClient) -> None:
+    text = client.get("/metrics").text
+    assert 'noc_service_memory_bytes{resource="svc:demo-shop"}' not in text
+    assert 'noc_service_memory_max_bytes{resource="svc:demo-shop"}' not in text
+
+
 def test_halt_file_is_reported(tmp_path: Path) -> None:
     config = sentinel_config(tmp_path)
     config.halt_file.write_text("stop")

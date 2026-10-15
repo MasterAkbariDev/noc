@@ -46,8 +46,15 @@ def sentinel_config(tmp_path: Path, environment: str = "lab") -> SentinelConfig:
 
 
 class FakeSystemctl:
-    def __init__(self, active_state: str = "failed") -> None:
+    def __init__(
+        self,
+        active_state: str = "failed",
+        memory_current: str = "[not set]",
+        memory_max: str = "infinity",
+    ) -> None:
         self.active_state = active_state
+        self.memory_current = memory_current
+        self.memory_max = memory_max
         self.calls: list[str] = []
 
     def show(self, unit: str, properties: tuple[str, ...]) -> dict[str, str]:
@@ -58,7 +65,8 @@ class FakeSystemctl:
             "NRestarts": "3",
             "ExecMainStatus": "137" if self.active_state != "active" else "0",
             "ActiveEnterTimestamp": "",
-            "MemoryCurrent": "[not set]",
+            "MemoryCurrent": self.memory_current,
+            "MemoryMax": self.memory_max,
         }
 
 

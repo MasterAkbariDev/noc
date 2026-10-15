@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
-from demo_app.chaos import ChaosState, build_chaos_app
+from demo_app.chaos import ChaosState, MemoryLeaker, build_chaos_app
 from demo_app.metrics import REQUEST_DURATION, REQUESTS_TOTAL, SERVER_ERRORS_TOTAL
 from demo_app.settings import CHAOS_HOST, Settings
 from demo_app.store import Product, ProductStore, connect_postgres
@@ -139,8 +139,11 @@ def build_shop(settings: Settings) -> ShopApps:
         except Exception:
             logger.exception("could not prepare the products table; serving what is available")
         listener = ChaosListener(chaos_app, settings.chaos_port)
+        leaker = MemoryLeaker(chaos, settings.leak_mib_per_tick, settings.leak_interval_seconds)
         listener.start()
+        leaker.start()
         yield
+        leaker.stop()
         listener.stop()
 
     public = FastAPI(title="demo-shop", lifespan=lifespan)

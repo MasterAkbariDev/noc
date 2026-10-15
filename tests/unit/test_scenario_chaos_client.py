@@ -59,6 +59,28 @@ async def test_disk_fill_start_posts_target_and_ttl() -> None:
     assert json.loads(request.content) == {"target_percent": 92, "ttl_seconds": 900}
 
 
+async def test_app_fault_start_posts_the_resource_fault_and_ttl() -> None:
+    seen: list[httpx.Request] = []
+    await client_with(recording(seen)).start_app_fault("svc:demo-shop", "memory_leak", 900)
+
+    [request] = seen
+    assert request.url.path == "/v1/chaos/app-fault/start"
+    assert json.loads(request.content) == {
+        "resource_id": "svc:demo-shop",
+        "fault": "memory_leak",
+        "ttl_seconds": 900,
+    }
+
+
+async def test_app_fault_stop_names_the_resource() -> None:
+    seen: list[httpx.Request] = []
+    await client_with(recording(seen, {"active": False})).stop_app_fault("svc:demo-shop")
+
+    [request] = seen
+    assert request.url.path == "/v1/chaos/app-fault/stop"
+    assert json.loads(request.content) == {"resource_id": "svc:demo-shop"}
+
+
 async def test_disk_fill_stop_posts_an_empty_body() -> None:
     seen: list[httpx.Request] = []
     await client_with(recording(seen, {"active": False})).stop_disk_fill()

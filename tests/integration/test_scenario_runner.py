@@ -10,7 +10,7 @@ from noc.db.models import Incident, ScenarioRun
 from noc.db.session import SessionFactory, transaction
 from noc.policy.models import Environment
 from noc.scenarios.chaos_client import ChaosError, ChaosState
-from noc.scenarios.definitions import ScenarioDefinition, load_scenario
+from noc.scenarios.definitions import AppFault, ScenarioDefinition, load_scenario
 from noc.scenarios.runner import PreconditionFailed, ScenarioRunner
 from noc.store.targets import add_target
 from tests.support.builders import KEY_ID
@@ -78,6 +78,19 @@ class FakeChaos:
 
     async def stop_disk_fill(self) -> ChaosState:
         self.events.append("stop:disk_fill")
+        return self._deactivate()
+
+    async def start_app_fault(
+        self, resource_id: str, fault: AppFault, ttl_seconds: int
+    ) -> ChaosState:
+        self.events.append(f"start:app_fault:{fault}")
+        self._check_start()
+        self.starts.append((resource_id, ttl_seconds))
+        return self._activate(resource_id)
+
+    async def stop_app_fault(self, resource_id: str) -> ChaosState:
+        self.stops.append(resource_id)
+        self.events.append("stop:app_fault")
         return self._deactivate()
 
     def _check_start(self) -> None:
@@ -445,3 +458,27 @@ async def test_stopping_an_idle_disk_fill_reports_nothing_active(
 ) -> None:
     assert await runner.stop_injection("disk_fill", "host:demo-1") is False
     assert chaos.events == ["stop:disk_fill"]
+
+
+async def test_memory_leak_runs_end_to_end_and_resets_the_app(
+    runner: ScenarioRunner,
+    clock: FakeClock,
+    chaos: FakeChaos,
+    sessions: SessionFactory,
+    target_id: uuid.UUID,
+) -> None:
+    scenario = load_scenario(SCENARIOS_DIR / "memory-leak.yaml")
+    store: dict[str, uuid.UUID] = {}
+    script = Script(clock)
+    script.at(420, detects(sessions, target_id, store))
+    script.at(480, moves_to(sessions, store, "RESOLVED", "memory_leak"))
+
+    outcome = await runner.run(scenario, TARGET)
+
+    assert outcome.status == "completed"
+    assert outcome.root_cause_match is True
+    assert chaos.events == ["start:app_fault:memory_leak", "stop:app_fault"]
+    assert chaos.starts == [("svc:demo-shop", 900)]
+    assert chaos.stops == ["svc:demo-shop"]
+    [run] = await load_runs(sessions)
+    assert run.resource_id == "svc:demo-shop"

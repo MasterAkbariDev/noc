@@ -5,6 +5,12 @@ alerts:
     args: {resource_id: "$resource"}
     category: service
     excerpt_key: active_state
+  ServiceMemoryHigh:
+    root_cause: memory_leak
+    tool: get_service_status
+    args: {resource_id: "$resource"}
+    category: service
+    excerpt_key: memory_bytes
   HostCPUSaturated:
     root_cause: cpu_runaway_process
     tool: get_cpu_usage

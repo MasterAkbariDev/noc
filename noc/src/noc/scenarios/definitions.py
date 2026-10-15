@@ -8,7 +8,8 @@ from noc_shared.resources import ResourceId
 from noc_shared.taxonomy import RootCauseCode
 
 SCENARIO_NAME_PATTERN = r"^[a-z0-9][a-z0-9-]*$"
-InjectionType = Literal["service_down", "cpu_burn", "disk_fill"]
+InjectionType = Literal["service_down", "cpu_burn", "disk_fill", "app_fault"]
+AppFault = Literal["memory_leak", "upstream_delay", "connection_leak"]
 
 
 class ServiceDownInjection(BaseModel):
@@ -35,8 +36,17 @@ class DiskFillInjection(BaseModel):
     ttl_seconds: int = Field(ge=1)
 
 
+class AppFaultInjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["app_fault"]
+    resource_id: ResourceId
+    fault: AppFault
+    ttl_seconds: int = Field(ge=1)
+
+
 Injection = Annotated[
-    ServiceDownInjection | CpuBurnInjection | DiskFillInjection,
+    ServiceDownInjection | CpuBurnInjection | DiskFillInjection | AppFaultInjection,
     Field(discriminator="type"),
 ]
 
@@ -64,7 +74,7 @@ class ScenarioDefinition(BaseModel):
     def check_timing_and_ground_truth(self) -> Self:
         if self.injection.ttl_seconds < self.detection_timeout_seconds:
             raise ValueError("injection ttl_seconds must cover detection_timeout_seconds")
-        if isinstance(self.injection, ServiceDownInjection) and (
+        if isinstance(self.injection, ServiceDownInjection | AppFaultInjection) and (
             self.ground_truth.resource_id != self.injection.resource_id
         ):
             raise ValueError("ground_truth resource_id must match the injected resource_id")
@@ -79,6 +89,8 @@ def injection_summary(injection: Injection) -> str:
             return f"workers={injection.workers}"
         case DiskFillInjection():
             return f"fill to {injection.target_percent}%"
+        case AppFaultInjection():
+            return f"{injection.fault} in {injection.resource_id}"
 
 
 def parse_scenario(raw: dict[str, Any]) -> ScenarioDefinition:

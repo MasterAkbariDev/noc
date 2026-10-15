@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from noc.config import Settings
+from noc.scenarios.definitions import AppFault
 from noc.tools.sentinel_client import build_sentinel_http
 from noc_shared.resources import ResourceId
 from noc_shared.signing import sign_request
@@ -19,6 +20,8 @@ CPU_BURN_START = f"{CHAOS_PREFIX}/cpu-burn/start"
 CPU_BURN_STOP = f"{CHAOS_PREFIX}/cpu-burn/stop"
 DISK_FILL_START = f"{CHAOS_PREFIX}/disk-fill/start"
 DISK_FILL_STOP = f"{CHAOS_PREFIX}/disk-fill/stop"
+APP_FAULT_START = f"{CHAOS_PREFIX}/app-fault/start"
+APP_FAULT_STOP = f"{CHAOS_PREFIX}/app-fault/stop"
 CHAOS_STATUS = f"{CHAOS_PREFIX}/status"
 NOT_ACTIVE = "NOT_ACTIVE"
 
@@ -65,6 +68,14 @@ class DiskFillStart(BaseModel):
     ttl_seconds: int = Field(ge=1)
 
 
+class AppFaultStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: ResourceId
+    fault: AppFault
+    ttl_seconds: int = Field(ge=1)
+
+
 class EmptyStop(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +94,12 @@ class ChaosClient(Protocol):
     async def start_disk_fill(self, target_percent: int, ttl_seconds: int) -> ChaosState: ...
 
     async def stop_disk_fill(self) -> ChaosState: ...
+
+    async def start_app_fault(
+        self, resource_id: str, fault: AppFault, ttl_seconds: int
+    ) -> ChaosState: ...
+
+    async def stop_app_fault(self, resource_id: str) -> ChaosState: ...
 
 
 class SentinelChaosClient:
@@ -120,6 +137,18 @@ class SentinelChaosClient:
 
     async def stop_disk_fill(self) -> ChaosState:
         return await self._stop(DISK_FILL_STOP)
+
+    async def start_app_fault(
+        self, resource_id: str, fault: AppFault, ttl_seconds: int
+    ) -> ChaosState:
+        body = AppFaultStart(resource_id=resource_id, fault=fault, ttl_seconds=ttl_seconds)
+        payload = await self._send("POST", APP_FAULT_START, body.model_dump_json().encode())
+        return ChaosState.model_validate(payload)
+
+    async def stop_app_fault(self, resource_id: str) -> ChaosState:
+        body = ServiceDownStop(resource_id=resource_id)
+        payload = await self._send("POST", APP_FAULT_STOP, body.model_dump_json().encode())
+        return ChaosState.model_validate(payload)
 
     async def _stop(self, path: str) -> ChaosState:
         payload = await self._send("POST", path, EmptyStop().model_dump_json().encode())

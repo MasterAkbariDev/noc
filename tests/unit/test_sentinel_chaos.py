@@ -32,6 +32,19 @@ CPU_UNIT = "noc-chaos-cpu-burn"
 CPU_RESTORE_TIMER = "noc-chaos-restore-cpu-burn.timer"
 DISK_START = "/v1/chaos/disk-fill/start"
 DISK_STOP = "/v1/chaos/disk-fill/stop"
+APP_START = "/v1/chaos/app-fault/start"
+APP_STOP = "/v1/chaos/app-fault/stop"
+APP_PORT = 8099
+APP_RESTORE_UNIT = "noc-chaos-restore-app-svc-demo-shop"
+APP_RESET = (
+    "/usr/bin/curl",
+    "-fsS",
+    "--max-time",
+    "5",
+    "-X",
+    "POST",
+    f"http://127.0.0.1:{APP_PORT}/chaos/reset",
+)
 
 
 class MutableClock:
@@ -65,6 +78,7 @@ def chaos_config(
     environment: str = "lab",
     enabled: bool = True,
     disk_fill_dir: Path | None = None,
+    app_chaos_ports: dict[str, int] | None = None,
 ) -> SentinelConfig:
     base = sentinel_config(tmp_path, environment)
     key_file = tmp_path / f"{CHAOS_KEY_ID}.key"
@@ -74,6 +88,7 @@ def chaos_config(
         key_id=CHAOS_KEY_ID,
         key_file=key_file,
         disk_fill_dir=disk_fill_dir,
+        app_chaos_ports=app_chaos_ports or {},
     )
     return base.model_copy(update={"chaos": chaos})
 
@@ -84,8 +99,9 @@ def build(
     enabled: bool = True,
     runner: FakeChaosRunner | None = None,
     disk_fill_dir: Path | None = None,
+    app_chaos_ports: dict[str, int] | None = None,
 ) -> Harness:
-    config = chaos_config(tmp_path, environment, enabled, disk_fill_dir)
+    config = chaos_config(tmp_path, environment, enabled, disk_fill_dir, app_chaos_ports)
     clock = MutableClock(NOW)
     chaos_runner = runner if runner is not None else FakeChaosRunner()
     store = NonceStore(tmp_path / "nonces.sqlite3", ttl_seconds=300)
@@ -550,3 +566,110 @@ def test_disk_fill_size_respects_space_reserved_for_root() -> None:
     size = chaos_module.fill_bytes(total, used, available, 95, gib)
     assert size == available - gib
     assert chaos_module.fill_bytes(total, used, available, 50, gib) == gib
+
+
+def app_harness(tmp_path: Path, runner: FakeChaosRunner | None = None) -> Harness:
+    return build(tmp_path, runner=runner, app_chaos_ports={DEMO_SHOP: APP_PORT})
+
+
+def app_start(fault: str, ttl_seconds: int = 300) -> dict[str, object]:
+    return {"resource_id": DEMO_SHOP, "fault": fault, "ttl_seconds": ttl_seconds}
+
+
+def set_fault_argv(body: str) -> tuple[str, ...]:
+    return (
+        "/usr/bin/curl",
+        "-fsS",
+        "--max-time",
+        "5",
+        "-X",
+        "PUT",
+        "-H",
+        "Content-Type: application/json",
+        "--data",
+        body,
+        f"http://127.0.0.1:{APP_PORT}/chaos",
+    )
+
+
+def test_app_fault_start_runs_the_fixed_curl_argv_with_a_restore_timer(tmp_path: Path) -> None:
+    harness = app_harness(tmp_path)
+    response = send(harness, "POST", APP_START, app_start("memory_leak", 600))
+    assert response.status_code == 200
+    assert response.json()["scenario"] == "app-fault"
+    assert response.json()["fault"] == "memory_leak"
+    assert harness.runner.calls == [
+        (
+            "/usr/bin/systemd-run",
+            f"--unit={APP_RESTORE_UNIT}",
+            "--on-active=600",
+            *APP_RESET,
+        ),
+        set_fault_argv('{"memory_leak": true}'),
+    ]
+
+
+def test_upstream_delay_uses_the_configured_delay(tmp_path: Path) -> None:
+    harness = app_harness(tmp_path)
+    send(harness, "POST", APP_START, app_start("upstream_delay"))
+    assert harness.runner.calls[1] == set_fault_argv('{"upstream_delay_ms": 2500}')
+
+
+def test_app_fault_on_a_resource_without_a_chaos_port_is_refused(tmp_path: Path) -> None:
+    harness = build(tmp_path)
+    response = send(harness, "POST", APP_START, app_start("memory_leak"))
+    assert response.status_code == 403
+    assert harness.runner.calls == []
+
+
+def test_app_fault_on_an_unregistered_resource_is_not_found(tmp_path: Path) -> None:
+    harness = app_harness(tmp_path)
+    payload = {"resource_id": "svc:unknown", "fault": "memory_leak", "ttl_seconds": 60}
+    response = send(harness, "POST", APP_START, payload)
+    assert response.status_code == 404
+    assert harness.runner.calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"resource_id": DEMO_SHOP, "fault": "rm -rf /", "ttl_seconds": 60},
+        {"resource_id": DEMO_SHOP, "fault": "memory_leak", "ttl_seconds": 901},
+        {"resource_id": DEMO_SHOP, "fault": "memory_leak", "ttl_seconds": 60, "url": "x"},
+    ],
+)
+def test_app_fault_rejects_unknown_faults_long_ttls_and_extra_fields(
+    tmp_path: Path, payload: dict[str, object]
+) -> None:
+    harness = app_harness(tmp_path)
+    assert send(harness, "POST", APP_START, payload).status_code == 422
+    assert harness.runner.calls == []
+
+
+def test_app_fault_stop_resets_the_app_and_removes_the_timer(tmp_path: Path) -> None:
+    harness = app_harness(tmp_path)
+    send(harness, "POST", APP_START, app_start("connection_leak"))
+    response = send(harness, "POST", APP_STOP, {"resource_id": DEMO_SHOP})
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    assert harness.runner.calls[2:] == [
+        APP_RESET,
+        ("/usr/bin/systemctl", "stop", f"{APP_RESTORE_UNIT}.timer"),
+    ]
+
+
+def test_failed_app_fault_start_is_rolled_back(tmp_path: Path) -> None:
+    failing = frozenset({set_fault_argv('{"memory_leak": true}')})
+    harness = app_harness(tmp_path, FakeChaosRunner(failing))
+    response = send(harness, "POST", APP_START, app_start("memory_leak"))
+    assert response.status_code == 500
+    assert harness.runner.calls[2:] == [
+        APP_RESET,
+        ("/usr/bin/systemctl", "stop", f"{APP_RESTORE_UNIT}.timer"),
+    ]
+    assert send(harness, "GET", STATUS).json()["active"] is False
+
+
+def test_app_chaos_ports_must_be_unprivileged() -> None:
+    with pytest.raises(ValidationError):
+        ChaosConfig(app_chaos_ports={DEMO_SHOP: 80})

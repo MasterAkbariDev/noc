@@ -14,6 +14,7 @@ from noc.db.session import SessionFactory, transaction
 from noc.domain.incident_status import IncidentStatus
 from noc.scenarios.chaos_client import NOT_ACTIVE, ChaosClient, ChaosError
 from noc.scenarios.definitions import (
+    AppFaultInjection,
     CpuBurnInjection,
     DiskFillInjection,
     Injection,
@@ -77,7 +78,7 @@ def snapshot_of(incident: Incident) -> IncidentSnapshot:
 
 def run_resource(injection: Injection, target_name: str, resource_id: str | None) -> str:
     match injection:
-        case ServiceDownInjection():
+        case ServiceDownInjection() | AppFaultInjection():
             return resource_id or injection.resource_id
         case CpuBurnInjection() | DiskFillInjection():
             return f"host:{target_name}"
@@ -126,6 +127,10 @@ class ScenarioRunner:
                 await self._chaos.start_cpu_burn(injection.workers, injection.ttl_seconds)
             case DiskFillInjection():
                 await self._chaos.start_disk_fill(injection.target_percent, injection.ttl_seconds)
+            case AppFaultInjection():
+                await self._chaos.start_app_fault(
+                    resource_id, injection.fault, injection.ttl_seconds
+                )
 
     async def _stop_after_failure(self, kind: InjectionType, resource_id: str) -> None:
         try:
@@ -150,6 +155,8 @@ class ScenarioRunner:
                 await self._chaos.stop_cpu_burn()
             case "disk_fill":
                 await self._chaos.stop_disk_fill()
+            case "app_fault":
+                await self._chaos.stop_app_fault(resource_id)
 
     async def _check_preconditions(self, target_name: str, resource_id: str) -> uuid.UUID:
         async with self._sessions() as session:

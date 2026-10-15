@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
-from demo_app.chaos import ChaosSettings, ChaosState
+from demo_app.chaos import ChaosSettings, ChaosState, MemoryLeaker
 from demo_app.main import ChaosListener, PaymentsStub, build_shop
 from demo_app.reports import run_once, summarise
 from demo_app.settings import CHAOS_HOST, Settings
@@ -155,3 +155,24 @@ def test_reports_summarise_static_catalogue() -> None:
     store = ProductStore(None, fake_connect([]), ChaosState())
     assert summarise(store) == "products=3 catalogue_value_cents=3800"
     run_once(store, None)
+
+
+def test_the_leaker_leaks_on_its_own_only_while_the_toggle_is_on() -> None:
+    state = ChaosState()
+    leaker = MemoryLeaker(state, mib_per_tick=10, interval_seconds=60)
+    leaker.tick()
+    assert state.status().leaked_memory_mib == 0
+    state.replace_settings(ChaosSettings(memory_leak=True))
+    leaker.tick()
+    leaker.tick()
+    assert state.status().leaked_memory_mib == 20
+    state.reset()
+    assert state.status().leaked_memory_mib == 0
+
+
+def test_leak_settings_come_from_the_environment() -> None:
+    settings = Settings.from_env(
+        {"DEMO_LEAK_MIB_PER_TICK": "5", "DEMO_LEAK_INTERVAL_SECONDS": "2.5"}
+    )
+    assert settings.leak_mib_per_tick == 5
+    assert settings.leak_interval_seconds == 2.5

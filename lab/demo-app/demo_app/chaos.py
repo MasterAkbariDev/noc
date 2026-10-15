@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Callable
 from typing import Final
 
@@ -23,9 +24,9 @@ class ChaosState:
         self.settings = ChaosSettings()
         self._leaked_chunks: list[bytearray] = []
 
-    def leak_memory_if_enabled(self) -> None:
+    def leak_memory_if_enabled(self, chunks: int = 1) -> None:
         if self.settings.memory_leak:
-            self._leaked_chunks.append(bytearray(LEAK_CHUNK_BYTES))
+            self._leaked_chunks.extend(bytearray(LEAK_CHUNK_BYTES) for _ in range(chunks))
 
     def status(self) -> ChaosStatus:
         leaked_mib = len(self._leaked_chunks) * LEAK_CHUNK_BYTES // MIB
@@ -58,3 +59,26 @@ def build_chaos_app(state: ChaosState, on_reset: Callable[[], None]) -> FastAPI:
         return state.status()
 
     return app
+
+
+class MemoryLeaker:
+    def __init__(self, state: ChaosState, mib_per_tick: int, interval_seconds: float) -> None:
+        self._state = state
+        self._mib_per_tick = mib_per_tick
+        self._interval_seconds = interval_seconds
+        self._stopping = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="memory-leaker", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stopping.set()
+        self._thread.join(timeout=5)
+
+    def tick(self) -> None:
+        self._state.leak_memory_if_enabled(self._mib_per_tick)
+
+    def _run(self) -> None:
+        while not self._stopping.wait(self._interval_seconds):
+            self.tick()
