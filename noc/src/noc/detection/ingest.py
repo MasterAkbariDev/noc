@@ -75,7 +75,7 @@ class AlertIngestor:
             row.value = alert.value
         await recorrelate_orphans(
             session,
-            [open_rows[a.fingerprint] for a in plan.still_firing],
+            [open_rows[a.fingerprint] for a in plan.still_firing if not a.condition_cleared],
             self._mode_policy,
         )
 

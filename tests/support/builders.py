@@ -164,9 +164,12 @@ def prometheus_alert(
     target: str = "demo-1",
     resource: str = DEMO_SHOP,
     severity: str = "critical",
+    keep_firing_since: datetime | None = None,
 ) -> PrometheusAlert:
+    extra = {} if keep_firing_since is None else {"keepFiringSince": keep_firing_since.isoformat()}
     return PrometheusAlert.model_validate(
         {
+            **extra,
             "labels": {
                 "alertname": alertname,
                 "target": target,

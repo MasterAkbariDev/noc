@@ -13,7 +13,12 @@ class PrometheusAlert(BaseModel):
     annotations: dict[str, str] = Field(default_factory=dict)
     state: str
     active_at: datetime = Field(alias="activeAt")
+    keep_firing_since: datetime | None = Field(default=None, alias="keepFiringSince")
     value: str | None = None
+
+    @property
+    def condition_cleared(self) -> bool:
+        return self.keep_firing_since is not None
 
     @property
     def alertname(self) -> str:
@@ -42,6 +47,11 @@ def alert_fingerprint(labels: dict[str, str]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def describe_failure(exc: Exception) -> str:
+    detail = str(exc)
+    return f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+
+
 class PrometheusAlertSource:
     def __init__(self, http: httpx.AsyncClient, base_url: str) -> None:
         self._http = http
@@ -53,7 +63,7 @@ class PrometheusAlertSource:
             response.raise_for_status()
             parsed = AlertsResponse.model_validate(response.json())
         except (httpx.HTTPError, ValueError) as exc:
-            raise PrometheusUnavailable(str(exc)) from exc
+            raise PrometheusUnavailable(describe_failure(exc)) from exc
         if parsed.status != "success":
             raise PrometheusUnavailable(parsed.status)
         return [alert for alert in parsed.data.alerts if alert.state == "firing"]

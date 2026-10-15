@@ -31,6 +31,7 @@ RECOVERABLE = (
 )
 TRANSIENT = (ProviderUnavailable, TimeoutError)
 OVERLOAD_BACKOFF_SECONDS = (5.0, 15.0)
+PRIMARY_RETRY_MAX_SECONDS = 10.0
 
 
 def is_overload(error: Exception) -> bool:
@@ -56,6 +57,21 @@ class Route:
     budget: RequestBudget
     label: str
     degraded: bool = False
+
+
+def worth_waiting(route: Route, primary: str, retry_after: float | None) -> bool:
+    return (
+        route.provider.name == primary
+        and not route.degraded
+        and retry_after is not None
+        and retry_after <= PRIMARY_RETRY_MAX_SECONDS
+    )
+
+
+def cooldown_for(error: Exception) -> float | None:
+    if isinstance(error, ProviderRateLimited) and error.retry_after is not None:
+        return error.retry_after
+    return COOLDOWN_SECONDS.get(type(error))
 
 
 def recorded_state(error: Exception, cooldown: float | None) -> RecordedState:
@@ -139,7 +155,7 @@ class RoutedLLM:
                 continue
             try:
                 wait_ms = await route.budget.acquire(self._deadline)
-                response = await route.provider.complete(request, route.budget.model)
+                response = await self._complete_or_wait(request, route, primary)
             except RECOVERABLE as exc:
                 await self._record_failure(route, exc)
                 only_transient = only_transient and isinstance(exc, TRANSIENT)
@@ -154,8 +170,20 @@ class RoutedLLM:
             return response, only_transient
         return None, only_transient
 
+    async def _complete_or_wait(
+        self, request: LLMRequest, route: Route, primary: str
+    ) -> LLMResponse:
+        try:
+            return await route.provider.complete(request, route.budget.model)
+        except ProviderRateLimited as exc:
+            if not worth_waiting(route, primary, exc.retry_after):
+                raise
+            logger.info("llm_waiting_for_primary", route=route.label, seconds=exc.retry_after)
+            await self._sleep(exc.retry_after or 0.0)
+            return await route.provider.complete(request, route.budget.model)
+
     async def _record_failure(self, route: Route, error: Exception) -> None:
-        cooldown = COOLDOWN_SECONDS.get(type(error))
+        cooldown = cooldown_for(error)
         if cooldown is not None:
             self._cooldowns.cool(route.label, cooldown)
         logger.warning(

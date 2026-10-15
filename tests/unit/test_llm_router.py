@@ -17,6 +17,7 @@ from noc.llm.client import (
 from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
 from noc.llm.key_status import KeyStatusSink, RecordedState
+from noc.llm.openai_compat import retry_after_seconds
 from noc.llm.providers import ChainEntry, ProviderConfig, key_label, parse_chain_entry
 from noc.llm.ratelimit import MemoryQuotaStore, RequestBudget
 from noc.llm.router import Route, RoutedLLM
@@ -309,6 +310,40 @@ async def test_rate_limits_are_not_retried_with_backoff() -> None:
     assert time.slept == []
 
 
+async def test_a_short_rate_limit_on_the_primary_is_waited_out_instead_of_falling_back() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=3.0)])
+    gemini = StubProvider("gemini")
+    llm = routed([route(groq, "q#1"), route(gemini, "g#1")], time=time)
+    response = await llm.complete(REQUEST)
+    assert response.provider == "groq"
+    assert not response.fallback
+    assert time.slept == [3.0]
+    assert gemini.calls == 0
+
+
+async def test_a_long_rate_limit_falls_back_without_waiting() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=40.0)])
+    gemini = StubProvider("gemini")
+    llm = routed([route(groq, "q#1"), route(gemini, "g#1")], time=time)
+    response = await llm.complete(REQUEST)
+    assert response.provider == "gemini"
+    assert response.fallback
+    assert time.slept == []
+
+
+async def test_a_rate_limited_key_cools_only_as_long_as_the_provider_asked() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=40.0)])
+    gemini = StubProvider("gemini")
+    llm = routed([route(groq, "q#1"), route(gemini, "g#1")], time=time)
+    await llm.complete(REQUEST)
+    time.now += 41
+    response = await llm.complete(REQUEST)
+    assert response.provider == "groq"
+
+
 @dataclass(frozen=True)
 class Failure:
     label: str
@@ -412,3 +447,9 @@ async def test_a_failing_status_sink_never_fails_the_call() -> None:
     response = await llm.complete(REQUEST)
     assert response.provider == "groq"
     assert response.fallback
+
+
+def test_retry_after_is_read_from_the_provider_headers() -> None:
+    assert retry_after_seconds({"retry-after": "2"}) == 2.0
+    assert retry_after_seconds({"retry-after": "soon"}) is None
+    assert retry_after_seconds({}) is None

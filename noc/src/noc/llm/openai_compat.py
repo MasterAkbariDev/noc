@@ -1,4 +1,5 @@
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import openai
@@ -67,6 +68,14 @@ def build_arguments(
     return arguments
 
 
+def retry_after_seconds(headers: Mapping[str, str]) -> float | None:
+    raw = headers.get("retry-after")
+    try:
+        return max(0.0, float(raw)) if raw is not None else None
+    except ValueError:
+        return None
+
+
 INVALID_KEY_MARKERS = ("api key not valid", "invalid api key", "api_key_invalid")
 BAD_GENERATION_MARKERS = ("tool_use_failed", "failed to parse tool call")
 
@@ -96,7 +105,9 @@ class OpenAICompatProvider:
                 **build_arguments(request, model, self.name, self._foreign_extra)
             )
         except openai.RateLimitError as exc:
-            raise ProviderRateLimited(f"{self.name}: rate limited") from exc
+            raise ProviderRateLimited(
+                f"{self.name}: rate limited", retry_after_seconds(exc.response.headers)
+            ) from exc
         except (openai.AuthenticationError, openai.PermissionDeniedError) as exc:
             raise ProviderKeyRejected(f"{self.name}: key rejected ({exc.status_code})") from exc
         except (openai.APIConnectionError, openai.APITimeoutError) as exc:

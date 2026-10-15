@@ -1,16 +1,36 @@
 alerts:
-  HostCPUSaturated: {specialists: [metrics, logs]}
+  HostCPUSaturated:
+    specialists: [metrics, logs]
+    focus:
+      metrics: ["Which process uses the CPU right now? Check the busiest processes and say whether it belongs to a known service."]
   HostCPUStealHigh: {specialists: [metrics, logs]}
-  HostMemoryPressure: {specialists: [metrics, logs]}
+  HostMemoryPressure:
+    specialists: [metrics, logs]
+    focus:
+      metrics: ["Which processes or services use the most memory, and is one of them growing?"]
   HostMemoryExhaustionPredicted: {specialists: [metrics, logs]}
   ResourceMemoryLeakSuspected: {specialists: [metrics, logs]}
   OOMKillsDetected: {specialists: [metrics, logs]}
-  DiskAlmostFull: {specialists: [metrics, logs]}
-  DiskFillingFast: {specialists: [metrics, logs]}
+  DiskAlmostFull:
+    specialists: [metrics, logs]
+    focus:
+      metrics: ["Which folder or file uses the space on the full filesystem? Check the folder sizes and name the largest files."]
+  DiskFillingFast:
+    specialists: [metrics, logs]
+    focus:
+      metrics: ["Which folder or file is growing on the filling filesystem? Check the folder sizes and name the largest files."]
   InodesAlmostExhausted: {specialists: [metrics, logs]}
 
-  ServiceDown: {specialists: [metrics, logs, network]}
-  ServiceMemoryHigh: {specialists: [metrics, logs]}
+  ServiceDown:
+    specialists: [metrics, logs, network]
+    focus:
+      metrics: ["Is the service stopped, failed or restarting, and what is its exit status?"]
+      logs: ["What do the service's last log lines say just before it stopped?"]
+  ServiceMemoryHigh:
+    specialists: [metrics, logs]
+    focus:
+      metrics: ["How much memory does the service use compared with its limit, and has it grown steadily?"]
+      logs: ["Does the service log show out-of-memory errors, kills or restarts?"]
   SentinelDown: {specialists: [network, metrics]}
   ContainerUnhealthy: {specialists: [metrics, logs, network]}
   ContainerRestartLoop: {specialists: [metrics, logs, network]}

@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -193,6 +194,25 @@ async def test_alert_after_close_opens_a_new_incident(
         statuses = set((await session.scalars(select(Incident.status))).all())
         count = await session.scalar(select(func.count()).select_from(Incident))
     assert count == 2
+    assert statuses == {"CLOSED", "NEW"}
+
+
+async def test_an_alert_only_kept_firing_after_close_opens_no_duplicate(
+    sessions: SessionFactory,
+    alerts: tuple[AlertIngestor, StaticAlertSource],
+) -> None:
+    ingestor, source = alerts
+    incident_id = await open_escalated_incident(sessions, alerts)
+    async with transaction(sessions) as session:
+        await close_incident(session, incident_id, IncidentResolution(resolution_note=NOTE), "api")
+    source.alerts = [prometheus_alert(keep_firing_since=datetime(2026, 10, 13, 9, 5, tzinfo=UTC))]
+    await ingestor.poll_once()
+    async with sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(Incident)) == 1
+    source.alerts = [prometheus_alert()]
+    await ingestor.poll_once()
+    async with sessions() as session:
+        statuses = set((await session.scalars(select(Incident.status))).all())
     assert statuses == {"CLOSED", "NEW"}
 
 
