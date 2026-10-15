@@ -1,6 +1,7 @@
 import type {
   ActivityPage,
   ActivityVerify,
+  AddLlmKeyBody,
   ApprovalDecisionBody,
   ApprovalView,
   CreateUserBody,
@@ -9,6 +10,10 @@ import type {
   IncidentStory,
   IncidentSummary,
   IncidentTrace,
+  LlmCheck,
+  LlmConfig,
+  LlmManagedKey,
+  Metrics,
   LlmStatus,
   MeView,
   Overview,
@@ -17,6 +22,9 @@ import type {
   ServerSummary,
   StreamTicket,
   SystemHealth,
+  TelegramSettings,
+  TelegramTest,
+  TelegramUpdate,
   TotpSetup,
   UserView,
 } from "./types";
@@ -224,6 +232,62 @@ export function getOverview(): Promise<Overview> {
 
 export function getSystemHealth(): Promise<SystemHealth> {
   return apiGet<SystemHealth>("/api/system/health");
+}
+
+export function getLlmConfig(): Promise<LlmConfig> {
+  return apiGet<LlmConfig>("/api/llm/config");
+}
+
+export function addLlmKey(body: AddLlmKeyBody): Promise<LlmManagedKey> {
+  return apiPost<LlmManagedKey>("/api/llm/keys", body);
+}
+
+export function revokeLlmKey(id: string): Promise<void> {
+  return apiDelete(`/api/llm/keys/${encodedId(id)}`);
+}
+
+export function checkLlmKey(label: string): Promise<LlmCheck> {
+  return apiPost<LlmCheck>("/api/llm/keys/check", { label });
+}
+
+export function setLlmProxy(provider: string, url: string | null): Promise<LlmConfig> {
+  return apiRequest<LlmConfig>("PUT", `/api/llm/providers/${encodedId(provider)}/proxy`, { url });
+}
+
+export function resetLlmProxy(provider: string): Promise<LlmConfig> {
+  return apiRequest<LlmConfig>("DELETE", `/api/llm/providers/${encodedId(provider)}/proxy`);
+}
+
+export function checkLlmProxy(provider: string): Promise<LlmCheck> {
+  return apiPost<LlmCheck>(`/api/llm/providers/${encodedId(provider)}/proxy/check`, {});
+}
+
+export function getMetrics(days: number): Promise<Metrics> {
+  return apiGet<Metrics>(`/api/metrics?days=${encodeURIComponent(String(days))}`);
+}
+
+export function getTelegram(): Promise<TelegramSettings> {
+  return apiGet<TelegramSettings>("/api/notifications/telegram");
+}
+
+export function saveTelegram(body: TelegramUpdate): Promise<TelegramSettings> {
+  return apiRequest<TelegramSettings>("PUT", "/api/notifications/telegram", body);
+}
+
+export function setTelegramToken(token: string): Promise<TelegramSettings> {
+  return apiRequest<TelegramSettings>("PUT", "/api/notifications/telegram/token", { token });
+}
+
+export function removeTelegramToken(): Promise<TelegramSettings> {
+  return apiRequest<TelegramSettings>("DELETE", "/api/notifications/telegram/token");
+}
+
+export function setTelegramProxy(url: string | null): Promise<TelegramSettings> {
+  return apiRequest<TelegramSettings>("PUT", "/api/notifications/telegram/proxy", { url });
+}
+
+export function testTelegram(): Promise<TelegramTest> {
+  return apiPost<TelegramTest>("/api/notifications/telegram/test", {});
 }
 
 export function getLlmStatus(): Promise<LlmStatus> {

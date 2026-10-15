@@ -6,6 +6,7 @@ import { StreamConnectedContext, useEventStream } from "./live/useEventStream";
 import { ActivityPage } from "./pages/ActivityPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MetricsPage } from "./pages/MetricsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ServerPage } from "./pages/ServerPage";
 import { ServersPage } from "./pages/ServersPage";
@@ -62,6 +63,7 @@ export function App() {
           <Route path="/servers/:id" element={<ServerPage />} />
           <Route path="/system" element={<SystemPage />} />
           <Route path="/activity" element={<ActivityPage />} />
+          <Route path="/stats" element={<MetricsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           {UiKitPage !== null && <Route path="/__ui" element={<UiKitPage />} />}
           <Route path="*" element={<NotFoundPage />} />

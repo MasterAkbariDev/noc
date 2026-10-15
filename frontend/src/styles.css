@@ -25,6 +25,10 @@
   --ui-shadow: 16 24 40;
   --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --ui-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ui-chart-1: #2a78d6;
+  --ui-chart-2: #eb6834;
+  --ui-chart-3: #1baf7a;
+  --ui-chart-grid: #e3e7ee;
   color-scheme: light;
 }
 
@@ -50,11 +54,19 @@
     --ui-unknown: #b4bcc9;
     --ui-unknown-soft: #2a303b;
     --ui-shadow: 0 0 0;
+    --ui-chart-1: #3987e5;
+    --ui-chart-2: #d95926;
+    --ui-chart-3: #199e70;
+    --ui-chart-grid: #2c3340;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
+  --ui-chart-1: #3987e5;
+  --ui-chart-2: #d95926;
+  --ui-chart-3: #199e70;
+  --ui-chart-grid: #2c3340;
   --ui-bg: #12151a;
   --ui-surface: #1b1f27;
   --ui-surface-2: #242a35;

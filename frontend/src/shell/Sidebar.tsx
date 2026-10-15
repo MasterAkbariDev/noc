@@ -1,4 +1,4 @@
-import { HeartPulse, LayoutDashboard, ScrollText, Server, Settings, Siren, X, type LucideIcon } from "lucide-react";
+import { ChartColumn, HeartPulse, LayoutDashboard, ScrollText, Server, Settings, Siren, X, type LucideIcon } from "lucide-react";
 import { NavLink } from "react-router";
 import { buttonClass } from "../ui/Button";
 import { cx } from "../lib/cx";
@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/incidents", label: "Incidents", icon: Siren, end: false },
   { to: "/servers", label: "Servers", icon: Server, end: false },
   { to: "/system", label: "System", icon: HeartPulse, end: false },
+  { to: "/stats", label: "Metrics", icon: ChartColumn, end: false },
   { to: "/activity", label: "Activity", icon: ScrollText, end: false },
   { to: "/settings", label: "Settings", icon: Settings, end: false },
 ];

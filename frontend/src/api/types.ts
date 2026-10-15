@@ -320,9 +320,12 @@ export type LlmModelUsage = {
   daily_limit: number;
 };
 
+export type LlmKeyTier = "free" | "paid";
+
 export type LlmKeyView = {
   label: string;
   provider: string;
+  tier?: LlmKeyTier;
   state: LlmKeyState;
   cooling_until: string | null;
   last_error: string | null;
@@ -334,6 +337,56 @@ export type LlmKeyView = {
 export type LlmStatus = {
   mode: LlmMode;
   keys: LlmKeyView[];
+};
+
+export type LlmModelLimit = {
+  tier: string;
+  model: string;
+  rpm: number;
+  rpd: number;
+};
+
+export type LlmProxySource = "env" | "panel" | "none";
+
+export type LlmProvider = {
+  name: string;
+  base_url: string;
+  proxy: { display: string | null; source: LlmProxySource };
+  free_models: LlmModelLimit[];
+  paid_models: LlmModelLimit[];
+};
+
+export type LlmManagedKey = {
+  id: string | null;
+  label: string;
+  provider: string;
+  name: string | null;
+  tier: LlmKeyTier;
+  source: "env" | "panel";
+  last4: string;
+  created_at: string | null;
+  created_by: string | null;
+};
+
+export type LlmConfig = {
+  mode: LlmMode;
+  secrets_persistent: boolean;
+  providers: LlmProvider[];
+  keys: LlmManagedKey[];
+};
+
+export type LlmCheck = {
+  ok: boolean;
+  latency_ms: number;
+  model: string | null;
+  detail: string;
+};
+
+export type AddLlmKeyBody = {
+  provider: string;
+  tier: LlmKeyTier;
+  name: string;
+  secret: string;
 };
 
 export type StepState = "done" | "current" | "pending" | "skipped" | "failed";
@@ -419,4 +472,78 @@ export type ActivityPage = {
 export type ActivityVerify = {
   ok: boolean;
   broken_at: number | null;
+};
+
+export type NotifyEvents = {
+  opened: boolean;
+  approval: boolean;
+  escalated: boolean;
+  resolved: boolean;
+};
+
+export type TelegramSettings = {
+  enabled: boolean;
+  chat_id: string;
+  panel_url: string;
+  events: NotifyEvents;
+  token_last4: string | null;
+  proxy_display: string | null;
+};
+
+export type TelegramUpdate = {
+  enabled: boolean;
+  chat_id: string;
+  panel_url: string;
+  events: NotifyEvents;
+};
+
+export type TelegramTest = {
+  ok: boolean;
+  detail: string;
+};
+
+export type MetricsDay = {
+  day: string;
+  opened: number;
+  resolved: number;
+  escalated: number;
+  llm_calls: number;
+  tokens: number;
+  tool_calls: number;
+};
+
+export type CategoryCount = { label: string; count: number };
+
+export type VariantRow = {
+  variant: string;
+  incidents: number;
+  resolved: number;
+  escalated: number;
+  llm_calls: number;
+};
+
+export type MetricsTotals = {
+  incidents: number;
+  resolved: number;
+  escalated: number;
+  open: number;
+  auto_resolved_share: number | null;
+  median_minutes_to_resolve: number | null;
+  median_minutes_to_diagnose: number | null;
+  llm_calls: number;
+  llm_failures: number;
+  tokens: number;
+  tool_calls: number;
+  actions_run: number;
+};
+
+export type Metrics = {
+  days: number;
+  since: string;
+  totals: MetricsTotals;
+  per_day: MetricsDay[];
+  root_causes: CategoryCount[];
+  outcomes: CategoryCount[];
+  actions: CategoryCount[];
+  variants: VariantRow[];
 };
