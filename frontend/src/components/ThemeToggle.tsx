@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button } from "../ui/Button";
+import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { SegmentedControl } from "../ui/SegmentedControl";
 
 export const THEME_STORAGE_KEY = "noc.theme";
 
@@ -11,6 +12,12 @@ const THEME_LABELS: Record<Theme, string> = {
   auto: "Auto",
   light: "Light",
   dark: "Dark",
+};
+
+const THEME_ICONS: Record<Theme, LucideIcon> = {
+  auto: Monitor,
+  light: Sun,
+  dark: Moon,
 };
 
 function isTheme(value: string | null): value is Theme {
@@ -55,22 +62,12 @@ export function ThemeToggle() {
   }
 
   return (
-    <div role="group" aria-label="Theme" className="inline-flex flex-wrap gap-1">
-      {THEMES.map((option) => {
-        const pressed = theme === option;
-        return (
-          <Button
-            key={option}
-            size="sm"
-            variant={pressed ? "secondary" : "ghost"}
-            aria-pressed={pressed}
-            className={pressed ? "border-accent font-semibold text-accent" : undefined}
-            onClick={() => choose(option)}
-          >
-            {THEME_LABELS[option]}
-          </Button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      label="Theme"
+      iconOnly
+      segments={THEMES.map((option) => ({ value: option, label: THEME_LABELS[option], icon: THEME_ICONS[option] }))}
+      value={theme}
+      onChange={choose}
+    />
   );
 }

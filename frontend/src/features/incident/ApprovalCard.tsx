@@ -4,16 +4,27 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, decideOnAction } from "../../api/client";
 import type { ActionView, ApprovalDecision } from "../../api/types";
 import { absoluteTime } from "../../lib/format";
-import { Badge } from "../../ui/Badge";
-import { Button } from "../../ui/Button";
-import { Card } from "../../ui/Card";
-import { Dialog } from "../../ui/Dialog";
-import { Term } from "../../ui/Term";
-import { useToast } from "../../ui/Toaster";
+import {
+  Badge,
+  Button,
+  Card,
+  DescriptionList,
+  Dialog,
+  Field,
+  Form,
+  FormActions,
+  FormMessage,
+  List,
+  ListItem,
+  TextArea,
+  TextInput,
+  Term,
+  useToast,
+  type DescriptionItem,
+} from "../../ui";
 import { COMMENT_MAX_LENGTH, decisionErrorMessage, expiryText, isExpired, needsApprovalCode } from "./approval";
 import { actionStatusLabel, plainLabel } from "./labels";
 
-const FIELD_CLASS = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal text-fg";
 const EXPIRY_TICK_MS = 30_000;
 
 type ApprovalCardProps = {
@@ -73,21 +84,21 @@ function GateChecks({ action }: { action: ActionView }) {
       {action.gate_failures.length === 0 ? (
         <p className="m-0 text-muted">No gate check failed.</p>
       ) : (
-        <ul className="m-0 grid list-none gap-1 p-0">
+        <List gap="xs">
           {action.gate_failures.map((gate, index) => (
-            <li key={`${gate}-${index}`}>
+            <ListItem key={`${gate}-${index}`}>
               <span className="font-semibold text-critical">Failed: </span>
               <Term technical={gate}>{plainLabel(gate)}</Term>
-            </li>
+            </ListItem>
           ))}
-        </ul>
+        </List>
       )}
       {action.reasons.length > 0 && (
-        <ul className="m-0 list-disc pl-5">
+        <List variant="bullet" gap="xs">
           {action.reasons.map((reason, index) => (
-            <li key={index}>{reason}</li>
+            <ListItem key={index}>{reason}</ListItem>
           ))}
-        </ul>
+        </List>
       )}
     </div>
   );
@@ -147,30 +158,20 @@ function DecisionForm({
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <Form onSubmit={submit}>
       <p className="m-0 text-sm">
         {approving ? "Approve" : "Reject"} <strong className="font-semibold">{plainLabel(action.action_type)}</strong>{" "}
         on {action.resource_id}.
       </p>
       <p className="m-0 text-sm">Impact score: {pending.impactScore}</p>
       <HashLine hash={pending.actionHash} />
-      <label className="grid gap-1 text-sm font-medium">
-        Comment (optional)
-        <textarea
-          className={FIELD_CLASS}
-          value={comment}
-          maxLength={COMMENT_MAX_LENGTH}
-          rows={3}
-          onChange={(event) => setComment(event.target.value)}
-        />
-      </label>
+      <Field label="Comment (optional)">
+        <TextArea value={comment} maxLength={COMMENT_MAX_LENGTH} rows={3} onChange={(event) => setComment(event.target.value)} />
+      </Field>
       {codeStep && (
-        <label className="grid gap-1 text-sm font-medium">
-          Authentication code
-          <input
-            className={FIELD_CLASS}
+        <Field label="Authentication code">
+          <TextInput
             name="approval-code"
-            type="text"
             inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
@@ -178,18 +179,39 @@ function DecisionForm({
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />
-        </label>
+        </Field>
       )}
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {decisionErrorMessage(mutation.error)}
-        </p>
-      )}
+      {mutation.isError && <FormMessage>{decisionErrorMessage(mutation.error)}</FormMessage>}
       <Button type="submit" variant={approving ? "primary" : "danger"} disabled={mutation.isPending}>
         {mutation.isPending ? "Sending..." : approving ? "Approve action" : "Reject action"}
       </Button>
-    </form>
+    </Form>
   );
+}
+
+function actionFacts(action: ActionView, now: number): DescriptionItem[] {
+  const facts: DescriptionItem[] = [
+    { key: "action", term: "Action", detail: <Term technical={action.action_type}>{plainLabel(action.action_type)}</Term> },
+    { key: "target", term: "Target", detail: <span className="break-all">{action.resource_id}</span> },
+    {
+      key: "permission",
+      term: "Permission",
+      detail: <Term technical={action.permission_class}>{plainLabel(action.permission_class)}</Term>,
+    },
+    { key: "impact", term: "Impact score", detail: action.impact_score },
+  ];
+  if (action.approval_expires_at !== null) {
+    facts.push({
+      key: "expiry",
+      term: "Expiry",
+      detail: (
+        <time dateTime={action.approval_expires_at} title={absoluteTime(action.approval_expires_at)}>
+          {expiryText(action.approval_expires_at, now)}
+        </time>
+      ),
+    });
+  }
+  return facts;
 }
 
 export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProps) {
@@ -203,7 +225,7 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
   }, []);
 
   return (
-    <Card title="Waiting for your approval" className="grid gap-4 border-warning">
+    <Card title="Waiting for your approval" icon={TriangleAlert} iconTone="warning" className="grid gap-4 border-warning/60">
       <p className="m-0 text-sm">
         {canDecide ? "This incident is waiting for your decision." : "Waiting for an operator's decision."}
       </p>
@@ -217,30 +239,7 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
           </Badge>
         )}
       </div>
-      <dl className="m-0 grid gap-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
-        <dt className="text-muted">Action</dt>
-        <dd className="m-0">
-          <Term technical={action.action_type}>{plainLabel(action.action_type)}</Term>
-        </dd>
-        <dt className="text-muted">Target</dt>
-        <dd className="m-0 break-all">{action.resource_id}</dd>
-        <dt className="text-muted">Permission</dt>
-        <dd className="m-0">
-          <Term technical={action.permission_class}>{plainLabel(action.permission_class)}</Term>
-        </dd>
-        <dt className="text-muted">Impact score</dt>
-        <dd className="m-0">{action.impact_score}</dd>
-        {action.approval_expires_at !== null && (
-          <>
-            <dt className="text-muted">Expiry</dt>
-            <dd className="m-0">
-              <time dateTime={action.approval_expires_at} title={absoluteTime(action.approval_expires_at)}>
-                {expiryText(action.approval_expires_at, now)}
-              </time>
-            </dd>
-          </>
-        )}
-      </dl>
+      <DescriptionList items={actionFacts(action, now)} />
       {expired && (
         <p role="status" className="m-0 text-sm font-semibold">
           This request has expired. It can no longer be approved or rejected.
@@ -249,14 +248,14 @@ export function ApprovalCard({ incidentId, action, canDecide }: ApprovalCardProp
       <GateChecks action={action} />
       <HashLine hash={action.action_hash} />
       {canDecide ? (
-        <div className="flex flex-wrap gap-2">
+        <FormActions>
           <Button variant="primary" disabled={expired} onClick={() => setPending(pendingFor("approved", action))}>
             Approve
           </Button>
           <Button variant="danger" disabled={expired} onClick={() => setPending(pendingFor("rejected", action))}>
             Reject
           </Button>
-        </div>
+        </FormActions>
       ) : (
         <p className="m-0 text-sm text-muted">Only an operator or an admin can approve or reject this action.</p>
       )}

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { AgentRunView } from "../../api/types";
 import { Badge } from "../../ui/Badge";
+import { List, ListItem } from "../../ui/List";
 import { runStatusTone } from "./labels";
 
 const MIN_BAR_PERCENT = 0.5;
@@ -49,9 +50,9 @@ export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
 
   return (
     <div className="grid gap-3 rounded-card border border-border bg-surface p-4">
-      <ol className="m-0 grid list-none gap-3 p-0">
+      <List ordered>
         {timelineBars(runs).map(({ run, left, width }) => (
-          <li key={run.id} className="grid gap-2 md:grid-cols-[minmax(0,15rem)_1fr] md:items-center">
+          <ListItem key={run.id} className="grid gap-2 md:grid-cols-[minmax(0,15rem)_1fr] md:items-center">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <strong className="font-semibold">{run.agent}</strong>
               <Badge tone={runStatusTone(run.status)}>{run.status}</Badge>
@@ -73,9 +74,9 @@ export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
                 }
               />
             </div>
-          </li>
+          </ListItem>
         ))}
-      </ol>
+      </List>
       <div className="flex justify-between gap-2 text-xs text-muted">
         <span>{new Date(axis.start).toLocaleString()}</span>
         <span>{new Date(axis.end).toLocaleString()}</span>

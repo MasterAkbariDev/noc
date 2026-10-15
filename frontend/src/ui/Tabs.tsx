@@ -22,7 +22,7 @@ export function Tabs({ label, items, value, onValueChange }: TabsProps) {
           <TabsPrimitive.Trigger
             key={item.value}
             value={item.value}
-            className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted hover:text-fg data-[state=active]:border-accent data-[state=active]:text-fg"
+            className="-mb-px rounded-t-control border-b-2 border-transparent px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg data-[state=active]:border-accent data-[state=active]:text-accent"
           >
             {item.label}
           </TabsPrimitive.Trigger>

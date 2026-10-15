@@ -3,10 +3,8 @@ import { useState, type FormEvent } from "react";
 import { totpDisable, totpEnable, totpSetup } from "../../api/client";
 import type { TotpSetup } from "../../api/types";
 import { useSession } from "../../auth/session";
-import { Button } from "../../ui/Button";
-import { useToast } from "../../ui/Toaster";
+import { Button, DescriptionList, Field, Form, FormActions, FormMessage, TextInput, useToast } from "../../ui";
 import { settingsErrorText } from "./accountView";
-import { INPUT_CLASS, LABEL_CLASS } from "./formStyles";
 
 const CODE_MAX_LENGTH = 16;
 const PASSWORD_MAX_LENGTH = 256;
@@ -27,14 +25,13 @@ function StartForm({ onStarted }: { onStarted: (setup: TotpSetup) => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="grid max-w-md gap-4">
+    <Form width="narrow" onSubmit={submit}>
       <p className="m-0 text-sm text-muted">
         Two-factor authentication asks for a six-digit code from an authenticator app after your password. Confirm your
         password to start.
       </p>
-      <label className={LABEL_CLASS}>
-        Current password
-        <input
+      <Field label="Current password">
+        <TextInput
           name="totp-current-password"
           type="password"
           autoComplete="current-password"
@@ -42,20 +39,15 @@ function StartForm({ onStarted }: { onStarted: (setup: TotpSetup) => void }) {
           maxLength={PASSWORD_MAX_LENGTH}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {settingsErrorText(mutation.error)}
-        </p>
-      )}
-      <div>
+      </Field>
+      {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
+      <FormActions>
         <Button type="submit" variant="primary" disabled={mutation.isPending}>
           Start setup
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }
 
@@ -69,42 +61,40 @@ function ConfirmForm({ setup, onEnabled }: { setup: TotpSetup; onEnabled: () => 
   }
 
   return (
-    <form onSubmit={submit} className="grid max-w-md gap-4">
+    <Form width="narrow" onSubmit={submit}>
       <p className="m-0 text-sm text-muted">
         Add this account to your authenticator app, using the secret below or the setup address, then type the code it
         shows.
       </p>
-      <dl className="m-0 grid gap-1 text-sm">
-        <dt className="text-muted">Secret</dt>
-        <dd className="m-0 font-mono break-all select-all">{setup.secret}</dd>
-        <dt className="mt-2 text-muted">Setup address</dt>
-        <dd className="m-0 font-mono text-xs break-all select-all">{setup.uri}</dd>
-      </dl>
-      <label className={LABEL_CLASS}>
-        Code from the app
-        <input
+      <DescriptionList
+        layout="stacked"
+        items={[
+          { key: "secret", term: "Secret", detail: <span className="font-mono break-all select-all">{setup.secret}</span> },
+          {
+            key: "uri",
+            term: "Setup address",
+            detail: <span className="font-mono text-xs break-all select-all">{setup.uri}</span>,
+          },
+        ]}
+      />
+      <Field label="Code from the app">
+        <TextInput
           name="totp-code"
-          type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
           required
           maxLength={CODE_MAX_LENGTH}
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {settingsErrorText(mutation.error)}
-        </p>
-      )}
-      <div>
+      </Field>
+      {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
+      <FormActions>
         <Button type="submit" variant="primary" disabled={mutation.isPending}>
           Turn on
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }
 
@@ -123,10 +113,9 @@ function DisableForm({ onDisabled }: { onDisabled: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="grid max-w-md gap-4">
-      <label className={LABEL_CLASS}>
-        Current password
-        <input
+    <Form width="narrow" onSubmit={submit}>
+      <Field label="Current password">
+        <TextInput
           name="totp-disable-password"
           type="password"
           autoComplete="current-password"
@@ -134,34 +123,26 @@ function DisableForm({ onDisabled }: { onDisabled: () => void }) {
           maxLength={PASSWORD_MAX_LENGTH}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      <label className={LABEL_CLASS}>
-        A new code from the app
-        <input
+      </Field>
+      <Field label="A new code from the app">
+        <TextInput
           name="totp-disable-code"
-          type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
           required
           maxLength={CODE_MAX_LENGTH}
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {settingsErrorText(mutation.error)}
-        </p>
-      )}
-      <div>
+      </Field>
+      {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
+      <FormActions>
         <Button type="submit" variant="danger" disabled={mutation.isPending}>
           Turn off
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }
 

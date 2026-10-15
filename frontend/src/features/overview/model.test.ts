@@ -1,7 +1,17 @@
+import { Bot } from "lucide-react";
 import { describe, expect, it } from "vitest";
 import type { Kpis, Role } from "../../api/types";
-import { ACTIVITY_LIMIT, canCloseIncidents, kpiViews, recentActivity, serverLabel, serverTone } from "./model";
-import { activityItem } from "./testData";
+import {
+  ACTIVITY_LIMIT,
+  canCloseIncidents,
+  kpiTrends,
+  kpiViews,
+  recentActivity,
+  serverLabel,
+  serverStatusCounts,
+  serverTone,
+} from "./model";
+import { activityItem, metricsFixture, serverSummary } from "./testData";
 
 const HEALTHY_KPIS: Kpis = {
   open_incidents: 0,
@@ -41,7 +51,7 @@ describe("recentActivity", () => {
 
     expect(recent).toHaveLength(ACTIVITY_LIMIT);
     expect(recent[0]?.text).toBe("entry 0");
-    expect(recent[ACTIVITY_LIMIT - 1]?.text).toBe("entry 14");
+    expect(recent[ACTIVITY_LIMIT - 1]?.text).toBe(`entry ${ACTIVITY_LIMIT - 1}`);
   });
 });
 
@@ -92,11 +102,41 @@ describe("kpiViews", () => {
       hint: "recorded answers",
       tone: "neutral",
       to: "/system",
+      icon: Bot,
     });
   });
 
   it("keeps the key count when the mode is live or not known yet", () => {
     expect(kpiViews(HEALTHY_KPIS, "live")[3]?.value).toBe("10/10");
     expect(kpiViews(HEALTHY_KPIS)[3]?.value).toBe("10/10");
+  });
+});
+
+describe("serverStatusCounts", () => {
+  it("counts every status, including the ones with no server", () => {
+    const counts = serverStatusCounts([
+      serverSummary({ id: "a", status: "up" }),
+      serverSummary({ id: "b", status: "up" }),
+      serverSummary({ id: "c", status: "unknown" }),
+    ]);
+
+    expect(counts.map((count) => [count.key, count.label, count.value])).toEqual([
+      ["up", "Up", 2],
+      ["down", "Down", 0],
+      ["unknown", "Unknown", 1],
+    ]);
+  });
+});
+
+describe("kpiTrends", () => {
+  it("gives the opened and escalated series per day, and nothing before the metrics load", () => {
+    expect(kpiTrends(undefined)).toBeUndefined();
+    expect(kpiTrends(metricsFixture().per_day)).toEqual({ opened: [1, 3], escalated: [0, 1] });
+    expect(kpiViews(HEALTHY_KPIS, "live", { opened: [1, 3], escalated: [0, 1] }).map((view) => view.trend)).toEqual([
+      [1, 3],
+      [0, 1],
+      undefined,
+      undefined,
+    ]);
   });
 });

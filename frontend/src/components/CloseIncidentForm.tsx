@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { closeIncident } from "../api/client";
-import { Button } from "../ui/Button";
-import { useToast } from "../ui/Toaster";
+import { Button, Checkbox, Field, Form, FormMessage, Select, TextArea, useToast } from "../ui";
 import { errorMessage } from "../lib/format";
 import { plainLabel } from "../features/incident/labels";
 
@@ -75,49 +74,27 @@ export function CloseIncidentForm({ incidentId, status, onClosed }: CloseInciden
     }
   }
 
-  const fieldClass = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal text-fg";
-
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <Form onSubmit={submit}>
       <p className="m-0 text-sm text-muted">The agents escalated this incident. Record what was done before closing it.</p>
-      <label className="grid gap-1 text-sm font-medium">
-        Resolution note (required)
-        <textarea
-          className={fieldClass}
-          value={note}
-          maxLength={RESOLUTION_NOTE_MAX_LENGTH}
-          rows={4}
-          onChange={(event) => setNote(event.target.value)}
+      <Field label="Resolution note (required)">
+        <TextArea value={note} maxLength={RESOLUTION_NOTE_MAX_LENGTH} rows={4} onChange={(event) => setNote(event.target.value)} />
+      </Field>
+      <Field label="Corrected root cause (optional)">
+        <Select
+          value={rootCause}
+          options={[
+            { value: "", label: "No change" },
+            ...ROOT_CAUSE_CODES.map((code) => ({ value: code, label: plainLabel(code) })),
+          ]}
+          onChange={(event) => setRootCause(event.target.value)}
         />
-      </label>
-      <label className="grid gap-1 text-sm font-medium">
-        Corrected root cause (optional)
-        <select className={fieldClass} value={rootCause} onChange={(event) => setRootCause(event.target.value)}>
-          <option value="">No change</option>
-          {ROOT_CAUSE_CODES.map((code) => (
-            <option key={code} value={code}>
-              {plainLabel(code)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="size-4 accent-accent"
-          checked={checked}
-          onChange={(event) => setChecked(event.target.checked)}
-        />
-        I checked this incident
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {errorMessage(mutation.error)}
-        </p>
-      )}
+      </Field>
+      <Checkbox label="I checked this incident" checked={checked} onChange={(event) => setChecked(event.target.checked)} />
+      {mutation.isError && <FormMessage>{errorMessage(mutation.error)}</FormMessage>}
       <Button type="submit" variant="primary" disabled={!canSubmit}>
         {mutation.isPending ? "Closing..." : "Close incident"}
       </Button>
-    </form>
+    </Form>
   );
 }

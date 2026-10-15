@@ -23,7 +23,7 @@ import {
   settingsErrorText,
 } from "./accountView";
 import { CreateUserDialog } from "./CreateUserDialog";
-import { INPUT_CLASS } from "./formStyles";
+import { Select } from "../../ui/Form";
 import { ResetPasswordDialog } from "./ResetPasswordDialog";
 
 type PendingToggle = { user: UserView; disable: boolean };
@@ -116,19 +116,14 @@ function UsersSection({ ownUsername }: { ownUsername: string }) {
         const own = user.username === ownUsername;
         return (
           <div className="grid gap-1">
-            <select
+            <Select
               aria-label={`Role for ${user.username}`}
               value={user.role}
               disabled={own || busy}
+              compact
+              options={ROLE_OPTIONS.map((role) => ({ value: role, label: roleLabel(role) }))}
               onChange={(event) => changeRole(user, event.target.value)}
-              className={INPUT_CLASS}
-            >
-              {ROLE_OPTIONS.map((role) => (
-                <option key={role} value={role}>
-                  {roleLabel(role)}
-                </option>
-              ))}
-            </select>
+            />
             {own && <span className="text-xs text-muted">{OWN_ROLE_REASON}</span>}
           </div>
         );

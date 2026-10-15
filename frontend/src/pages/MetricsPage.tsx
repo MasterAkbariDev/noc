@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { BadgeCheck, Bot, Siren, Stethoscope, Timer, UserRoundCheck, Wrench } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { getMetrics } from "../api/client";
 import type { Metrics } from "../api/types";
@@ -14,10 +15,10 @@ import {
   resolvedHint,
   variantLabel,
 } from "../features/metrics/view";
-import { INPUT_CLASS } from "../features/settings/formStyles";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
 import { ColumnChart, HBarChart, LineChart, compactNumber, fullNumber } from "../ui/charts";
 import { DataTable, type Column } from "../ui/DataTable";
+import { Field, Select } from "../ui/Form";
 import { ErrorState } from "../ui/ErrorState";
 import { KpiTile } from "../ui/KpiTile";
 import { PageHeader } from "../ui/PageHeader";
@@ -41,23 +42,21 @@ export function MetricsPage() {
 
   return (
     <>
-      <PageHeader title="Metrics" status="How the NOC has been doing: incidents, outcomes, model use and actions." />
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm">
-          Time range
-          <select
-            value={days}
-            onChange={(event) => setParams({ days: event.target.value }, { replace: true })}
-            className={INPUT_CLASS}
-          >
-            {RANGE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                Last {option} days
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <PageHeader
+        eyebrow="Insights"
+        title="Metrics"
+        status="How the NOC has been doing: incidents, outcomes, model use and actions."
+        actions={
+          <Field label="Time range" compact>
+            <Select
+              compact
+              value={String(days)}
+              options={RANGE_OPTIONS.map((option) => ({ value: String(option), label: `Last ${option} days` }))}
+              onChange={(event) => setParams({ days: event.target.value }, { replace: true })}
+            />
+          </Field>
+        }
+      />
       {query.isPending && <Skeleton lines={6} />}
       {query.isError && (
         <ErrorState title="Could not load the metrics" message="Try again in a moment." onRetry={() => void query.refetch()} />
@@ -75,28 +74,39 @@ function MetricsBody({ metrics }: { metrics: Metrics }) {
   const totals = metrics.totals;
   return (
     <>
-      <section aria-label="Key figures" className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiTile label="Incidents" value={fullNumber(totals.incidents)} hint={`${totals.open} still open`} />
+      <section aria-label="Key figures" className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiTile
+          label="Incidents"
+          value={fullNumber(totals.incidents)}
+          hint={`${totals.open} still open`}
+          icon={Siren}
+          trend={metrics.per_day.map((day) => day.opened)}
+        />
         <KpiTile
           label="Resolved by the NOC"
+          icon={BadgeCheck}
           value={percent(totals.auto_resolved_share)}
           hint={resolvedHint(metrics)}
           tone={totals.auto_resolved_share !== null && totals.auto_resolved_share >= 0.5 ? "ok" : "neutral"}
         />
         <KpiTile
           label="Diagnosis confirmed by people"
+          icon={UserRoundCheck}
           value={totals.reviewed === 0 ? "–" : `${totals.confirmed} of ${totals.reviewed}`}
           hint="Checked when someone closes an incident"
         />
-        <KpiTile label="Median time to resolve" value={minutes(totals.median_minutes_to_resolve)} />
-        <KpiTile label="Median time to diagnose" value={minutes(totals.median_minutes_to_diagnose)} />
+        <KpiTile label="Median time to resolve" value={minutes(totals.median_minutes_to_resolve)} icon={Timer} />
+        <KpiTile label="Median time to diagnose" value={minutes(totals.median_minutes_to_diagnose)} icon={Stethoscope} />
         <KpiTile
           label="Model calls"
+          icon={Bot}
+          trend={metrics.per_day.map((day) => day.llm_calls)}
           value={compactNumber(totals.llm_calls)}
           hint={`${compactNumber(totals.tokens)} tokens, ${fullNumber(totals.llm_failures)} failed`}
         />
         <KpiTile
           label="Actions run"
+          icon={Wrench}
           value={fullNumber(totals.actions_run)}
           hint={`${compactNumber(totals.tool_calls)} read-only tool calls`}
         />

@@ -37,10 +37,10 @@ describe("LiveActivity", () => {
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it("shows at most fifteen entries", () => {
+  it("shows at most ten entries", () => {
     renderActivity(Array.from({ length: 20 }, (_, index) => activityItem({ text: `entry ${index}` })));
 
-    expect(screen.getAllByRole("listitem")).toHaveLength(15);
+    expect(screen.getAllByRole("listitem")).toHaveLength(10);
   });
 
   it("shows hostile text as text and creates no element", () => {

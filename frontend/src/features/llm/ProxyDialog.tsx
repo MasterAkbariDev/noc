@@ -2,11 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { resetLlmProxy, setLlmProxy } from "../../api/client";
 import type { LlmConfig, LlmProvider } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Dialog } from "../../ui/Dialog";
-import { useToast } from "../../ui/Toaster";
+import { Button, Dialog, Field, Form, FormActions, FormMessage, TextInput, useToast } from "../../ui";
 import { settingsErrorText } from "../settings/accountView";
-import { INPUT_CLASS, LABEL_CLASS } from "../settings/formStyles";
 import { LLM_CONFIG_KEY } from "./queries";
 
 const URL_MAX_LENGTH = 512;
@@ -60,15 +57,13 @@ function ProxyForm({ provider, onDone }: { provider: LlmProvider; onDone: () => 
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <Form onSubmit={submit}>
       <p className="m-0 text-sm">
         Now: <span className="font-medium">{provider.proxy.display ?? "no proxy"}</span>
       </p>
-      <label className={LABEL_CLASS}>
-        New proxy URL
-        <input
+      <Field label="New proxy URL">
+        <TextInput
           name="llm-proxy-url"
-          type="text"
           inputMode="url"
           autoComplete="off"
           spellCheck={false}
@@ -76,15 +71,10 @@ function ProxyForm({ provider, onDone }: { provider: LlmProvider; onDone: () => 
           maxLength={URL_MAX_LENGTH}
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {settingsErrorText(mutation.error)}
-        </p>
-      )}
-      <div className="flex flex-wrap justify-end gap-2">
+      </Field>
+      {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
+      <FormActions align="end">
         <Button variant="secondary" disabled={mutation.isPending} onClick={() => mutation.mutate({ kind: "env" })}>
           Use the environment
         </Button>
@@ -94,7 +84,7 @@ function ProxyForm({ provider, onDone }: { provider: LlmProvider; onDone: () => 
         <Button type="submit" variant="primary" disabled={mutation.isPending || url.trim() === ""}>
           Save proxy
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }

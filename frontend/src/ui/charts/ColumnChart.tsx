@@ -18,6 +18,7 @@ type ColumnChartProps = {
   series: ChartSeries[];
   points: ColumnPoint[];
   firstColumn: string;
+  className?: string;
 };
 
 export function columnPath(x: number, y: number, width: number, height: number): string {
@@ -37,7 +38,7 @@ export function columnPath(x: number, y: number, width: number, height: number):
   ].join(" ");
 }
 
-export function ColumnChart({ title, subtitle, series, points, firstColumn }: ColumnChartProps) {
+export function ColumnChart({ title, subtitle, series, points, firstColumn, className }: ColumnChartProps) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const plotWidth = Math.max(10, width - MARGIN.left - MARGIN.right);
@@ -55,6 +56,7 @@ export function ColumnChart({ title, subtitle, series, points, firstColumn }: Co
     <ChartFrame
       title={title}
       subtitle={subtitle}
+      className={className}
       series={series}
       columns={[firstColumn, ...series.map((item) => item.name)]}
       rows={points.map((point) => ({
@@ -68,7 +70,7 @@ export function ColumnChart({ title, subtitle, series, points, firstColumn }: Co
           width="100%"
           height={HEIGHT}
           viewBox={`0 0 ${width} ${HEIGHT}`}
-          role="img"
+          role="group"
           aria-label={title}
           className="block overflow-visible"
         >
@@ -130,6 +132,7 @@ export function ColumnChart({ title, subtitle, series, points, firstColumn }: Co
                   height={plotHeight}
                   fill="transparent"
                   tabIndex={0}
+                  role="img"
                   aria-label={`${point.longLabel}: ${series
                     .map((item, seriesIndex) => `${item.name} ${fullNumber(point.values[seriesIndex] ?? 0)}`)
                     .join(", ")}`}
@@ -171,7 +174,7 @@ export function Tooltip({ left, title, rows }: { left: number; title: string; ro
   return (
     <div
       role="status"
-      className="pointer-events-none absolute top-0 z-10 w-40 rounded-control border border-border bg-surface p-2 text-xs shadow-card"
+      className="pointer-events-none absolute top-0 z-10 w-40 rounded-control border border-border bg-surface p-2 text-xs shadow-raised"
       style={{ left }}
     >
       <p className="m-0 mb-1 text-muted">{title}</p>

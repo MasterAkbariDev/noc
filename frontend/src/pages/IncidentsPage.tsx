@@ -62,7 +62,7 @@ export function IncidentsPage() {
 
   return (
     <>
-      <PageHeader title="Incidents" />
+      <PageHeader eyebrow="Monitor" title="Incidents" status="Every incident the NOC opened, newest first." />
       <IncidentFilters
         filter={filter}
         severity={severity}

@@ -2,6 +2,7 @@ import { Circle, CircleCheck, CircleDot, CircleX, Minus, type LucideIcon } from 
 import type { StepState, StoryStep } from "../../api/types";
 import type { Tone } from "../../lib/tones";
 import { Badge } from "../../ui/Badge";
+import { List, ListItem } from "../../ui/List";
 import { RelativeTime } from "../../ui/RelativeTime";
 import { Section } from "../../ui/Section";
 
@@ -18,7 +19,7 @@ const STEP_VIEWS: Record<StepState, StepView> = {
 function StepItem({ step }: { step: StoryStep }) {
   const view = STEP_VIEWS[step.state];
   return (
-    <li
+    <ListItem
       aria-current={step.state === "current" ? "step" : undefined}
       className="flex items-start gap-3 md:flex-col md:items-center md:text-center"
     >
@@ -33,18 +34,18 @@ function StepItem({ step }: { step: StoryStep }) {
           <span className="text-xs text-muted">No time yet</span>
         )}
       </span>
-    </li>
+    </ListItem>
   );
 }
 
 export function StoryProgress({ steps }: { steps: StoryStep[] }) {
   return (
     <Section heading="Progress">
-      <ol className="m-0 grid list-none gap-4 p-0 md:grid-cols-6 md:gap-2">
+      <List ordered gap="lg" className="md:grid-cols-6 md:gap-2">
         {steps.map((step) => (
           <StepItem key={step.key} step={step} />
         ))}
-      </ol>
+      </List>
     </Section>
   );
 }

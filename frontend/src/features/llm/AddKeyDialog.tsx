@@ -2,11 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { addLlmKey } from "../../api/client";
 import type { LlmKeyTier, LlmProvider } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Dialog } from "../../ui/Dialog";
-import { useToast } from "../../ui/Toaster";
+import { Button, Dialog, Field, Form, FormActions, FormMessage, Select, TextInput, useToast } from "../../ui";
 import { settingsErrorText } from "../settings/accountView";
-import { INPUT_CLASS, LABEL_CLASS } from "../settings/formStyles";
 import { LLM_CONFIG_KEY } from "./queries";
 import { KEY_TIERS, parseTier, tierLabel } from "./view";
 
@@ -56,45 +53,32 @@ function AddKeyForm({ providers, onDone }: { providers: LlmProvider[]; onDone: (
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
-      <label className={LABEL_CLASS}>
-        Provider
-        <select value={provider} onChange={(event) => setProvider(event.target.value)} className={INPUT_CLASS}>
-          {providers.map((item) => (
-            <option key={item.name} value={item.name}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={LABEL_CLASS}>
-        Billing tier
-        <select value={tier} onChange={(event) => setTier(parseTier(event.target.value))} className={INPUT_CLASS}>
-          {KEY_TIERS.map((item) => (
-            <option key={item} value={item}>
-              {tierLabel(item)}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs font-normal text-muted">
-          Paid keys get higher limits and are tried before free keys of the same provider.
-        </span>
-      </label>
-      <label className={LABEL_CLASS}>
-        Name
-        <input
+    <Form onSubmit={submit}>
+      <Field label="Provider">
+        <Select
+          value={provider}
+          options={providers.map((item) => ({ value: item.name, label: item.name }))}
+          onChange={(event) => setProvider(event.target.value)}
+        />
+      </Field>
+      <Field label="Billing tier" hint="Paid keys get higher limits and are tried before free keys of the same provider.">
+        <Select
+          value={tier}
+          options={KEY_TIERS.map((item) => ({ value: item, label: tierLabel(item) }))}
+          onChange={(event) => setTier(parseTier(event.target.value))}
+        />
+      </Field>
+      <Field label="Name">
+        <TextInput
           name="llm-key-name"
-          type="text"
           required
           maxLength={NAME_MAX_LENGTH}
           value={name}
           onChange={(event) => setName(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      <label className={LABEL_CLASS}>
-        API key
-        <input
+      </Field>
+      <Field label="API key">
+        <TextInput
           name="llm-key-secret"
           type="password"
           autoComplete="off"
@@ -103,22 +87,17 @@ function AddKeyForm({ providers, onDone }: { providers: LlmProvider[]; onDone: (
           maxLength={SECRET_MAX_LENGTH}
           value={secret}
           onChange={(event) => setSecret(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {mutation.isError && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {settingsErrorText(mutation.error)}
-        </p>
-      )}
-      <div className="flex flex-wrap justify-end gap-2">
+      </Field>
+      {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
+      <FormActions align="end">
         <Button variant="secondary" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={mutation.isPending}>
           Add key
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }

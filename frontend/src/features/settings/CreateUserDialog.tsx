@@ -2,11 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { createUser } from "../../api/client";
 import type { CreateUserBody, Role } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Dialog } from "../../ui/Dialog";
+import { Button, Dialog, Field, FieldNote, Form, FormActions, FormMessage, Select, TextInput } from "../../ui";
 import { useToast } from "../../ui/Toaster";
 import { ROLE_OPTIONS, parseRole, roleLabel, settingsErrorText } from "./accountView";
-import { INPUT_CLASS, LABEL_CLASS } from "./formStyles";
 import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -64,80 +62,66 @@ function CreateUserForm({ onDone }: { onDone: () => void }) {
   const shownError = problem ?? (mutation.isError ? settingsErrorText(mutation.error) : null);
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
-      <label className={LABEL_CLASS}>
-        Username
-        <input
+    <Form onSubmit={submit}>
+      <Field label="Username">
+        <TextInput
           name="username"
-          type="text"
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
           value={username}
           onChange={(event) => setUsername(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      <label className={LABEL_CLASS}>
-        Role
-        <select
+      </Field>
+      <Field label="Role">
+        <Select
           name="role"
           value={role}
+          options={ROLE_OPTIONS.map((option) => ({ value: option, label: roleLabel(option) }))}
           onChange={(event) => {
             const next = parseRole(event.target.value);
             if (next !== null) {
               setRole(next);
             }
           }}
-          className={INPUT_CLASS}
-        >
-          {ROLE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {roleLabel(option)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={LABEL_CLASS}>
-        <span>
-          Password{" "}
-          <span className="font-normal text-muted">
-            ({PASSWORD_MIN_LENGTH} to {PASSWORD_MAX_LENGTH} characters)
+        />
+      </Field>
+      <Field
+        label={
+          <span>
+            Password{" "}
+            <FieldNote>
+              ({PASSWORD_MIN_LENGTH} to {PASSWORD_MAX_LENGTH} characters)
+            </FieldNote>
           </span>
-        </span>
-        <input
+        }
+      >
+        <TextInput
           name="password"
           type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      <label className={LABEL_CLASS}>
-        Confirm password
-        <input
+      </Field>
+      <Field label="Confirm password">
+        <TextInput
           name="confirm-password"
           type="password"
           autoComplete="new-password"
           value={confirmation}
           onChange={(event) => setConfirmation(event.target.value)}
-          className={INPUT_CLASS}
         />
-      </label>
-      {shownError !== null && (
-        <p role="alert" className="m-0 text-sm text-critical">
-          {shownError}
-        </p>
-      )}
-      <div className="flex flex-wrap justify-end gap-2">
+      </Field>
+      {shownError !== null && <FormMessage>{shownError}</FormMessage>}
+      <FormActions align="end">
         <Button variant="secondary" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={mutation.isPending}>
           {mutation.isPending ? "Creating…" : "Create user"}
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </Form>
   );
 }

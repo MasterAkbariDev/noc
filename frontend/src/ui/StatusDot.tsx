@@ -10,6 +10,15 @@ const DOT_CLASSES: Record<Tone, string> = {
   unknown: "bg-unknown",
 };
 
+const RING_CLASSES: Record<Tone, string> = {
+  critical: "text-critical",
+  warning: "text-warning",
+  info: "text-info",
+  ok: "text-ok",
+  neutral: "text-muted",
+  unknown: "text-unknown",
+};
+
 type StatusDotProps = {
   tone: Tone;
   label: string;
@@ -19,7 +28,7 @@ type StatusDotProps = {
 export function StatusDot({ tone, label, showLabel = false }: StatusDotProps) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden="true" className={cx("size-2.5 shrink-0 rounded-full", DOT_CLASSES[tone])} />
+      <span aria-hidden="true" className={cx("size-2.5 shrink-0 rounded-full ring-3 ring-current/15", DOT_CLASSES[tone], RING_CLASSES[tone])} />
       <span className={showLabel ? undefined : "sr-only"}>{label}</span>
     </span>
   );

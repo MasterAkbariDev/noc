@@ -13,7 +13,7 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
         <TooltipPrimitive.Content
           side="top"
           sideOffset={6}
-          className="z-50 max-w-xs rounded-control border border-border bg-surface px-2 py-1 text-xs text-fg shadow-card"
+          className="z-50 max-w-xs rounded-control border border-border bg-surface px-2 py-1 text-xs text-fg shadow-raised"
         >
           {content}
         </TooltipPrimitive.Content>

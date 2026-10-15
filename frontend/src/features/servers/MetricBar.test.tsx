@@ -21,7 +21,7 @@ describe("MetricBar", () => {
     render(<MetricBar label="Memory" value={130} />);
 
     const fill = screen.getByRole("meter", { name: "Memory" }).firstElementChild;
-    expect(fill?.getAttribute("style")).toContain("--bar-width: 100%");
+    expect(fill?.getAttribute("style")).toContain("--meter-width: 100%");
   });
 
   it("shows No data instead of a bar when the value is missing", () => {

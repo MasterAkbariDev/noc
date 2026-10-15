@@ -1,8 +1,7 @@
-import type { CSSProperties } from "react";
 import type { ServerMetrics } from "../../api/types";
-import { cx } from "../../lib/cx";
 import { percentFromHundred } from "../../lib/format";
-import { clampPercent, isAttention } from "./serverView";
+import { Meter } from "../../ui/Meter";
+import { isAttention } from "./serverView";
 
 type MetricBarProps = {
   label: string;
@@ -25,20 +24,7 @@ export function MetricBar({ label, value }: MetricBarProps) {
         <span className="text-muted">{label}</span>
         <span className="font-semibold tabular-nums">{valueText}</span>
       </div>
-      <div
-        role="meter"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={clampPercent(value)}
-        aria-valuetext={valueText}
-        className="h-2 overflow-hidden rounded-full bg-surface-2"
-      >
-        <div
-          className={cx("h-full w-(--bar-width) rounded-full", isAttention(value) ? "bg-critical" : "bg-accent")}
-          style={{ "--bar-width": `${clampPercent(value)}%` } as CSSProperties}
-        />
-      </div>
+      <Meter label={label} value={value} valueText={valueText} tone={isAttention(value) ? "critical" : "neutral"} />
     </div>
   );
 }

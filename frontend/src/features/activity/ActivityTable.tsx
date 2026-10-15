@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { ActivityEntry } from "../../api/types";
-import { DataTable, RelativeTime, Term, type Column } from "../../ui";
+import { Button, DataTable, RelativeTime, Term, type Column } from "../../ui";
 
 const COLUMNS: Column<ActivityEntry>[] = [
   {
@@ -35,15 +35,14 @@ function ActivitySummary({ entry }: { entry: ActivityEntry }) {
   return (
     <div className="grid gap-2">
       <span>{entry.summary}</span>
-      <button
-        type="button"
+      <Button
+        variant="link"
         aria-expanded={open}
         aria-controls={open ? detailsId : undefined}
-        className="w-fit rounded-sm text-sm font-medium text-accent underline underline-offset-4"
         onClick={() => setOpen((value) => !value)}
       >
         {open ? "Hide details" : "Show details"}
-      </button>
+      </Button>
       {open && (
         <pre
           id={detailsId}

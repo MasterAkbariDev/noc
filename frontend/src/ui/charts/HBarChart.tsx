@@ -1,3 +1,4 @@
+import { List, ListItem } from "../List";
 import { ChartFrame } from "./ChartFrame";
 import { fullNumber } from "./scale";
 
@@ -26,23 +27,23 @@ export function HBarChart({ title, subtitle, color, items, firstColumn, valueCol
       {items.length === 0 ? (
         <p className="m-0 text-sm text-muted">{empty}</p>
       ) : (
-        <ul className="m-0 grid list-none gap-2 p-0" aria-label={title}>
+        <List label={title} gap="sm">
           {items.map((item) => (
-            <li key={item.key} className="grid grid-cols-[minmax(6rem,10rem)_minmax(0,1fr)] items-center gap-2 text-sm">
+            <ListItem key={item.key} className="grid grid-cols-[minmax(6rem,10rem)_minmax(0,1fr)] items-center gap-2 text-sm">
               <span className="truncate text-muted" title={item.label}>
                 {item.label}
               </span>
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className="block h-3 rounded-r"
+                  className="block h-3 rounded-r-[4px]"
                   style={{ width: `${Math.max(2, (item.value / max) * 85)}%`, background: color }}
                 />
                 <span className="text-xs font-semibold tabular-nums">{fullNumber(item.value)}</span>
               </span>
-            </li>
+            </ListItem>
           ))}
-        </ul>
+        </List>
       )}
     </ChartFrame>
   );

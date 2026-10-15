@@ -4,11 +4,10 @@ import { ApiError, TOTP_REQUIRED_DETAIL } from "../api/client";
 import { useSessionState } from "../auth/session";
 import { safeNext } from "../auth/safeNext";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
-import { Button } from "../ui/Button";
+import { Radar } from "lucide-react";
+import { Alert, Button, Field, Form, FormMessage, TextInput } from "../ui";
 
 const FIELD_MAX_LENGTH = 256;
-const INPUT_CLASS =
-  "rounded-control border border-border bg-bg px-3 py-2 text-fg placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 const CODE_MAX_LENGTH = 16;
 
@@ -71,23 +70,29 @@ export function LoginPage() {
   }
 
   return (
-    <main id="main" tabIndex={-1} className="grid min-h-screen place-items-center bg-bg p-4">
-      <section aria-labelledby="login-title" className="w-full max-w-sm rounded-card border border-border bg-surface p-6 shadow-card">
-        <p className="text-sm font-medium text-muted">Multi-Agent NOC</p>
-        <h1 id="login-title" className="mt-1 text-xl font-semibold text-fg">
+    <main id="main" tabIndex={-1} className="grid min-h-screen place-items-center bg-nav-bg p-4">
+      <section aria-labelledby="login-title" className="w-full max-w-sm rounded-card border border-border bg-surface p-7 shadow-raised">
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden="true" className="inline-grid size-9 place-items-center rounded-control bg-accent text-accent-fg">
+            <Radar size={20} strokeWidth={2.25} />
+          </span>
+          <p className="m-0 text-sm font-semibold text-muted">Multi-Agent NOC</p>
+        </div>
+        <h1 id="login-title" className="mt-5 mb-0 text-xl font-semibold text-fg">
           Sign in
         </h1>
+        <p className="m-0 mt-1 text-sm text-muted">Use the account an admin created for you.</p>
         {expired && (
-          <p role="status" className="mt-4 rounded-control bg-warning-soft px-3 py-2 text-sm text-fg">
-            Your session expired. Sign in again.
-          </p>
+          <div className="mt-4">
+            <Alert tone="warning" role="status">
+              <p className="m-0">Your session expired. Sign in again.</p>
+            </Alert>
+          </div>
         )}
-        <form className="mt-6 grid gap-4" onSubmit={submit}>
-          <label className="grid gap-1 text-sm font-medium text-fg">
-            Username
-            <input
+        <Form className="mt-6" onSubmit={submit}>
+          <Field label="Username">
+            <TextInput
               name="username"
-              type="text"
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
@@ -95,12 +100,10 @@ export function LoginPage() {
               maxLength={FIELD_MAX_LENGTH}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className={INPUT_CLASS}
             />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-fg">
-            Password
-            <input
+          </Field>
+          <Field label="Password">
+            <TextInput
               name="password"
               type="password"
               autoComplete="current-password"
@@ -108,15 +111,12 @@ export function LoginPage() {
               maxLength={FIELD_MAX_LENGTH}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className={INPUT_CLASS}
             />
-          </label>
+          </Field>
           {codeStep && (
-            <label className="grid gap-1 text-sm font-medium text-fg">
-              Authentication code
-              <input
+            <Field label="Authentication code">
+              <TextInput
                 name="totp"
-                type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 required
@@ -124,19 +124,14 @@ export function LoginPage() {
                 maxLength={CODE_MAX_LENGTH}
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
-                className={INPUT_CLASS}
               />
-            </label>
+            </Field>
           )}
-          {failure !== null && (
-            <p role="alert" className="text-sm text-critical">
-              {failure}
-            </p>
-          )}
-          <Button type="submit" variant="primary" disabled={pending}>
+          {failure !== null && <FormMessage>{failure}</FormMessage>}
+          <Button type="submit" variant="primary" disabled={pending} className="w-full justify-self-stretch">
             {pending ? "Signing in…" : "Sign in"}
           </Button>
-        </form>
+        </Form>
       </section>
     </main>
   );

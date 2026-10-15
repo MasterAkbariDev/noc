@@ -1,4 +1,5 @@
 import type { EventView } from "../../api/types";
+import { List, ListItem } from "../../ui/List";
 import { RelativeTime } from "../../ui/RelativeTime";
 import { Term } from "../../ui/Term";
 import { eventTypeLabel } from "./labels";
@@ -8,9 +9,9 @@ export function Timeline({ events }: { events: EventView[] }) {
     return <p className="m-0 text-muted">No events recorded yet.</p>;
   }
   return (
-    <ol className="m-0 grid list-none gap-3 p-0">
+    <List ordered>
       {events.map((event, index) => (
-        <li
+        <ListItem
           key={`${event.ts}-${event.type}-${index}`}
           className="timeline-item grid gap-2 rounded-card border border-border bg-surface p-3"
         >
@@ -22,8 +23,8 @@ export function Timeline({ events }: { events: EventView[] }) {
             <RelativeTime iso={event.ts} className="text-muted" />
           </div>
           <code className="break-all text-xs">{JSON.stringify(event.payload)}</code>
-        </li>
+        </ListItem>
       ))}
-    </ol>
+    </List>
   );
 }

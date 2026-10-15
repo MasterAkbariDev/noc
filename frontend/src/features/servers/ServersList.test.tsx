@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ApiError, getServers } from "../../api/client";
@@ -67,9 +67,22 @@ describe("ServersList", () => {
     ]);
     renderList();
 
-    const links = await screen.findAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["alpha", "beta"]);
+    const cards = await screen.findByRole("list", { name: "Server cards" });
+    expect(within(cards).getAllByRole("link").map((link) => link.textContent)).toEqual(["alpha", "beta"]);
     expect(screen.getByText("Halted")).toBeTruthy();
+  });
+
+  it("sums the fleet above the cards from what the API reported", async () => {
+    vi.mocked(getServers).mockResolvedValue([
+      summaryFixture({ id: "a", name: "alpha", status: "up", open_incidents: 2 }),
+      summaryFixture({ id: "b", name: "beta", status: "down", open_incidents: 1, halted: true }),
+    ]);
+    renderList();
+
+    const summary = await screen.findByRole("region", { name: "Fleet summary" });
+    expect(within(summary).getByText("1 reachable now")).toBeTruthy();
+    expect(within(summary).getByRole("link", { name: /Open incidents/ }).textContent).toContain("3");
+    expect(within(summary).getByText("Servers where the NOC only watches").parentElement?.textContent).toBe("Automation halted1Servers where the NOC only watches");
   });
 
   it("shows a hostile server name as text and creates no image element", async () => {

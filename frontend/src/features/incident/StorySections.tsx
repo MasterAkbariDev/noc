@@ -2,6 +2,7 @@ import { CircleCheck, TriangleAlert } from "lucide-react";
 import type { IncidentStory, StoryAction, StoryFound, StoryPoint } from "../../api/types";
 import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
+import { List, ListItem } from "../../ui/List";
 import { Section } from "../../ui/Section";
 import { Term } from "../../ui/Term";
 import { storyVerdictTone } from "../../lib/tones";
@@ -13,7 +14,7 @@ type StorySectionsProps = {
 
 function PointItem({ point }: { point: StoryPoint }) {
   return (
-    <li className="grid gap-1 rounded-control border border-border p-3">
+    <ListItem className="grid gap-1 rounded-control border border-border p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted">{point.agent}</span>
         <span className="font-medium">{point.label}</span>
@@ -29,7 +30,7 @@ function PointItem({ point }: { point: StoryPoint }) {
       </div>
       <p className="m-0">{point.text}</p>
       {point.refs.length > 0 && <p className="m-0 text-xs text-muted">Evidence: {point.refs.join(", ")}</p>}
-    </li>
+    </ListItem>
   );
 }
 
@@ -38,11 +39,11 @@ function FoundBody({ found }: { found: StoryFound }) {
     <>
       <p className="m-0">{found.text}</p>
       {found.points.length > 0 && (
-        <ul className="m-0 grid list-none gap-2 p-0">
+        <List gap="sm">
           {found.points.map((point, index) => (
             <PointItem key={`${point.label}-${index}`} point={point} />
           ))}
-        </ul>
+        </List>
       )}
     </>
   );
@@ -50,24 +51,24 @@ function FoundBody({ found }: { found: StoryFound }) {
 
 function ActionItem({ action }: { action: StoryAction }) {
   return (
-    <li className="grid gap-1 rounded-control border border-border p-3">
+    <ListItem className="grid gap-1 rounded-control border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <strong className="font-semibold">{action.action_label}</strong>
         <Badge tone={storyVerdictTone(action.verdict)}>{action.verdict_label}</Badge>
       </div>
       {action.reasons.length > 0 && (
-        <ul className="m-0 list-disc pl-5 text-sm">
+        <List variant="bullet" gap="xs" className="text-sm">
           {action.reasons.map((reason, index) => (
-            <li key={index}>{reason}</li>
+            <ListItem key={index}>{reason}</ListItem>
           ))}
-        </ul>
+        </List>
       )}
       {action.technical.length > 0 && (
         <p className="m-0 text-sm text-muted">
           <Term technical={action.technical.join(", ")}>Policy details</Term>
         </p>
       )}
-    </li>
+    </ListItem>
   );
 }
 
@@ -89,21 +90,21 @@ export function StorySections({ story, onClose }: StorySectionsProps) {
       <Section heading="What we did">
         <p className="m-0">{story.what_we_did.text}</p>
         {story.what_we_did.considered.length > 0 && (
-          <ul className="m-0 grid list-none gap-2 p-0">
+          <List gap="sm">
             {story.what_we_did.considered.map((action, index) => (
               <ActionItem key={`${action.action}-${index}`} action={action} />
             ))}
-          </ul>
+          </List>
         )}
       </Section>
       <Section heading="What you should do">
         <p className="m-0">{advice.text}</p>
         {advice.steps.length > 0 && (
-          <ol className="m-0 grid list-decimal gap-1 pl-5">
+          <List variant="numbered" gap="xs">
             {advice.steps.map((step, index) => (
-              <li key={index}>{step}</li>
+              <ListItem key={index}>{step}</ListItem>
             ))}
-          </ol>
+          </List>
         )}
         {onClose !== undefined && (
           <Button variant="primary" onClick={onClose}>

@@ -83,7 +83,7 @@ describe("MetricsPage", () => {
   it("draws the charts with plain labels and a variants table", async () => {
     renderPage();
     await screen.findByRole("region", { name: "Key figures" });
-    expect(screen.getByRole("img", { name: "Incidents opened per day" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Incidents opened per day" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Tokens per day" })).toBeTruthy();
     const causes = screen.getByRole("list", { name: "Root causes" });
     expect(within(causes).getByText("Service crashed")).toBeTruthy();

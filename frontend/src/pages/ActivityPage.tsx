@@ -14,6 +14,7 @@ export function ActivityPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Insights"
         title="Activity"
         status="Who did what on the NOC, newest first: sign-ins, role changes, closed incidents and automation changes."
         actions={<ChainBadge />}

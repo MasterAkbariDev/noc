@@ -1,5 +1,39 @@
-import type { ComponentHealth } from "../../api/types";
-import { Card, HealthBadge, RelativeTime } from "../../ui";
+import { CircleCheck, CircleDashed, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { ComponentHealth, ComponentStatus } from "../../api/types";
+import { healthView } from "../../lib/tones";
+import { Card, DescriptionList, HealthBadge, KpiTile, RelativeTime } from "../../ui";
+
+const SUMMARY_STATUSES: { status: ComponentStatus; icon: LucideIcon }[] = [
+  { status: "ok", icon: CircleCheck },
+  { status: "degraded", icon: TriangleAlert },
+  { status: "down", icon: CircleX },
+  { status: "unknown", icon: CircleDashed },
+];
+
+export function statusCount(components: ComponentHealth[], status: ComponentStatus): number {
+  return components.filter((component) => component.status === status).length;
+}
+
+export function ComponentSummary({ components }: { components: ComponentHealth[] }) {
+  return (
+    <div aria-label="Component summary" role="group" className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      {SUMMARY_STATUSES.map(({ status, icon }) => {
+        const view = healthView(status);
+        const count = statusCount(components, status);
+        return (
+          <KpiTile
+            key={status}
+            label={view.label}
+            value={count}
+            hint={count === 1 ? "component" : "components"}
+            icon={icon}
+            tone={count === 0 && status !== "ok" ? "neutral" : view.tone}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 function DetailList({ details }: { details: Record<string, string> }) {
   const entries = Object.entries(details);
@@ -7,14 +41,7 @@ function DetailList({ details }: { details: Record<string, string> }) {
     return null;
   }
   return (
-    <dl className="m-0 mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
-      {entries.map(([name, value]) => (
-        <div key={name} className="contents">
-          <dt className="text-muted">{name}</dt>
-          <dd className="m-0 break-words">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <DescriptionList className="mt-3" items={entries.map(([name, value]) => ({ key: name, term: name, detail: value }))} />
   );
 }
 

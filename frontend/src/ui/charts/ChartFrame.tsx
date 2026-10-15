@@ -1,7 +1,11 @@
+import { ChartColumn, Table2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
+import { cx } from "../../lib/cx";
+import { Button } from "../Button";
+import { DataTable } from "../DataTable";
+import { List, ListItem } from "../List";
 
 export type ChartSeries = { name: string; color: string };
-
 export type TableRow = { key: string; label: string; values: string[] };
 
 type ChartFrameProps = {
@@ -11,15 +15,23 @@ type ChartFrameProps = {
   columns: string[];
   rows: TableRow[];
   children: ReactNode;
+  className?: string;
 };
 
-export function ChartFrame({ title, subtitle, series, columns, rows, children }: ChartFrameProps) {
+export function Swatch({ color }: { color: string }) {
+  return <span aria-hidden="true" className="inline-block size-2.5 shrink-0 rounded-sm" style={{ background: color }} />;
+}
+
+export function ChartFrame({ title, subtitle, series, columns, rows, children, className }: ChartFrameProps) {
   const titleId = useId();
   const [showTable, setShowTable] = useState(false);
   return (
     <section
       aria-labelledby={titleId}
-      className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 rounded-card border border-border bg-surface p-4 shadow-card"
+      className={cx(
+        "m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 rounded-card border border-border bg-surface p-5 shadow-card",
+        className,
+      )}
     >
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="grid gap-0.5">
@@ -28,56 +40,40 @@ export function ChartFrame({ title, subtitle, series, columns, rows, children }:
           </h2>
           {subtitle !== undefined && <p className="m-0 text-xs text-muted">{subtitle}</p>}
         </div>
-        <button
-          type="button"
-          className="rounded-control border border-border px-2 py-1 text-xs text-muted hover:bg-surface-2"
-          aria-pressed={showTable}
-          onClick={() => setShowTable(!showTable)}
-        >
+        <Button variant="ghost" size="sm" className="text-xs text-muted" aria-pressed={showTable} onClick={() => setShowTable(!showTable)}>
+          {showTable ? <ChartColumn aria-hidden="true" size={14} /> : <Table2 aria-hidden="true" size={14} />}
           {showTable ? "Show chart" : "Show table"}
-        </button>
+        </Button>
       </header>
       {series.length >= 2 && (
-        <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-xs text-muted" aria-label="Legend">
+        <List label="Legend" variant="inline" gap="xs" className="gap-x-4 text-xs text-muted">
           {series.map((item) => (
-            <li key={item.name} className="flex items-center gap-1.5">
-              <span aria-hidden="true" className="inline-block size-2.5 rounded-sm" style={{ background: item.color }} />
+            <ListItem key={item.name} className="flex items-center gap-1.5">
+              <Swatch color={item.color} />
               {item.name}
-            </li>
+            </ListItem>
           ))}
-        </ul>
+        </List>
       )}
-      {showTable ? <DataTableView title={title} columns={columns} rows={rows} /> : children}
+      {showTable ? (
+        <DataTable
+          label={`${title} (table)`}
+          columns={columns.map((column, index) => ({
+            key: column,
+            header: column,
+            className: index === 0 ? undefined : "tabular-nums",
+            cell: (row: TableRow) => (index === 0 ? row.label : row.values[index - 1]),
+          }))}
+          rows={rows}
+          rowKey={(row) => row.key}
+          empty="No data."
+          framed={false}
+          dense
+          minWidth="none"
+        />
+      ) : (
+        children
+      )}
     </section>
-  );
-}
-
-function DataTableView({ title, columns, rows }: { title: string; columns: string[]; rows: TableRow[] }) {
-  return (
-    <div className="max-h-72 overflow-auto">
-      <table aria-label={`${title} (table)`} className="w-full text-left text-sm">
-        <thead className="text-xs text-muted">
-          <tr>
-            {columns.map((column) => (
-              <th key={column} className="px-2 py-1 font-medium">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key} className="border-t border-border">
-              <td className="px-2 py-1">{row.label}</td>
-              {row.values.map((value, index) => (
-                <td key={`${row.key}-${index}`} className="px-2 py-1 tabular-nums">
-                  {value}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

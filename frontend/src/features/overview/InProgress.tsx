@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
-import { Link } from "react-router";
 import { listIncidents } from "../../api/client";
 import type { IncidentSummary } from "../../api/types";
 import { errorMessage } from "../../lib/format";
 import { incidentStatusView } from "../../lib/tones";
-import { Badge, buttonClass, EmptyState, ErrorState, RelativeTime, Skeleton } from "../../ui";
+import { Badge, ButtonLink, EmptyState, ErrorState, List, ListItem, RelativeTime, Skeleton } from "../../ui";
 import { OVERVIEW_FALLBACK_POLL_MS } from "./model";
 
 export const IN_PROGRESS_KEY = ["overview", "in-progress"] as const;
@@ -48,29 +47,26 @@ export function InProgress() {
     return <EmptyState icon={Activity} title="Nothing is in progress." />;
   }
   return (
-    <ul className="m-0 grid list-none gap-3 p-0">
+    <List variant="divided">
       {rows.map((incident) => (
         <InProgressRow key={incident.id} incident={incident} />
       ))}
-    </ul>
+    </List>
   );
 }
 
 function InProgressRow({ incident }: { incident: IncidentSummary }) {
   const view = incidentStatusView(incident.status);
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-control border border-border p-3">
+    <ListItem className="flex flex-wrap items-center gap-2">
       <Badge tone={view.tone}>{view.label}</Badge>
-      <span className="min-w-0 flex-1 break-words font-medium">{incident.title}</span>
+      <span className="min-w-0 flex-1 basis-48 break-words font-medium">{incident.title}</span>
       <span className="text-sm text-muted">
         Started <RelativeTime iso={incident.opened_at} />
       </span>
-      <Link
-        to={`/incidents/${encodeURIComponent(incident.id)}`}
-        className={buttonClass({ size: "sm" })}
-      >
+      <ButtonLink to={`/incidents/${encodeURIComponent(incident.id)}`} size="sm">
         Open
-      </Link>
-    </li>
+      </ButtonLink>
+    </ListItem>
   );
 }

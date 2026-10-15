@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
-import { getLlmStatus, getOverview } from "../api/client";
+import { getLlmStatus, getMetrics, getOverview, getSystemHealth } from "../api/client";
 import type { LlmStatus, Role } from "../api/types";
-import { overviewFixture } from "../features/overview/testData";
+import { metricsFixture, overviewFixture, serverSummary, systemHealthFixture } from "../features/overview/testData";
 import { OverviewPage } from "./OverviewPage";
 
 const session = vi.hoisted(() => ({ role: "operator" as Role }));
@@ -13,6 +13,8 @@ vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
   getOverview: vi.fn(),
   getLlmStatus: vi.fn(),
+  getMetrics: vi.fn(),
+  getSystemHealth: vi.fn(),
 }));
 
 function llmStatus(mode: LlmStatus["mode"]): LlmStatus {
@@ -44,6 +46,10 @@ beforeEach(() => {
   vi.mocked(getOverview).mockReset();
   vi.mocked(getLlmStatus).mockReset();
   vi.mocked(getLlmStatus).mockResolvedValue(llmStatus("live"));
+  vi.mocked(getMetrics).mockReset();
+  vi.mocked(getMetrics).mockResolvedValue(metricsFixture());
+  vi.mocked(getSystemHealth).mockReset();
+  vi.mocked(getSystemHealth).mockResolvedValue(systemHealthFixture());
 });
 
 afterEach(() => {
@@ -82,6 +88,39 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
     expect(screen.getByText("Incident opened: DiskAlmostFull")).toBeTruthy();
     expect(screen.getByRole("link", { name: "demo-1" })).toBeTruthy();
+  });
+
+  it("draws the server status, the incident trend, the server resources and the NOC health", async () => {
+    vi.mocked(getOverview).mockResolvedValue(
+      overviewFixture({
+        servers: [
+          serverSummary({ id: "a", name: "web-1", metrics: { cpu_percent: 42, memory_percent: 95, disk_percent: 50, disk_mount: "/" } }),
+          serverSummary({ id: "b", name: "db-1", status: "down" }),
+        ],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByRole("img", { name: "Server status: Up 1, Down 1, Unknown 0" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Incidents, last 14 days" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Top root causes" })).toBeTruthy();
+    expect(getMetrics).toHaveBeenCalledWith(14);
+
+    const resources = screen.getByRole("table", { name: "Server resources" });
+    expect(within(resources).getByRole("meter", { name: "Memory on web-1" }).getAttribute("aria-valuetext")).toBe("95%");
+    expect(within(resources).getAllByText("No data").length).toBeGreaterThan(0);
+
+    expect(await screen.findByText("The worker has never reported")).toBeTruthy();
+  });
+
+  it("keeps the rest of the dashboard when the incident history fails", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
+    vi.mocked(getMetrics).mockRejectedValue(new Error("metrics down"));
+    renderPage();
+
+    expect(await screen.findByText("The incident history could not be loaded.")).toBeTruthy();
+    expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Top root causes" })).toBeNull();
   });
 
   it("offers Mark resolved to an operator", async () => {

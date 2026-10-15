@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ColumnChart, HBarChart, LineChart, columnPath, niceScale } from ".";
+import { ColumnChart, DonutChart, HBarChart, LineChart, columnPath, donutSegments, niceScale, shareText, sparkPath } from ".";
 
 const POINTS = [
   { key: "2026-10-13", label: "Oct 13", longLabel: "Mon, Oct 13", values: [3, 1] },
@@ -111,5 +111,64 @@ describe("HBarChart", () => {
       <HBarChart title="Root causes" color="red" firstColumn="Cause" valueColumn="Incidents" empty="Nothing yet." items={[]} />,
     );
     expect(screen.getByText("Nothing yet.")).toBeTruthy();
+  });
+});
+
+describe("DonutChart", () => {
+  const ITEMS = [
+    { key: "up", label: "Up", value: 3, color: "green" },
+    { key: "down", label: "Down", value: 1, color: "red" },
+    { key: "unknown", label: "Unknown", value: 0, color: "gray" },
+  ];
+
+  it("splits the ring by share and leaves out empty slices", () => {
+    const segments = donutSegments(ITEMS);
+    expect(segments.map((segment) => segment.item.key)).toEqual(["up", "down"]);
+    expect(segments[1]?.offset).toBeGreaterThan(segments[0]?.dash ?? 0);
+    expect(shareText(1, 4)).toBe("25%");
+    expect(shareText(0, 0)).toBe("0%");
+  });
+
+  it("names the chart with every value, lists them and offers a table", () => {
+    render(
+      <DonutChart
+        title="Server status"
+        centerLabel="servers"
+        firstColumn="Status"
+        valueColumn="Servers"
+        empty="Nothing yet."
+        items={ITEMS}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Server status: Up 3, Down 1, Unknown 0" })).toBeTruthy();
+    expect(within(screen.getByRole("list", { name: "Legend" })).getByText("75%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show table" }));
+    expect(within(screen.getByRole("table", { name: "Server status (table)" })).getByText("25%")).toBeTruthy();
+  });
+
+  it("says when there is nothing to draw", () => {
+    render(
+      <DonutChart
+        title="Server status"
+        centerLabel="servers"
+        firstColumn="Status"
+        valueColumn="Servers"
+        empty="Nothing yet."
+        items={ITEMS.map((item) => ({ ...item, value: 0 }))}
+      />,
+    );
+
+    expect(screen.getByText("Nothing yet.")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+});
+
+describe("sparkPath", () => {
+  it("draws one point per value and keeps zero on the baseline", () => {
+    const path = sparkPath([0, 5, 10], 100, 20);
+    expect(path.split(" ")).toHaveLength(3);
+    expect(path.startsWith("M3.0,17.0")).toBe(true);
+    expect(path.endsWith("L97.0,3.0")).toBe(true);
   });
 });

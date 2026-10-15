@@ -1,21 +1,25 @@
 import type { ButtonHTMLAttributes } from "react";
+import { Link, type LinkProps } from "react-router";
 import { cx } from "../lib/cx";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link";
 export type ButtonSize = "sm" | "md";
 
 type ButtonOptions = { variant?: ButtonVariant; size?: ButtonSize };
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & ButtonOptions;
 
+type ButtonLinkProps = LinkProps & ButtonOptions;
+
 const BASE_CLASS =
-  "inline-flex items-center justify-center justify-self-start gap-2 rounded-control border font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center justify-self-start gap-2 rounded-control border font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "border-accent bg-accent text-accent-fg hover:brightness-110",
-  secondary: "border-border bg-surface text-fg hover:bg-surface-2",
+  primary: "border-accent bg-accent text-accent-fg shadow-card hover:brightness-110",
+  secondary: "border-border bg-surface text-fg shadow-card hover:border-border-strong hover:bg-surface-2",
   ghost: "border-transparent bg-transparent text-fg hover:bg-surface-2",
-  danger: "border-critical bg-critical text-critical-fg hover:brightness-110",
+  danger: "border-critical bg-critical text-critical-fg shadow-card hover:brightness-110",
+  link: "w-fit border-transparent bg-transparent p-0 text-accent underline underline-offset-4 hover:brightness-125",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -24,9 +28,13 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 };
 
 export function buttonClass({ variant = "secondary", size = "md" }: ButtonOptions = {}): string {
-  return cx(BASE_CLASS, VARIANT_CLASSES[variant], SIZE_CLASSES[size]);
+  return cx(BASE_CLASS, VARIANT_CLASSES[variant], variant !== "link" && SIZE_CLASSES[size], variant === "link" && "text-sm");
 }
 
 export function Button({ variant, size, type = "button", className, ...rest }: ButtonProps) {
   return <button type={type} className={cx(buttonClass({ variant, size }), className)} {...rest} />;
+}
+
+export function ButtonLink({ variant, size, className, ...rest }: ButtonLinkProps) {
+  return <Link className={cx(buttonClass({ variant, size }), typeof className === "string" ? className : undefined)} {...rest} />;
 }

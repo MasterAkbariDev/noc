@@ -1,6 +1,6 @@
 import { Clock, CircleCheck, CircleDashed, CircleX, type LucideIcon } from "lucide-react";
 import type { LlmKeyView, LlmModelUsage, LlmStatus } from "../../api/types";
-import { Badge, DataTable, RelativeTime, Term, type Column } from "../../ui";
+import { Badge, DataTable, List, ListItem, RelativeTime, Term, type Column } from "../../ui";
 import { keyStateView, llmModeView, usagePercent, usageText } from "./view";
 
 const REPLAY_NOTE =
@@ -33,7 +33,7 @@ function KeyState({ keyView }: { keyView: LlmKeyView }) {
 function UsageBar({ model }: { model: LlmModelUsage }) {
   const percent = usagePercent(model.used_today, model.daily_limit);
   return (
-    <li className="grid gap-1">
+    <ListItem className="grid gap-1">
       <span className="text-sm">
         <span className="font-medium">{model.tier}</span> <code className="break-all text-xs">{model.model}</code>
       </span>
@@ -41,7 +41,7 @@ function UsageBar({ model }: { model: LlmModelUsage }) {
       <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
         <span className="block h-full rounded-full bg-info" style={{ width: `${percent}%` }} />
       </span>
-    </li>
+    </ListItem>
   );
 }
 
@@ -90,11 +90,11 @@ const KEY_COLUMNS: Column<LlmKeyView>[] = [
     key: "models",
     header: "Models today",
     cell: (keyView) => (
-      <ul className="m-0 grid min-w-[12rem] list-none gap-3 p-0">
+      <List className="min-w-[12rem]">
         {keyView.models.map((model) => (
           <UsageBar key={`${model.tier}-${model.model}`} model={model} />
         ))}
-      </ul>
+      </List>
     ),
     className: "min-w-[12rem]",
   },

@@ -1,5 +1,6 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { cx } from "../lib/cx";
 import { buttonClass } from "./Button";
 
@@ -14,20 +15,24 @@ export type MenuItem = {
 type MenuProps = {
   label: string;
   items: MenuItem[];
+  trigger?: ReactNode;
 };
 
-export function Menu({ label, items }: MenuProps) {
+export function Menu({ label, items, trigger }: MenuProps) {
   return (
     <DropdownMenuPrimitive.Root modal={false}>
-      <DropdownMenuPrimitive.Trigger className={buttonClass({ variant: "secondary", size: "sm" })}>
-        {label}
+      <DropdownMenuPrimitive.Trigger
+        aria-label={trigger === undefined ? undefined : label}
+        className={cx(buttonClass({ variant: trigger === undefined ? "secondary" : "ghost", size: "sm" }), trigger !== undefined && "py-1 pl-1")}
+      >
+        {trigger ?? label}
         <ChevronDown aria-hidden="true" size={14} />
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align="end"
           sideOffset={6}
-          className="z-50 min-w-40 rounded-card border border-border bg-surface p-1 shadow-card"
+          className="z-50 min-w-44 rounded-card border border-border bg-surface p-1 shadow-raised"
         >
           {items.map((item) => {
             const Icon = item.icon;

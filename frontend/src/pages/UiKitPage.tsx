@@ -1,33 +1,51 @@
-import { CircleCheck, Clock, Inbox, Settings, Users } from "lucide-react";
+import { Bell, CircleCheck, Clock, Inbox, Server, Settings, Siren, Users } from "lucide-react";
 import { useState } from "react";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { DonutChart } from "../ui/charts";
 import {
+  Alert,
   Badge,
   Button,
+  ButtonLink,
   Card,
+  Checkbox,
+  DescriptionList,
   DataTable,
   Dialog,
   EmptyState,
   ErrorState,
+  Field,
+  FieldNote,
+  Form,
+  FormActions,
+  FormMessage,
   HealthBadge,
+  IconButton,
   IncidentStatusBadge,
   KpiTile,
+  List,
+  ListItem,
   Menu,
+  Meter,
   type MenuItem,
   PageHeader,
   RelativeTime,
   Section,
+  SegmentedControl,
+  Select,
   SeverityBadge,
   Skeleton,
   StatusDot,
   Tabs,
   Term,
+  TextArea,
+  TextInput,
   Tooltip,
   useToast,
 } from "../ui";
 
 const TONES = ["critical", "warning", "info", "ok", "neutral", "unknown"] as const;
-const BUTTON_VARIANTS = ["primary", "secondary", "ghost", "danger"] as const;
+const BUTTON_VARIANTS = ["primary", "secondary", "ghost", "danger", "link"] as const;
 
 type SampleRow = { id: string; name: string; state: string };
 
@@ -158,6 +176,96 @@ function TooltipSection() {
   );
 }
 
+function FormSection() {
+  const [show, setShow] = useState("open");
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card title="Form controls">
+        <Form onSubmit={(event) => event.preventDefault()}>
+          <Field label="Username">
+            <TextInput placeholder="alice" />
+          </Field>
+          <Field
+            label={
+              <span>
+                Password <FieldNote>(12 to 128 characters)</FieldNote>
+              </span>
+            }
+          >
+            <TextInput type="password" />
+          </Field>
+          <Field label="Role" hint="Admins can change accounts.">
+            <Select
+              options={[
+                { value: "viewer", label: "Viewer" },
+                { value: "admin", label: "Admin" },
+              ]}
+            />
+          </Field>
+          <Field label="Note">
+            <TextArea rows={3} />
+          </Field>
+          <Checkbox label="I checked this incident" hint="required" />
+          <FormMessage>Invalid username or password.</FormMessage>
+          <FormActions align="end">
+            <Button>Cancel</Button>
+            <Button type="submit" variant="primary">
+              Save
+            </Button>
+          </FormActions>
+        </Form>
+      </Card>
+      <div className="grid content-start gap-4">
+        <Card title="Segmented control and icon button">
+          <div className="flex flex-wrap items-center gap-3">
+            <SegmentedControl
+              label="Show"
+              value={show}
+              onChange={setShow}
+              segments={[
+                { value: "open", label: "Open" },
+                { value: "all", label: "All" },
+              ]}
+            />
+            <IconButton label="Notifications" icon={Bell} variant="secondary" />
+            <ButtonLink to="/" size="sm">
+              Link as button
+            </ButtonLink>
+          </div>
+        </Card>
+        <Card title="Meters and facts">
+          <div className="grid gap-3">
+            <Meter label="CPU" value={42} valueText="42%" />
+            <Meter label="Disk" value={93} valueText="93%" tone="critical" />
+            <DescriptionList
+              items={[
+                { key: "a", term: "Endpoint", detail: "https://api.example.com" },
+                { key: "b", term: "Proxy", detail: "none" },
+              ]}
+            />
+            <List variant="bullet" gap="xs">
+              <ListItem>First reason</ListItem>
+              <ListItem>Second reason</ListItem>
+            </List>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function AlertsSection() {
+  return (
+    <div className="grid gap-3">
+      {TONES.map((tone) => (
+        <Alert key={tone} tone={tone} title={`A ${tone} message`}>
+          <p className="m-0">The body explains what happened and what to do.</p>
+        </Alert>
+      ))}
+    </div>
+  );
+}
+
 export function UiKitPage() {
   return (
     <>
@@ -181,10 +289,33 @@ export function UiKitPage() {
         <TooltipSection />
       </Section>
 
+      <Section heading="Forms">
+        <FormSection />
+      </Section>
+
+      <Section heading="Alerts">
+        <AlertsSection />
+      </Section>
+
+      <Section heading="Donut chart">
+        <DonutChart
+          title="Server status"
+          centerLabel="servers"
+          firstColumn="Status"
+          valueColumn="Servers"
+          empty="No servers."
+          items={[
+            { key: "up", label: "Up", value: 3, color: "var(--ui-ok)" },
+            { key: "down", label: "Down", value: 1, color: "var(--ui-critical)" },
+            { key: "unknown", label: "Unknown", value: 1, color: "var(--ui-unknown)" },
+          ]}
+        />
+      </Section>
+
       <Section heading="KPI tiles">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiTile label="Open incidents" value={1} hint="1 needs you" tone="warning" to="/incidents" />
-          <KpiTile label="Servers" value="2/2" hint="all up" tone="ok" to="/servers" />
+          <KpiTile label="Open incidents" value={1} hint="1 needs you" tone="warning" to="/incidents" icon={Siren} trend={[0, 2, 1, 3, 1]} />
+          <KpiTile label="Servers" value="2/2" hint="all up" tone="ok" to="/servers" icon={Server} />
           <KpiTile label="LLM keys" value="9/10" tone="warning" to="/system" />
           <KpiTile label="Failed checks" value={0} tone="critical" />
         </div>

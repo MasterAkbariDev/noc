@@ -1,7 +1,8 @@
 import { Activity } from "lucide-react";
 import { Link } from "react-router";
 import type { ActivityItem } from "../../api/types";
-import { EmptyState, RelativeTime } from "../../ui";
+import { cx } from "../../lib/cx";
+import { EmptyState, List, ListItem, RelativeTime } from "../../ui";
 import { recentActivity } from "./model";
 
 export function LiveActivity({ items }: { items: ActivityItem[] }) {
@@ -10,14 +11,18 @@ export function LiveActivity({ items }: { items: ActivityItem[] }) {
     return <EmptyState icon={Activity} title="No activity yet." />;
   }
   return (
-    <ol className="m-0 grid list-none gap-2 p-0">
+    <List ordered gap="xs" className="relative before:absolute before:inset-y-1 before:left-[3px] before:w-px before:bg-border before:content-['']">
       {recent.map((item) => (
-        <li key={`${item.ts}-${item.kind}-${item.text}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-          <RelativeTime iso={item.ts} className="shrink-0 text-muted" />
+        <ListItem key={`${item.ts}-${item.kind}-${item.text}`} className="relative grid gap-0.5 py-1.5 pl-5 text-sm">
+          <span
+            aria-hidden="true"
+            className={cx("absolute top-3 left-0 size-[7px] rounded-full", item.kind === "incident" ? "bg-accent" : "bg-muted")}
+          />
           <ActivityText item={item} />
-        </li>
+          <RelativeTime iso={item.ts} className="text-xs text-muted" />
+        </ListItem>
       ))}
-    </ol>
+    </List>
   );
 }
 
@@ -28,7 +33,7 @@ function ActivityText({ item }: { item: ActivityItem }) {
   return (
     <Link
       to={`/incidents/${encodeURIComponent(item.incident_id)}`}
-      className="min-w-0 break-words underline underline-offset-4"
+      className="min-w-0 break-words font-medium hover:text-accent hover:underline"
     >
       {item.text}
     </Link>

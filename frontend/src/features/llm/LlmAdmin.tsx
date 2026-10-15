@@ -10,6 +10,7 @@ import { Card } from "../../ui/Card";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { Dialog } from "../../ui/Dialog";
 import { ErrorState } from "../../ui/ErrorState";
+import { DescriptionList } from "../../ui/List";
 import { RelativeTime } from "../../ui/RelativeTime";
 import { Section } from "../../ui/Section";
 import { Skeleton } from "../../ui/Skeleton";
@@ -95,15 +96,21 @@ function ProviderCard({ provider, onEditProxy }: { provider: LlmProvider; onEdit
 
   return (
     <Card title={provider.name}>
-      <dl className="m-0 grid gap-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-x-4">
-        <dt className="text-muted">Endpoint</dt>
-        <dd className="m-0 break-all">{provider.base_url}</dd>
-        <dt className="text-muted">Proxy</dt>
-        <dd className="m-0 break-all">
-          {provider.proxy.display ?? "none"}{" "}
-          <span className="text-xs text-muted">({proxySourceLabel(provider.proxy.source)})</span>
-        </dd>
-      </dl>
+      <DescriptionList
+        items={[
+          { key: "endpoint", term: "Endpoint", detail: <span className="break-all">{provider.base_url}</span> },
+          {
+            key: "proxy",
+            term: "Proxy",
+            detail: (
+              <span className="break-all">
+                {provider.proxy.display ?? "none"}{" "}
+                <span className="text-xs text-muted">({proxySourceLabel(provider.proxy.source)})</span>
+              </span>
+            ),
+          },
+        ]}
+      />
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" onClick={onEditProxy}>
           Change proxy
@@ -122,37 +129,37 @@ function ProviderCard({ provider, onEditProxy }: { provider: LlmProvider; onEdit
   );
 }
 
+type LimitRow = { free: LlmModelLimit; paid: LlmModelLimit | undefined };
+
+const LIMIT_COLUMNS: Column<LimitRow>[] = [
+  { key: "use", header: "Use", cell: (row) => row.free.tier },
+  { key: "model", header: "Model", cell: (row) => row.free.model, className: "break-words" },
+  { key: "free", header: "Free tier", cell: (row) => `${row.free.rpm}/min, ${row.free.rpd}/day`, className: "whitespace-nowrap" },
+  {
+    key: "paid",
+    header: "Paid tier",
+    cell: (row) => (row.paid ? `${row.paid.rpm}/min, ${row.paid.rpd}/day` : "same as free"),
+    className: "whitespace-nowrap",
+  },
+];
+
 function LimitsTable({ label, free, paid }: { label: string; free: LlmModelLimit[]; paid: LlmModelLimit[] }) {
   const rows = free.map((limit) => ({
     free: limit,
     paid: paid.find((item) => item.tier === limit.tier),
   }));
   return (
-    <div className="mt-3 overflow-x-auto">
-      <table aria-label={label} className="w-full min-w-[22rem] text-left text-xs">
-        <thead className="text-muted">
-          <tr>
-            <th className="py-1 font-medium">Use</th>
-            <th className="py-1 font-medium">Model</th>
-            <th className="py-1 font-medium">Free tier</th>
-            <th className="py-1 font-medium">Paid tier</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.free.tier} className="border-t border-border">
-              <td className="py-1">{row.free.tier}</td>
-              <td className="py-1 pr-2 break-words">{row.free.model}</td>
-              <td className="py-1 pr-2 whitespace-nowrap">
-                {row.free.rpm}/min, {row.free.rpd}/day
-              </td>
-              <td className="py-1 whitespace-nowrap">
-                {row.paid ? `${row.paid.rpm}/min, ${row.paid.rpd}/day` : "same as free"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="mt-3">
+      <DataTable
+        label={label}
+        columns={LIMIT_COLUMNS}
+        rows={rows}
+        rowKey={(row) => row.free.tier}
+        empty="No models listed."
+        framed={false}
+        dense
+        minWidth="sm"
+      />
     </div>
   );
 }

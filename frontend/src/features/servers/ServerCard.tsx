@@ -1,21 +1,28 @@
 import { Link } from "react-router";
-import type { ServerSummary } from "../../api/types";
+import type { ServerStatus, ServerSummary } from "../../api/types";
+import { cx } from "../../lib/cx";
 import { Card } from "../../ui/Card";
 import { AutomationLevel, EnvironmentBadge, HaltedBadge, OpenIncidents, ServerStatusDot } from "./ServerParts";
 import { MetricBars } from "./MetricBar";
 import { headlineWithoutIncidents } from "./serverView";
 
+const STATUS_BORDERS: Record<ServerStatus, string> = {
+  up: "border-t-ok",
+  down: "border-t-critical",
+  unknown: "border-t-unknown",
+};
+
 export function ServerCard({ server }: { server: ServerSummary }) {
   const headline = headlineWithoutIncidents(server.headline, server.open_incidents);
   return (
-    <Card className="flex h-full flex-col gap-3">
+    <Card className={cx("flex h-full flex-col gap-3 border-t-4", STATUS_BORDERS[server.status])}>
       <div className="flex flex-wrap items-center gap-2">
         <ServerStatusDot status={server.status} />
         <EnvironmentBadge environment={server.environment} />
         {server.halted && <HaltedBadge />}
       </div>
       <h2 className="m-0 text-lg font-semibold break-words">
-        <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:underline">
+        <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:text-accent hover:underline">
           {server.name}
         </Link>
       </h2>

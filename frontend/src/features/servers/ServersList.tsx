@@ -1,7 +1,9 @@
 import { Server } from "lucide-react";
 import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
+import { List, ListItem } from "../../ui/List";
 import { Skeleton } from "../../ui/Skeleton";
+import { FleetSummary } from "./FleetSummary";
 import { ServerCard } from "./ServerCard";
 import { useServersQuery } from "./queries";
 import { errorText } from "./serverView";
@@ -31,12 +33,15 @@ export function ServersList() {
     );
   }
   return (
-    <ul className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+    <>
+      <FleetSummary servers={query.data} />
+      <List label="Server cards" gap="lg" className="sm:grid-cols-2 xl:grid-cols-3">
       {query.data.map((server) => (
-        <li key={server.id} className="min-w-0">
+        <ListItem key={server.id} className="min-w-0">
           <ServerCard server={server} />
-        </li>
-      ))}
-    </ul>
+        </ListItem>
+        ))}
+      </List>
+    </>
   );
 }

@@ -15,14 +15,22 @@ import type {
   TelegramSettings,
 } from "../../api/types";
 import { useSession } from "../../auth/session";
-import { Button } from "../../ui/Button";
-import { Card } from "../../ui/Card";
-import { ErrorState } from "../../ui/ErrorState";
-import { Section } from "../../ui/Section";
-import { Skeleton } from "../../ui/Skeleton";
-import { useToast } from "../../ui/Toaster";
+import {
+  Button,
+  Card,
+  ErrorState,
+  Field,
+  Form,
+  FormActions,
+  FormMessage,
+  List,
+  ListItem,
+  Section,
+  Skeleton,
+  TextInput,
+  useToast,
+} from "../../ui";
 import { settingsErrorText } from "../settings/accountView";
-import { INPUT_CLASS, LABEL_CLASS } from "../settings/formStyles";
 
 export const TELEGRAM_KEY = "telegram";
 
@@ -117,7 +125,7 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
 
   return (
     <Card title="Bot">
-      <form onSubmit={saveToken} className="grid gap-3">
+      <Form onSubmit={saveToken}>
         <p className="m-0 text-sm">
           Token:{" "}
           <span className="font-medium">
@@ -126,9 +134,8 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
               : `…${settings.token_last4}`}
           </span>
         </p>
-        <label className={LABEL_CLASS}>
-          New bot token
-          <input
+        <Field label="New bot token">
+          <TextInput
             name="telegram-token"
             type="password"
             autoComplete="off"
@@ -136,15 +143,10 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
             maxLength={100}
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            className={INPUT_CLASS}
           />
-        </label>
-        {tokenMutation.isError && (
-          <p role="alert" className="m-0 text-sm text-critical">
-            {settingsErrorText(tokenMutation.error)}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
+        </Field>
+        {tokenMutation.isError && <FormMessage>{settingsErrorText(tokenMutation.error)}</FormMessage>}
+        <FormActions>
           <Button
             type="submit"
             size="sm"
@@ -161,23 +163,18 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
           >
             Remove token
           </Button>
-        </div>
-      </form>
-      <form
-        onSubmit={saveProxy}
-        className="mt-5 grid gap-3 border-t border-border pt-4"
-      >
+        </FormActions>
+      </Form>
+      <Form onSubmit={saveProxy} className="mt-5 border-t border-border pt-4">
         <p className="m-0 text-sm">
           Proxy:{" "}
           <span className="font-medium">
             {settings.proxy_display ?? "none"}
           </span>
         </p>
-        <label className={LABEL_CLASS}>
-          Proxy URL (leave empty for none)
-          <input
+        <Field label="Proxy URL (leave empty for none)">
+          <TextInput
             name="telegram-proxy"
-            type="text"
             inputMode="url"
             autoComplete="off"
             spellCheck={false}
@@ -185,20 +182,15 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
             maxLength={512}
             value={proxy}
             onChange={(event) => setProxy(event.target.value)}
-            className={INPUT_CLASS}
           />
-        </label>
-        {proxyMutation.isError && (
-          <p role="alert" className="m-0 text-sm text-critical">
-            {settingsErrorText(proxyMutation.error)}
-          </p>
-        )}
-        <div>
+        </Field>
+        {proxyMutation.isError && <FormMessage>{settingsErrorText(proxyMutation.error)}</FormMessage>}
+        <FormActions>
           <Button type="submit" size="sm" disabled={proxyMutation.isPending}>
             Save proxy
           </Button>
-        </div>
-      </form>
+        </FormActions>
+      </Form>
     </Card>
   );
 }
@@ -262,27 +254,19 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
 
   return (
     <Card title="Admins">
-      <form onSubmit={submit} className="grid gap-3">
+      <Form onSubmit={submit}>
         <p className="m-0 text-sm text-muted">
           Admins get the messages and manage the bot from Telegram. Each one
           opens the bot and sends /start once; after that, /settings turns
           messages and event types on or off, and /add or /remove changes the
           admins.
         </p>
-        <ul
-          aria-label="Telegram admins"
-          className="m-0 grid list-none gap-2 p-0"
-        >
-          {admins.length === 0 && (
-            <li className="text-sm text-muted">No admins yet.</li>
-          )}
+        <List label="Telegram admins" variant="divided">
+          {admins.length === 0 && <ListItem className="text-sm text-muted">No admins yet.</ListItem>}
           {admins.map((handle) => {
             const admin = known.get(handle);
             return (
-              <li
-                key={handle}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm"
-              >
+              <ListItem key={handle} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span>
                   <span className="font-medium">
                     {admin === undefined ? handle : adminName(admin)}
@@ -303,16 +287,14 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
                 >
                   Remove
                 </Button>
-              </li>
+              </ListItem>
             );
           })}
-        </ul>
+        </List>
         <div className="flex flex-wrap items-end gap-2">
-          <label className={`${LABEL_CLASS} min-w-0 flex-1`}>
-            Telegram user id or @username
-            <input
+          <Field label="Telegram user id or @username" className="flex-1">
+            <TextInput
               name="telegram-admin"
-              type="text"
               autoComplete="off"
               spellCheck={false}
               placeholder="123456789 or @name"
@@ -325,9 +307,8 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
                   addAdmin();
                 }
               }}
-              className={INPUT_CLASS}
             />
-          </label>
+          </Field>
           <Button
             size="sm"
             disabled={newAdmin.trim() === ""}
@@ -336,47 +317,33 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
             Add
           </Button>
         </div>
-        <label className={LABEL_CLASS}>
-          Panel address for links
-          <input
+        <Field label="Panel address for links">
+          <TextInput
             name="telegram-panel-url"
-            type="text"
             inputMode="url"
             autoComplete="off"
             placeholder="https://noc.example.com"
             maxLength={200}
             value={panelUrl}
             onChange={(event) => setPanelUrl(event.target.value)}
-            className={INPUT_CLASS}
           />
-        </label>
+        </Field>
         <p className="m-0 text-sm">
           {botSummary(settings)}{" "}
           <span className="text-muted">
             Change this in the bot with /settings.
           </span>
         </p>
-        {saveMutation.isError && (
-          <p role="alert" className="m-0 text-sm text-critical">
-            {settingsErrorText(saveMutation.error)}
-          </p>
-        )}
+        {saveMutation.isError && <FormMessage>{settingsErrorText(saveMutation.error)}</FormMessage>}
         {testMutation.isSuccess && (
-          <p
-            role="status"
-            className={`m-0 text-sm ${testMutation.data.ok ? "text-ok" : "text-critical"}`}
-          >
+          <FormMessage tone={testMutation.data.ok ? "ok" : "critical"}>
             {testMutation.data.ok
               ? `Test message ${testMutation.data.detail}.`
               : `Test failed: ${testMutation.data.detail}`}
-          </p>
+          </FormMessage>
         )}
-        {testMutation.isError && (
-          <p role="alert" className="m-0 text-sm text-critical">
-            {settingsErrorText(testMutation.error)}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
+        {testMutation.isError && <FormMessage>{settingsErrorText(testMutation.error)}</FormMessage>}
+        <FormActions>
           <Button
             type="submit"
             size="sm"
@@ -393,8 +360,8 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
             <Send aria-hidden="true" size={14} />
             Send test message
           </Button>
-        </div>
-      </form>
+        </FormActions>
+      </Form>
     </Card>
   );
 }

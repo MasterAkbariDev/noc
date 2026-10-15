@@ -2,6 +2,7 @@ import { CircleCheck, ShieldAlert, TriangleAlert } from "lucide-react";
 import type { FindingView } from "../../api/types";
 import { percentFromFraction } from "../../lib/format";
 import { Badge } from "../../ui/Badge";
+import { List, ListItem } from "../../ui/List";
 
 export function findingAnchor(label: string): string {
   return `finding-${label.replace(/[^A-Za-z0-9_-]/g, "_")}`;
@@ -17,7 +18,7 @@ function groupByAgent(findings: FindingView[]): [string, FindingView[]][] {
 
 function FindingItem({ finding }: { finding: FindingView }) {
   return (
-    <li id={findingAnchor(finding.label)} className="grid gap-2 rounded-card border border-border bg-surface p-4">
+    <ListItem id={findingAnchor(finding.label)} className="grid gap-2 rounded-card border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <strong className="font-semibold">{finding.label}</strong>
         <span className="text-sm text-muted">
@@ -43,26 +44,26 @@ function FindingItem({ finding }: { finding: FindingView }) {
       {finding.evidence.length > 0 && (
         <div className="grid gap-1">
           <span className="text-sm text-muted">Evidence</span>
-          <ul className="m-0 grid list-none gap-1 p-0">
+          <List gap="xs">
             {finding.evidence.map((item, index) => (
-              <li key={index}>
+              <ListItem key={index}>
                 <code className="break-all text-xs">{JSON.stringify(item)}</code>
-              </li>
+              </ListItem>
             ))}
-          </ul>
+          </List>
         </div>
       )}
       {finding.counter_evidence.length > 0 && (
         <div className="grid gap-1">
           <span className="text-sm text-muted">Counter-evidence</span>
-          <ul className="m-0 list-disc pl-5 text-sm">
+          <List variant="bullet" gap="xs" className="text-sm">
             {finding.counter_evidence.map((item, index) => (
-              <li key={index}>{item}</li>
+              <ListItem key={index}>{item}</ListItem>
             ))}
-          </ul>
+          </List>
         </div>
       )}
-    </li>
+    </ListItem>
   );
 }
 
@@ -75,11 +76,11 @@ export function FindingsList({ findings }: { findings: FindingView[] }) {
       {groupByAgent(findings).map(([agent, items]) => (
         <div key={agent} className="grid gap-3">
           <h3 className="m-0 text-sm font-semibold">{agent}</h3>
-          <ul className="m-0 grid list-none gap-3 p-0">
+          <List>
             {items.map((finding) => (
               <FindingItem key={finding.label} finding={finding} />
             ))}
-          </ul>
+          </List>
         </div>
       ))}
     </div>

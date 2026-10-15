@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import type { StuckIncident } from "../../api/types";
-import { IncidentStatusBadge, RelativeTime } from "../../ui";
+import { IncidentStatusBadge, List, ListItem, RelativeTime } from "../../ui";
 
 function JobLine({ incident }: { incident: StuckIncident }) {
   const attempts = incident.job_attempts === null ? "" : `, attempt ${incident.job_attempts}`;
@@ -42,12 +42,12 @@ export function StuckIncidents({ incidents }: { incidents: StuckIncident[] }) {
     return <p className="m-0 text-sm text-muted">None. No incident has stopped moving.</p>;
   }
   return (
-    <ul className="m-0 grid list-none gap-3 p-0">
+    <List>
       {incidents.map((incident) => (
-        <li key={incident.id}>
+        <ListItem key={incident.id}>
           <StuckCard incident={incident} />
-        </li>
+        </ListItem>
       ))}
-    </ul>
+    </List>
   );
 }

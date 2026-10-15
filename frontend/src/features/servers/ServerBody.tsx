@@ -7,6 +7,7 @@ import { type Column, DataTable } from "../../ui/DataTable";
 import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
 import { IncidentStatusBadge } from "../../ui/IncidentStatusBadge";
+import { DescriptionList, List, ListItem } from "../../ui/List";
 import { RelativeTime } from "../../ui/RelativeTime";
 import { Section } from "../../ui/Section";
 import { SeverityBadge } from "../../ui/SeverityBadge";
@@ -20,16 +21,12 @@ function TimeOrNever({ iso }: { iso: string | null }) {
 
 function ServerFacts({ server }: { server: ServerDetail }) {
   return (
-    <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-      <dt className="text-muted">Last scrape</dt>
-      <dd className="m-0">
-        <TimeOrNever iso={server.last_scrape_at} />
-      </dd>
-      <dt className="text-muted">Last inventory</dt>
-      <dd className="m-0">
-        <TimeOrNever iso={server.last_inventory_at} />
-      </dd>
-    </dl>
+    <DescriptionList
+      items={[
+        { key: "scrape", term: "Last scrape", detail: <TimeOrNever iso={server.last_scrape_at} /> },
+        { key: "inventory", term: "Last inventory", detail: <TimeOrNever iso={server.last_inventory_at} /> },
+      ]}
+    />
   );
 }
 
@@ -38,17 +35,17 @@ function ServiceList({ server }: { server: ServerDetail }) {
     return <p className="m-0 text-sm text-muted">No services are inventoried on this server.</p>;
   }
   return (
-    <ul className="m-0 grid list-none gap-2 p-0">
+    <List gap="sm">
       {server.services.map((service) => {
         const view = serviceView(service.up);
         return (
-          <li key={service.resource_id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <ListItem key={service.resource_id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="min-w-0 break-words">{service.name}</span>
             <Badge tone={view.tone}>{view.label}</Badge>
-          </li>
+          </ListItem>
         );
       })}
-    </ul>
+    </List>
   );
 }
 
@@ -57,14 +54,14 @@ function ResourceList({ resources }: { resources: TargetResource[] }) {
     return <p className="m-0 text-sm text-muted">No resources inventoried yet.</p>;
   }
   return (
-    <ul className="m-0 grid list-none gap-2 p-0 text-sm">
+    <List gap="sm" className="text-sm">
       {resources.map((resource) => (
-        <li key={resource.resource_id} className="flex flex-wrap gap-2">
+        <ListItem key={resource.resource_id} className="flex flex-wrap gap-2">
           <span className="text-muted">{resource.kind}</span>
           <span className="min-w-0 break-words">{resource.name}</span>
-        </li>
+        </ListItem>
       ))}
-    </ul>
+    </List>
   );
 }
 

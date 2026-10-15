@@ -2,7 +2,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { getLlmStatus, getSystemHealth } from "../api/client";
 import type { SystemHealth } from "../api/types";
-import { ComponentGrid } from "../features/system/ComponentGrid";
+import { ComponentGrid, ComponentSummary } from "../features/system/ComponentGrid";
 import { LlmPanel } from "../features/system/LlmPanel";
 import { QueryBody } from "../features/system/QueryBody";
 import { StuckIncidents } from "../features/system/StuckIncidents";
@@ -42,10 +42,15 @@ export function SystemPage() {
 
   return (
     <>
-      <PageHeader title="System" status={verdictStatus(health)} />
+      <PageHeader eyebrow="Administration" title="System" status={verdictStatus(health)} />
       <Section heading="Components">
         <QueryBody query={health} failure="System health did not load">
-          {(data) => <ComponentGrid components={data.components} />}
+          {(data) => (
+            <>
+              <ComponentSummary components={data.components} />
+              <ComponentGrid components={data.components} />
+            </>
+          )}
         </QueryBody>
       </Section>
       <Section heading="Language models">

@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode, type SyntheticEvent } from "react";
-import { Button } from "./Button";
+import { IconButton } from "./IconButton";
 
 type DialogProps = {
   open: boolean;
@@ -47,10 +47,10 @@ export function Dialog({ open, onOpenChange, title, description, children }: Dia
       aria-describedby={description === undefined ? undefined : descriptionId}
       onCancel={handleCancel}
       onClose={handleClose}
-      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-card border border-border bg-surface p-0 text-fg shadow-card backdrop:bg-black/50"
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-card border border-border bg-surface p-0 text-fg shadow-raised backdrop:bg-slate-950/60 backdrop:backdrop-blur-[2px]"
     >
       {open && (
-        <div className="flex flex-col gap-4 p-5">
+        <div className="flex flex-col gap-5 p-6">
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 id={titleId} className="m-0 text-lg font-semibold">
@@ -62,9 +62,7 @@ export function Dialog({ open, onOpenChange, title, description, children }: Dia
                 </p>
               )}
             </div>
-            <Button variant="ghost" size="sm" aria-label="Close" onClick={() => onOpenChange(false)}>
-              <X aria-hidden="true" size={16} />
-            </Button>
+            <IconButton label="Close" icon={X} onClick={() => onOpenChange(false)} />
           </header>
           {children}
         </div>
