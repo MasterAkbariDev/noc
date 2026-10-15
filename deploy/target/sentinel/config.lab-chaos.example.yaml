@@ -15,7 +15,7 @@ chaos:
   key_file: /etc/noc-sentinel/keys/noc-scenarios-2026a.key
   max_ttl_seconds: 900
   disk_fill_dir: /srv/demo-data
-  disk_fill_min_free_bytes: 104857600
+  disk_fill_min_free_bytes: 52428800
   app_chaos_ports:
     svc:demo-shop: 8099
 state_dir: /var/lib/noc-sentinel
