@@ -378,6 +378,7 @@ class ApprovalRequest(BaseModel):
     decision: Literal["approved", "rejected"]
     action_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     comment: str | None = Field(default=None, max_length=500)
+    totp: str | None = Field(default=None, max_length=MAX_TOTP_FIELD_LENGTH)
 
 
 class ApprovalView(BaseModel):

@@ -48,9 +48,27 @@ export function expiryText(expiresAt: string, now: number): string {
   return days === 1 ? "Expires in 1 day" : `Expires in ${days} days`;
 }
 
+export const CODE_NEEDED_DETAILS: ReadonlySet<string> = new Set([
+  "authentication code required",
+  "invalid authentication code",
+]);
+
+export function needsApprovalCode(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403 && CODE_NEEDED_DETAILS.has(error.detail);
+}
+
 export function decisionErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     return CHANGED_REQUEST_TEXT;
+  }
+  if (error instanceof ApiError && error.status === 403 && error.detail === "authentication code required") {
+    return "This server is in production. Enter a code from your authenticator app to approve.";
+  }
+  if (error instanceof ApiError && error.status === 403 && error.detail === "invalid authentication code") {
+    return "That code was not accepted. Wait for the next one and try again.";
+  }
+  if (error instanceof ApiError && error.status === 403) {
+    return error.detail;
   }
   if (error instanceof ApiError && error.status === 422) {
     return STATUS_LINE.test(error.detail) ? INVALID_DECISION_TEXT : error.detail;

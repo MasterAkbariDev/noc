@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from noc.api.deps import Principal, get_session, require_role
+from noc.api.deps import Principal, get_session, get_settings_dep, require_role
 from noc.api.schemas import (
     ActionView,
     ApprovalRequest,
@@ -19,7 +19,9 @@ from noc.api.schemas import (
     IncidentDetail,
     IncidentSummary,
 )
+from noc.auth.approval_factor import SecondFactorRefused, confirm_second_factor
 from noc.auth.roles import Role
+from noc.config import Settings
 from noc.db.models import (
     ActionRow,
     DiagnosisRow,
@@ -30,6 +32,7 @@ from noc.db.models import (
     Target,
 )
 from noc.domain.incident_status import InvalidTransition
+from noc.policy.models import Environment
 from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.remediation import ApprovalConflict, record_approval
 
@@ -39,6 +42,7 @@ router = APIRouter(
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 OperatorPrincipal = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
+AppSettings = Annotated[Settings, Depends(get_settings_dep)]
 
 MAX_SEARCH_LENGTH = 100
 LIKE_ESCAPE = "\\"
@@ -179,6 +183,21 @@ async def close_escalated_incident(
     return summarize(incident, target.name)
 
 
+async def require_fresh_code(
+    session: AsyncSession, incident_id: uuid.UUID, operator: Principal, code: str | None
+) -> None:
+    incident = await session.get(Incident, incident_id)
+    if incident is None:
+        raise HTTPException(404, "incident not found")
+    target = await session.get_one(Target, incident.target_id)
+    if target.environment != Environment.PROD.value:
+        return
+    try:
+        await confirm_second_factor(session, operator.user_id, code, f"incident:{incident_id}")
+    except SecondFactorRefused as error:
+        raise HTTPException(403, str(error)) from error
+
+
 @router.post("/{incident_id}/actions/{action_id}/decision")
 async def decide_on_action(
     incident_id: uuid.UUID,
@@ -186,7 +205,10 @@ async def decide_on_action(
     request: ApprovalRequest,
     session: Session,
     operator: OperatorPrincipal,
+    settings: AppSettings,
 ) -> ApprovalView:
+    if request.decision == "approved" and settings.prod_approval_requires_totp:
+        await require_fresh_code(session, incident_id, operator, request.totp)
     try:
         recorded = await record_approval(
             session,

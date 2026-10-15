@@ -249,6 +249,42 @@ describe("ApprovalCard", () => {
     expect(screen.getByRole("dialog", { name: "Approve this action" })).toBeTruthy();
   });
 
+  it("asks for an authentication code on a production server and sends it with the approval", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "authentication code required" }, 403))
+      .mockResolvedValueOnce(jsonResponse({ approval_id: "ap-1", incident_status: "REMEDIATING" }));
+    renderCard();
+
+    const dialog = openDecision("Approve");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve action" }));
+
+    const field = await within(dialog).findByLabelText("Authentication code");
+    expect(within(dialog).getByRole("alert").textContent).toBe(
+      "This server is in production. Enter a code from your authenticator app to approve.",
+    );
+    fireEvent.change(field, { target: { value: " 123456 " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve action" }));
+
+    expect(await screen.findByText("Action approved.")).toBeTruthy();
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "approved",
+      action_hash: HASH,
+      comment: null,
+      totp: "123456",
+    });
+  });
+
+  it("says when the code was refused and when two-factor is not set up", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ detail: "turn on two-factor authentication in Settings before approving production actions" }, 403),
+    );
+    renderCard();
+    const dialog = openDecision("Approve");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve action" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("turn on two-factor authentication");
+    expect(within(dialog).queryByLabelText("Authentication code")).toBeNull();
+  });
+
   it("disables both buttons and says so once the approval has expired", () => {
     renderCard(actionFixture({ approval_expires_at: new Date(Date.now() - 60_000).toISOString() }));
 

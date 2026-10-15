@@ -100,6 +100,7 @@ export type ApprovalDecisionBody = {
   decision: ApprovalDecision;
   action_hash: string;
   comment: string | null;
+  totp?: string;
 };
 
 export type ApprovalView = {

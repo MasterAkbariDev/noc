@@ -10,7 +10,7 @@ import { Card } from "../../ui/Card";
 import { Dialog } from "../../ui/Dialog";
 import { Term } from "../../ui/Term";
 import { useToast } from "../../ui/Toaster";
-import { COMMENT_MAX_LENGTH, decisionErrorMessage, expiryText, isExpired } from "./approval";
+import { COMMENT_MAX_LENGTH, decisionErrorMessage, expiryText, isExpired, needsApprovalCode } from "./approval";
 import { actionStatusLabel, plainLabel } from "./labels";
 
 const FIELD_CLASS = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal text-fg";
@@ -107,6 +107,8 @@ function DecisionForm({
   const queryClient = useQueryClient();
   const toast = useToast();
   const [comment, setComment] = useState("");
+  const [code, setCode] = useState("");
+  const [codeStep, setCodeStep] = useState(false);
   const trimmedComment = comment.trim();
   const approving = pending.decision === "approved";
 
@@ -116,6 +118,7 @@ function DecisionForm({
         decision: pending.decision,
         action_hash: pending.actionHash,
         comment: trimmedComment === "" ? null : trimmedComment,
+        ...(codeStep && code.trim() !== "" ? { totp: code.trim() } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
@@ -126,6 +129,10 @@ function DecisionForm({
       onDone();
     },
     onError: (error) => {
+      if (needsApprovalCode(error)) {
+        setCodeStep(true);
+        setCode("");
+      }
       if (error instanceof ApiError && error.status === 409) {
         void queryClient.refetchQueries({ queryKey: ["incident", incidentId] });
       }
@@ -157,6 +164,22 @@ function DecisionForm({
           onChange={(event) => setComment(event.target.value)}
         />
       </label>
+      {codeStep && (
+        <label className="grid gap-1 text-sm font-medium">
+          Authentication code
+          <input
+            className={FIELD_CLASS}
+            name="approval-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={16}
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+        </label>
+      )}
       {mutation.isError && (
         <p role="alert" className="m-0 text-sm text-critical">
           {decisionErrorMessage(mutation.error)}

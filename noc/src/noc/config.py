@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     login_ip_limit: int = Field(20, ge=0)
     totp_required_roles: list[Role] = []
     totp_issuer: str = "Multi-Agent NOC"
+    prod_approval_requires_totp: bool = True
 
     poll_interval_seconds: float = 10.0
     missing_polls_to_resolve: int = 2
