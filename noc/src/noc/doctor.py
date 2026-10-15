@@ -1,4 +1,5 @@
 import asyncio
+import os
 import ssl
 import stat
 import time
@@ -97,6 +98,22 @@ def check_llm(settings: Settings, environment: dict[str, str]) -> CheckResult:
     if missing:
         return warn(name, f"no API key for {', '.join(sorted(missing))}; its fallback is off")
     return ok(name, f"live mode, keys present for {', '.join(sorted(providers))}")
+
+
+def check_secrets_dir(directory: Path) -> CheckResult:
+    name = "secrets folder"
+    if not directory.is_dir():
+        return fail(
+            name, f"{directory} does not exist; panel keys and the Telegram token cannot be saved"
+        )
+    if not os.access(directory, os.W_OK):
+        return fail(name, f"{directory} is not writable by this user; fix the volume's owner")
+    if not os.path.ismount(directory):
+        return warn(
+            name,
+            f"{directory} is not a mounted volume; saved keys vanish with the container",
+        )
+    return ok(name, f"{directory} is a writable volume")
 
 
 def check_key_file(key_dir: Path, key_id: str) -> CheckResult:

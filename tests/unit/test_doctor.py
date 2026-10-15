@@ -6,7 +6,13 @@ import pytest
 
 from noc import doctor
 from noc.config import PACKAGE_DIR, Settings
-from noc.doctor import check_certificate, check_key_file, check_llm, check_policy
+from noc.doctor import (
+    check_certificate,
+    check_key_file,
+    check_llm,
+    check_policy,
+    check_secrets_dir,
+)
 
 SECONDS_PER_DAY = 86400
 SENTINEL_URL = "https://demo-1.example:8443"
@@ -90,3 +96,23 @@ async def test_unreachable_certificate_is_a_failure(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(doctor, "peer_certificate_expiry", expiry)
     result = await check_certificate("demo-1", SENTINEL_URL, ssl.create_default_context())
     assert result.status == "fail"
+
+
+def test_missing_secrets_folder_fails(tmp_path: Path) -> None:
+    assert check_secrets_dir(tmp_path / "missing").status == "fail"
+
+
+def test_read_only_secrets_folder_fails(tmp_path: Path) -> None:
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    folder.chmod(0o500)
+    try:
+        assert check_secrets_dir(folder).status == "fail"
+    finally:
+        folder.chmod(0o700)
+
+
+def test_secrets_folder_that_is_not_a_mount_is_a_warning(tmp_path: Path) -> None:
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    assert check_secrets_dir(folder).status == "warn"

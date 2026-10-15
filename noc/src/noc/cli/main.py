@@ -50,6 +50,7 @@ from noc.doctor import (
     check_llm,
     check_policy,
     check_prometheus,
+    check_secrets_dir,
     check_targets,
 )
 from noc.domain.incident_status import InvalidTransition
@@ -202,6 +203,7 @@ def doctor() -> None:
             check_policy(settings.policy_file),
             await check_prometheus(settings.prometheus_url),
             check_llm(settings, dict(os.environ)),
+            check_secrets_dir(settings.secrets_dir),
             *await check_targets(settings, targets),
         ]
 
