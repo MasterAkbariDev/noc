@@ -1,0 +1,14 @@
+polkit.addRule(function (action, subject) {
+    if (action.id != "org.freedesktop.systemd1.manage-units" || subject.user != "noc-sentinel") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit") || "";
+    var verb = action.lookup("verb") || "";
+    if (unit == "demo-shop.service" && verb == "stop") {
+        return polkit.Result.YES;
+    }
+    if (unit.indexOf("noc-chaos-") == 0 && (verb == "start" || verb == "stop")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});
