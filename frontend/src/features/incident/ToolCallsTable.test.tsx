@@ -11,6 +11,7 @@ const calls: ToolCallView[] = [
     agent: "metrics",
     tool: "prom_query",
     args: { query: "up" },
+    description: "History of up, last 1h",
     permission: "read",
     decision: "allowed",
     decision_reason: null,
@@ -25,6 +26,7 @@ const calls: ToolCallView[] = [
     agent: "logs",
     tool: "get_service_logs",
     args: { unit: HOSTILE_ARG },
+    description: "Log of demo-shop, last 30 minutes",
     permission: "read",
     decision: "denied",
     decision_reason: "unit not on allow-list",
@@ -41,32 +43,32 @@ afterEach(() => {
 });
 
 describe("ToolCallsTable", () => {
-  it("groups the calls under a heading per agent", () => {
+  it("groups the checks under a heading per specialist and describes each in words", () => {
     render(<ToolCallsTable calls={calls} />);
 
     const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["metrics", "logs"]);
+    expect(headings).toEqual(["Metrics specialist", "Logs specialist"]);
     const metricsTable = screen.getAllByRole("table")[0]!;
-    expect(within(metricsTable).getByText("prom_query")).toBeTruthy();
+    expect(within(metricsTable).getByText("History of up, last 1h")).toBeTruthy();
   });
 
-  it("shows ok for a successful call and denied for a denied one", () => {
+  it("shows answered for a successful call and not allowed for a denied one", () => {
     render(<ToolCallsTable calls={calls} />);
 
-    expect(screen.getByText("ok").className).toContain("text-ok");
-    const denied = screen.getByText("denied");
+    expect(screen.getByText("answered").className).toContain("text-ok");
+    const denied = screen.getByText("not allowed");
     expect(denied.className).toContain("text-critical");
     expect(screen.getByText("unit not on allow-list")).toBeTruthy();
   });
 
-  it("lists the injection flags in a badge", () => {
+  it("warns in words when the answer tried to steer the AI", () => {
     render(<ToolCallsTable calls={calls} />);
 
-    const badge = screen.getByText("injection flags: role_override, tool_request");
+    const badge = screen.getByText("the answer contained text that tries to steer the AI");
     expect(badge.className).toContain("text-critical");
   });
 
-  it("shows the args as JSON text and creates no img element for a hostile arg", () => {
+  it("keeps the raw arguments as text under technical details, with no img element", () => {
     const { container } = render(<ToolCallsTable calls={calls} />);
 
     expect(screen.getByText(JSON.stringify({ unit: HOSTILE_ARG }))).toBeTruthy();
@@ -76,6 +78,6 @@ describe("ToolCallsTable", () => {
   it("says so when there are no tool calls", () => {
     render(<ToolCallsTable calls={[]} />);
 
-    expect(screen.getByText("No tool calls recorded.")).toBeTruthy();
+    expect(screen.getByText("No checks were made on the server.")).toBeTruthy();
   });
 });

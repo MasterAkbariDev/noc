@@ -76,10 +76,10 @@ function storyFixture(overrides: Partial<IncidentStory> = {}): IncidentStory {
       root_cause_code: "service_crashed",
       root_cause_label: "Service crashed",
       confidence: 0.82,
-      points: [{ text: STORY_POINT_TEXT, agent: "metrics", label: "F-1", refs: ["prom:up"], grounded: true }],
+      points: [{ text: STORY_POINT_TEXT, agent: "metrics", label: "F-1", evidence: [], grounded: true }],
     },
     what_we_did: { text: "Nothing — automatic actions are switched off on this server.", considered: [] },
-    what_you_should_do: { text: "Fix it by hand, then close the incident with a note.", steps: ["Restart the service"] },
+    what_you_should_do: { text: "Fix it by hand, then close the incident with a note.", steps: [{ text: "Restart the service", command: null }] },
     ...overrides,
   };
 }
@@ -122,7 +122,7 @@ function detailFixture(overrides: Partial<IncidentDetail> = {}): IncidentDetail 
       needs_more_info: [],
       ungrounded_findings: 0,
     },
-    events: [{ ts: "2026-10-12T10:00:06Z", type: "note", actor: "metrics", payload: { note: EVENT_NOTE } }],
+    events: [{ ts: "2026-10-12T10:00:06Z", type: "note", actor: "metrics", payload: { note: EVENT_NOTE }, text: "" }],
     findings: [
       {
         label: "F-1",
@@ -160,6 +160,7 @@ function pendingActionFixture(): ActionView {
     permission_class: "REQUIRES_APPROVAL",
     eligible: true,
     gate_failures: [],
+    gate_text: [],
     reasons: [],
     impact_score: 3,
     high_impact: false,
@@ -177,6 +178,7 @@ function traceFixture(): IncidentTrace {
         agent: "logs",
         tool: "get_service_logs",
         args: { unit: TOOL_ARG },
+        description: "Log of demo-shop",
         permission: "read",
         decision: "allowed",
         decision_reason: null,

@@ -6,6 +6,7 @@ import { errorMessage } from "../../lib/format";
 import { incidentStatusView } from "../../lib/tones";
 import { Badge, ButtonLink, EmptyState, ErrorState, List, ListItem, RelativeTime, Skeleton } from "../../ui";
 import { OVERVIEW_FALLBACK_POLL_MS } from "./model";
+import { usePrefetchIncident } from "../incident/prefetch";
 
 export const IN_PROGRESS_KEY = ["overview", "in-progress"] as const;
 
@@ -57,6 +58,7 @@ export function InProgress() {
 
 function InProgressRow({ incident }: { incident: IncidentSummary }) {
   const view = incidentStatusView(incident.status);
+  const prefetch = usePrefetchIncident();
   return (
     <ListItem className="flex flex-wrap items-center gap-2">
       <Badge tone={view.tone}>{view.label}</Badge>
@@ -64,7 +66,12 @@ function InProgressRow({ incident }: { incident: IncidentSummary }) {
       <span className="text-sm text-muted">
         Started <RelativeTime iso={incident.opened_at} />
       </span>
-      <ButtonLink to={`/incidents/${encodeURIComponent(incident.id)}`} size="sm">
+      <ButtonLink
+        to={`/incidents/${encodeURIComponent(incident.id)}`}
+        size="sm"
+        onMouseEnter={() => prefetch(incident.id)}
+        onFocus={() => prefetch(incident.id)}
+      >
         Open
       </ButtonLink>
     </ListItem>

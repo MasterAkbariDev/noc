@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
@@ -34,11 +35,13 @@ const incidents: IncidentSummary[] = [
 
 function renderRows(rows: IncidentSummary[], emptyText = "Nothing here.") {
   return render(
-    <MemoryRouter>
-      <TooltipProvider>
-        <IncidentRows incidents={rows} emptyText={emptyText} />
-      </TooltipProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <TooltipProvider>
+          <IncidentRows incidents={rows} emptyText={emptyText} />
+        </TooltipProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -50,7 +53,9 @@ describe("IncidentRows", () => {
     expect(rows).toHaveLength(incidents.length + 1);
 
     const link = screen.getByRole("link", { name: "Service down on web-1" });
-    expect(link.getAttribute("href")).toBe("/incidents/11111111-1111-1111-1111-111111111111");
+    expect(link.getAttribute("href")).toBe(
+      "/incidents/11111111-1111-1111-1111-111111111111",
+    );
   });
 
   it("shows the plain status label and the severity text in each row", () => {
@@ -73,7 +78,9 @@ describe("IncidentRows", () => {
 
     fireEvent.focus(cause);
 
-    expect((await screen.findAllByText("service_crashed")).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText("service_crashed")).length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows the target and the relative opened time with the full time in its title", () => {
@@ -83,7 +90,9 @@ describe("IncidentRows", () => {
     expect(within(rows[2]!).getByText("db-1")).toBeTruthy();
     const opened = container.querySelector("time");
     expect(opened?.getAttribute("datetime")).toBe("2026-10-12T10:00:00Z");
-    expect(opened?.getAttribute("title")).toBe(new Date("2026-10-12T10:00:00Z").toLocaleString());
+    expect(opened?.getAttribute("title")).toBe(
+      new Date("2026-10-12T10:00:00Z").toLocaleString(),
+    );
   });
 
   it("shows hostile title text as plain text and creates no script element", () => {

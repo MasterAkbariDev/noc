@@ -1,7 +1,6 @@
 import type { EventView } from "../../api/types";
 import { List, ListItem } from "../../ui/List";
 import { RelativeTime } from "../../ui/RelativeTime";
-import { Term } from "../../ui/Term";
 import { eventTypeLabel } from "./labels";
 
 export function Timeline({ events }: { events: EventView[] }) {
@@ -13,16 +12,23 @@ export function Timeline({ events }: { events: EventView[] }) {
       {events.map((event, index) => (
         <ListItem
           key={`${event.ts}-${event.type}-${index}`}
-          className="timeline-item grid gap-2 rounded-card border border-border bg-surface p-3"
+          className="timeline-item grid gap-1 rounded-card border border-border bg-surface p-3"
         >
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <strong className="font-semibold">
-              <Term technical={event.type}>{eventTypeLabel(event.type)}</Term>
-            </strong>
-            <span className="text-muted">{event.actor}</span>
-            <RelativeTime iso={event.ts} className="text-muted" />
+          <p className="m-0">{event.text || eventTypeLabel(event.type)}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            <RelativeTime iso={event.ts} />
+            <span aria-hidden="true">·</span>
+            <span>by {event.actor}</span>
           </div>
-          <code className="break-all text-xs">{JSON.stringify(event.payload)}</code>
+          <details className="text-xs text-muted">
+            <summary className="cursor-pointer select-none">Technical details</summary>
+            <p className="m-0 mt-1">
+              Event <code>{event.type}</code>
+            </p>
+            <code dir="ltr" className="block break-all">
+              {JSON.stringify(event.payload)}
+            </code>
+          </details>
         </ListItem>
       ))}
     </List>

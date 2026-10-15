@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { AgentRunView } from "../../api/types";
 import { Badge } from "../../ui/Badge";
 import { List, ListItem } from "../../ui/List";
-import { runStatusTone } from "./labels";
+import { agentLabel, runStatusTone } from "./labels";
 
 const MIN_BAR_PERCENT = 0.5;
 
@@ -42,6 +42,31 @@ export function timelineBars(runs: AgentRunView[]): TimelineBar[] {
   });
 }
 
+const RUN_STATUS_TEXT = new Map<string, string>([
+  ["succeeded", "finished"],
+  ["failed", "failed"],
+  ["running", "still working"],
+]);
+
+export function seconds(ms: number): string {
+  return ms < 10_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 1000)} s`;
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+export function runSummary(run: AgentRunView, axisStart: number, axisEnd: number): string {
+  const start = Date.parse(run.started_at);
+  const end = run.ended_at === null ? axisEnd : Date.parse(run.ended_at);
+  return [
+    `started after ${seconds(start - axisStart)}`,
+    `worked ${seconds(end - start)}`,
+    plural(run.tool_calls, "check"),
+    plural(run.llm_calls, "AI call"),
+  ].join(" · ");
+}
+
 export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
   if (runs.length === 0) {
     return <p className="m-0 text-muted">No agent runs recorded.</p>;
@@ -50,18 +75,22 @@ export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
 
   return (
     <div className="grid gap-3 rounded-card border border-border bg-surface p-4">
+      <p className="m-0 text-sm text-muted">
+        Each bar shows when an agent was working, counted from the moment the investigation started. Bars that
+        overlap ran at the same time.
+      </p>
       <List ordered>
         {timelineBars(runs).map(({ run, left, width }) => (
-          <ListItem key={run.id} className="grid gap-2 md:grid-cols-[minmax(0,15rem)_1fr] md:items-center">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <strong className="font-semibold">{run.agent}</strong>
-              <Badge tone={runStatusTone(run.status)}>{run.status}</Badge>
-              <span className="text-muted">
-                rounds {run.rounds}, tool calls {run.tool_calls}, LLM calls {run.llm_calls}
-              </span>
+          <ListItem key={run.id} className="grid gap-2 md:grid-cols-[minmax(0,20rem)_1fr] md:items-center">
+            <div className="grid gap-0.5 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="font-semibold">{agentLabel(run.agent)}</strong>
+                <Badge tone={runStatusTone(run.status)}>{RUN_STATUS_TEXT.get(run.status) ?? run.status}</Badge>
+              </div>
+              <span className="text-xs text-muted">{runSummary(run, axis.start, axis.end)}</span>
               {run.error !== null && <span className="text-critical">{run.error}</span>}
             </div>
-            <div className="relative h-3 rounded-control bg-surface-2">
+            <div dir="ltr" className="relative h-3 rounded-control bg-surface-2">
               <div
                 className="timeline-bar absolute inset-y-0 rounded-control bg-accent"
                 style={
@@ -77,9 +106,12 @@ export function AgentRunsTimeline({ runs }: { runs: AgentRunView[] }) {
           </ListItem>
         ))}
       </List>
-      <div className="flex justify-between gap-2 text-xs text-muted">
-        <span>{new Date(axis.start).toLocaleString()}</span>
-        <span>{new Date(axis.end).toLocaleString()}</span>
+      <div dir="ltr" className="grid gap-2 text-xs text-muted md:grid-cols-[minmax(0,20rem)_1fr]">
+        <span className="hidden md:block" />
+        <div className="flex justify-between">
+          <span>0 s</span>
+          <span>{seconds(axis.end - axis.start)}</span>
+        </div>
       </div>
     </div>
   );

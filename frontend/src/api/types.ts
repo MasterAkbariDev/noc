@@ -15,6 +15,7 @@ export type EventView = {
   type: string;
   actor: string;
   payload: Record<string, unknown>;
+  text: string;
 };
 
 export type HypothesisView = {
@@ -35,13 +36,19 @@ export type DiagnosisView = {
   ungrounded_findings: number;
 };
 
+export type FindingEvidence = {
+  tool_call_ref?: string;
+  excerpt?: string;
+  source?: string;
+};
+
 export type FindingView = {
   label: string;
   agent: string;
   category: string;
   severity: string;
   summary: string;
-  evidence: Record<string, unknown>[];
+  evidence: FindingEvidence[];
   confidence: number;
   suspected_injection: boolean;
   evidence_strength: string;
@@ -64,6 +71,7 @@ export type ActionView = {
   permission_class: string;
   eligible: boolean;
   gate_failures: string[];
+  gate_text: string[];
   reasons: string[];
   impact_score: number;
   high_impact: boolean;
@@ -125,6 +133,7 @@ export type ToolCallView = {
   agent: string;
   tool: string;
   args: Record<string, unknown>;
+  description: string;
   permission: string;
   decision: string;
   decision_reason: string | null;
@@ -404,11 +413,16 @@ export type StoryText = {
   technical: string | null;
 };
 
+export type StoryEvidence = {
+  source: string;
+  quote: string;
+};
+
 export type StoryPoint = {
   text: string;
   agent: string;
   label: string;
-  refs: string[];
+  evidence: StoryEvidence[];
   grounded: boolean;
 };
 
@@ -434,9 +448,14 @@ export type StoryDid = {
   considered: StoryAction[];
 };
 
+export type GuideStep = {
+  text: string;
+  command: string | null;
+};
+
 export type StoryAdvice = {
   text: string;
-  steps: string[];
+  steps: GuideStep[];
 };
 
 export type IncidentStory = {

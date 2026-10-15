@@ -12,7 +12,7 @@ function finding(overrides: Partial<FindingView>): FindingView {
     category: "resource",
     severity: "critical",
     summary: "CPU saturated",
-    evidence: [{ ref: "prom:cpu" }],
+    evidence: [{ tool_call_ref: "T1", excerpt: "\"usage\": 0.97", source: "CPU use on the server" }],
     confidence: 0.9,
     suspected_injection: false,
     evidence_strength: "strong",
@@ -42,8 +42,8 @@ describe("FindingsList", () => {
   it("groups findings under a heading per agent", () => {
     render(<FindingsList findings={findings} />);
 
-    expect(screen.getByRole("heading", { name: "metrics" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "logs" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Metrics specialist" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Logs specialist" })).toBeTruthy();
   });
 
   it("shows a hostile summary as text and creates no script element", () => {
@@ -56,11 +56,13 @@ describe("FindingsList", () => {
   it("shows grounding, injection suspicion, evidence strength and counter-evidence", () => {
     render(<FindingsList findings={findings} />);
 
-    expect(screen.getByText("grounded")).toBeTruthy();
-    expect(screen.getByText("ungrounded")).toBeTruthy();
-    expect(screen.getByText("suspected injection")).toBeTruthy();
-    expect(screen.getAllByText("strong")).toHaveLength(findings.length);
+    expect(screen.getByText("checked against the server")).toBeTruthy();
+    expect(screen.getByText("not confirmed")).toBeTruthy();
+    expect(screen.getByText("possible manipulation attempt")).toBeTruthy();
+    expect(screen.getAllByText("Strong")).toHaveLength(findings.length);
     expect(screen.getByText("disk usage normal")).toBeTruthy();
+    expect(screen.getAllByText("Seen in: CPU use on the server").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(`"usage": 0.97`).length).toBeGreaterThan(0);
   });
 
   it("gives each finding an anchor that the diagnosis links to", () => {

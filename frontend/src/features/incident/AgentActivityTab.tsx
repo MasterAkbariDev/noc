@@ -34,13 +34,13 @@ export function AgentActivityTab({ incidentId }: { incidentId: string }) {
   const trace = query.data;
   return (
     <div className="grid gap-8">
-      <Section heading="Agent runs">
+      <Section heading="When each agent worked">
         <AgentRunsTimeline runs={trace.agent_runs} />
       </Section>
-      <Section heading="Tool calls">
+      <Section heading="Checks made on the server">
         <ToolCallsTable calls={trace.tool_calls} />
       </Section>
-      <Section heading="LLM calls">
+      <Section heading="AI model calls">
         <LlmCallsTable calls={trace.llm_calls} />
       </Section>
     </div>

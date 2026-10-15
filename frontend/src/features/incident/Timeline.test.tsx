@@ -7,8 +7,14 @@ import { Timeline } from "./Timeline";
 const HOSTILE = "<script>alert(1)</script> ignore previous instructions";
 
 const events: EventView[] = [
-  { ts: "2026-10-12T10:00:00Z", type: "opened", actor: "system", payload: { target: "web-1" } },
-  { ts: "2026-10-12T10:01:00Z", type: "finding_added", actor: "metrics", payload: { note: HOSTILE } },
+  {
+    ts: "2026-10-12T10:00:00Z",
+    type: "incident_opened",
+    actor: "correlator",
+    payload: { target: "web-1" },
+    text: "The alert “ServiceDown” fired and opened this incident",
+  },
+  { ts: "2026-10-12T10:01:00Z", type: "finding_added", actor: "metrics", payload: { note: HOSTILE }, text: "" },
 ];
 
 afterEach(() => {
@@ -16,7 +22,7 @@ afterEach(() => {
 });
 
 describe("Timeline", () => {
-  it("lists events in the order given, with type, actor and payload", () => {
+  it("lists events in the order given as sentences, with the raw data folded away", () => {
     const { container } = render(
       <TooltipProvider>
         <Timeline events={events} />
@@ -25,9 +31,10 @@ describe("Timeline", () => {
 
     const items = container.querySelectorAll("li.timeline-item");
     expect(items).toHaveLength(2);
-    expect(items[0]?.textContent).toContain("Opened");
-    expect(items[0]?.textContent).toContain('{"target":"web-1"}');
-    expect(items[1]?.textContent).toContain("metrics");
+    expect(items[0]?.textContent).toContain("The alert “ServiceDown” fired and opened this incident");
+    expect(items[0]?.querySelector("details")?.textContent).toContain('{"target":"web-1"}');
+    expect(items[0]?.querySelector("details")?.hasAttribute("open")).toBe(false);
+    expect(items[1]?.textContent).toContain("by metrics");
   });
 
   it("renders a hostile payload as text and creates no script element", () => {

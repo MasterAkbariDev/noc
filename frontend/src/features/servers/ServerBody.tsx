@@ -1,5 +1,4 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Link } from "react-router";
 import { Server } from "lucide-react";
 import type { IncidentSummary, ServerDetail, TargetResource } from "../../api/types";
 import { Badge } from "../../ui/Badge";
@@ -14,6 +13,7 @@ import { SeverityBadge } from "../../ui/SeverityBadge";
 import { Skeleton } from "../../ui/Skeleton";
 import { MetricBars } from "./MetricBar";
 import { errorText, isNotFound, NOT_FOUND_MESSAGE, serviceView } from "./serverView";
+import { IncidentLink } from "../incident/IncidentLink";
 
 function TimeOrNever({ iso }: { iso: string | null }) {
   return iso === null ? <span className="text-muted">never</span> : <RelativeTime iso={iso} />;
@@ -70,9 +70,9 @@ const INCIDENT_COLUMNS: Column<IncidentSummary>[] = [
     key: "title",
     header: "Incident",
     cell: (incident) => (
-      <Link to={`/incidents/${encodeURIComponent(incident.id)}`} className="font-medium underline-offset-4 hover:underline">
+      <IncidentLink id={incident.id} className="font-medium underline-offset-4 hover:underline">
         {incident.title}
-      </Link>
+      </IncidentLink>
     ),
   },
   { key: "status", header: "Status", cell: (incident) => <IncidentStatusBadge status={incident.status} /> },

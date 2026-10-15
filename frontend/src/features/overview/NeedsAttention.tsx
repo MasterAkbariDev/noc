@@ -4,6 +4,7 @@ import type { AttentionItem } from "../../api/types";
 import { CloseIncidentForm } from "../../components/CloseIncidentForm";
 import { incidentStatusView } from "../../lib/tones";
 import { Badge, Button, ButtonLink, Dialog, EmptyState, List, ListItem, RelativeTime, SeverityBadge } from "../../ui";
+import { usePrefetchIncident } from "../incident/prefetch";
 
 type NeedsAttentionProps = {
   items: AttentionItem[];
@@ -61,6 +62,7 @@ function AttentionRow({
   onResolve: () => void;
 }) {
   const sinceLead = item.status === "ESCALATED" ? "Escalated " : "Waiting for approval since ";
+  const prefetch = usePrefetchIncident();
   return (
     <ListItem className="grid gap-2 rounded-control border border-border border-l-4 border-l-warning bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -79,7 +81,12 @@ function AttentionRow({
         {item.advice}
       </p>
       <div className="flex flex-wrap gap-2">
-        <ButtonLink to={`/incidents/${encodeURIComponent(item.incident_id)}`} size="sm">
+        <ButtonLink
+          to={`/incidents/${encodeURIComponent(item.incident_id)}`}
+          size="sm"
+          onMouseEnter={() => prefetch(item.incident_id)}
+          onFocus={() => prefetch(item.incident_id)}
+        >
           {item.status === "AWAITING_APPROVAL" ? "Review and approve" : "Open"}
         </ButtonLink>
         {canResolve && (

@@ -50,7 +50,7 @@ describe("LlmCallsTable", () => {
   it("shows a fallback badge only for the fallback call", () => {
     render(<LlmCallsTable calls={calls} />);
 
-    const badges = screen.getAllByText("fallback");
+    const badges = screen.getAllByText("the first-choice model was busy, a backup answered");
     expect(badges).toHaveLength(1);
     expect(badges[0]?.className).toContain("text-warning");
   });
@@ -58,8 +58,8 @@ describe("LlmCallsTable", () => {
   it("shows the provider and model of each call", () => {
     render(<LlmCallsTable calls={calls} />);
 
-    expect(screen.getByText("gemini")).toBeTruthy();
-    expect(screen.getByText("llama-small")).toBeTruthy();
+    expect(screen.getByText(/gemini, /)).toBeTruthy();
+    expect(screen.getByText(/llama-small/)).toBeTruthy();
   });
 
   it("totals the calls, tokens and waiting time in the footer", () => {
@@ -70,7 +70,7 @@ describe("LlmCallsTable", () => {
     const footer = container.querySelector("tfoot");
     expect(footer?.textContent).toContain("2 calls");
     expect(footer?.textContent).toContain("900 tokens");
-    expect(footer?.textContent).toContain("500 ms");
+    expect(footer?.textContent).toContain("waited 500 ms in total");
   });
 
   it("shows a hostile error as text and creates no img element", () => {
@@ -80,9 +80,9 @@ describe("LlmCallsTable", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
-  it("says so when there are no LLM calls", () => {
+  it("says so when there are no AI model calls", () => {
     render(<LlmCallsTable calls={[]} />);
 
-    expect(screen.getByText("No LLM calls recorded.")).toBeTruthy();
+    expect(screen.getByText("No AI model calls were made.")).toBeTruthy();
   });
 });

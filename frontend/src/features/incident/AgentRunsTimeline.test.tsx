@@ -47,9 +47,11 @@ describe("AgentRunsTimeline", () => {
     const { container } = render(<AgentRunsTimeline runs={runs} />);
 
     expect(container.querySelectorAll(".timeline-bar")).toHaveLength(2);
-    expect(screen.getByText("metrics")).toBeTruthy();
-    expect(screen.getByText("succeeded")).toBeTruthy();
-    expect(screen.getByText("rounds 2, tool calls 3, LLM calls 2")).toBeTruthy();
+    expect(screen.getByText("Metrics specialist")).toBeTruthy();
+    expect(screen.getByText("finished")).toBeTruthy();
+    expect(screen.getByText("started after 0.0 s · worked 10 s · 3 checks · 2 AI calls")).toBeTruthy();
+    expect(screen.getByText("started after 5.0 s · worked 15 s · 1 check · 1 AI call")).toBeTruthy();
+    expect(screen.getByText("20 s")).toBeTruthy();
   });
 
   it("places parallel runs on a shared axis so they overlap", () => {

@@ -21,6 +21,7 @@ function action(overrides: Partial<ActionView>): ActionView {
     permission_class: "approval",
     eligible: false,
     gate_failures: ["halted"],
+    gate_text: ["the target is halted by its kill switch"],
     reasons: ["target is halted"],
     impact_score: 4,
     high_impact: false,
@@ -58,10 +59,12 @@ describe("PolicyTable", () => {
     expect(container.querySelector("table")).not.toBeNull();
   });
 
-  it("shows gate failures and reasons, with hostile text rendered as text", () => {
-    const { container } = render(<PolicyTable actions={[action({ reasons: [HOSTILE_REASON] })]} />);
+  it("explains in words why an action did not run, with hostile text rendered as text", () => {
+    const { container } = render(
+      <PolicyTable actions={[action({ gate_text: [HOSTILE_REASON, "the target is halted by its kill switch"] })]} />,
+    );
 
-    expect(screen.getByText("halted")).toBeTruthy();
+    expect(screen.getByText("the target is halted by its kill switch")).toBeTruthy();
     expect(screen.getByText(HOSTILE_REASON)).toBeTruthy();
     expect(container.querySelector("img")).toBeNull();
   });
@@ -69,6 +72,6 @@ describe("PolicyTable", () => {
   it("says so when there are no decisions", () => {
     render(<PolicyTable actions={[]} />);
 
-    expect(screen.getByText("No policy decisions recorded.")).toBeTruthy();
+    expect(screen.getByText("The NOC did not consider any action.")).toBeTruthy();
   });
 });

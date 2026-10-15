@@ -1,5 +1,6 @@
 import type { LlmCallView } from "../../api/types";
 import { Badge } from "../../ui/Badge";
+import { agentLabel } from "./labels";
 import { DataTable, type Column } from "../../ui/DataTable";
 
 export function sumTokens(calls: LlmCallView[]): number {
@@ -11,15 +12,31 @@ export function sumWaitMs(calls: LlmCallView[]): number {
 }
 
 const COLUMNS: Column<LlmCallView>[] = [
-  { key: "agent", header: "Agent", cell: (call) => call.agent },
-  { key: "tier", header: "Tier", cell: (call) => call.tier },
-  { key: "provider", header: "Provider", cell: (call) => call.provider },
-  { key: "model", header: "Model", cell: (call) => call.model },
-  { key: "in", header: "Tokens in", cell: (call) => call.tokens_in, className: "tabular-nums" },
-  { key: "out", header: "Tokens out", cell: (call) => call.tokens_out, className: "tabular-nums" },
-  { key: "latency", header: "Latency", cell: (call) => `${call.latency_ms} ms`, className: "tabular-nums" },
-  { key: "wait", header: "Wait", cell: (call) => `${call.wait_ms} ms`, className: "tabular-nums" },
-  { key: "fallback", header: "Fallback", cell: (call) => (call.fallback ? <Badge tone="warning">fallback</Badge> : "-") },
+  { key: "agent", header: "Who asked", cell: (call) => agentLabel(call.agent) },
+  {
+    key: "model",
+    header: "AI model",
+    cell: (call) => (
+      <div className="grid justify-items-start gap-1">
+        <span>
+          {call.model} <span className="text-muted">({call.provider}, {call.tier === "strong" ? "stronger" : "faster"} model)</span>
+        </span>
+        {call.fallback && <Badge tone="warning">the first-choice model was busy, a backup answered</Badge>}
+      </div>
+    ),
+  },
+  {
+    key: "size",
+    header: "Text read / written (tokens)",
+    cell: (call) => `${call.tokens_in} / ${call.tokens_out}`,
+    className: "tabular-nums",
+  },
+  {
+    key: "latency",
+    header: "Took",
+    cell: (call) => (call.wait_ms > 0 ? `${call.latency_ms} ms (waited ${call.wait_ms} ms for a free slot)` : `${call.latency_ms} ms`),
+    className: "tabular-nums",
+  },
   {
     key: "error",
     header: "Error",
@@ -29,24 +46,22 @@ const COLUMNS: Column<LlmCallView>[] = [
 
 export function LlmCallsTable({ calls }: { calls: LlmCallView[] }) {
   if (calls.length === 0) {
-    return <p className="m-0 text-muted">No LLM calls recorded.</p>;
+    return <p className="m-0 text-muted">No AI model calls were made.</p>;
   }
   return (
     <DataTable
-      label="LLM calls"
+      label="AI model calls"
       columns={COLUMNS}
       rows={calls}
       rowKey={(call) => call.id}
-      empty="No LLM calls recorded."
+      empty="No AI model calls were made."
       minWidth="lg"
       footer={[
-        { key: "label", content: "Total" },
-        { key: "calls", content: `${calls.length} calls` },
-        { key: "skip-1", content: "-", span: 2 },
-        { key: "tokens", content: `${sumTokens(calls)} tokens`, span: 2 },
+        { key: "label", content: `Total: ${calls.length} calls` },
+        { key: "skip-1", content: "-" },
+        { key: "tokens", content: `${sumTokens(calls)} tokens` },
+        { key: "wait", content: `waited ${sumWaitMs(calls)} ms in total` },
         { key: "skip-2", content: "-" },
-        { key: "wait", content: `${sumWaitMs(calls)} ms` },
-        { key: "skip-3", content: "-", span: 2 },
       ]}
     />
   );

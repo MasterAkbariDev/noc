@@ -2,10 +2,13 @@ import { CircleCheck, TriangleAlert } from "lucide-react";
 import type { IncidentStory, StoryAction, StoryFound, StoryPoint } from "../../api/types";
 import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
+import { CommandLine } from "../../ui/CommandLine";
 import { List, ListItem } from "../../ui/List";
 import { Section } from "../../ui/Section";
 import { Term } from "../../ui/Term";
 import { storyVerdictTone } from "../../lib/tones";
+import { EvidenceQuote } from "./EvidenceQuote";
+import { agentLabel } from "./labels";
 
 type StorySectionsProps = {
   story: IncidentStory;
@@ -16,20 +19,21 @@ function PointItem({ point }: { point: StoryPoint }) {
   return (
     <ListItem className="grid gap-1 rounded-control border border-border p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted">{point.agent}</span>
-        <span className="font-medium">{point.label}</span>
+        <span className="text-muted">{agentLabel(point.agent)}</span>
         {point.grounded ? (
           <Badge tone="ok" icon={CircleCheck}>
-            backed by evidence
+            checked against the server
           </Badge>
         ) : (
           <Badge tone="warning" icon={TriangleAlert}>
-            not backed by evidence
+            not confirmed
           </Badge>
         )}
       </div>
       <p className="m-0">{point.text}</p>
-      {point.refs.length > 0 && <p className="m-0 text-xs text-muted">Evidence: {point.refs.join(", ")}</p>}
+      {point.evidence.map((item, index) => (
+        <EvidenceQuote key={index} source={item.source} quote={item.quote} />
+      ))}
     </ListItem>
   );
 }
@@ -102,7 +106,10 @@ export function StorySections({ story, onClose }: StorySectionsProps) {
         {advice.steps.length > 0 && (
           <List variant="numbered" gap="xs">
             {advice.steps.map((step, index) => (
-              <ListItem key={index}>{step}</ListItem>
+              <ListItem key={index}>
+                {step.text}
+                {step.command !== null && <CommandLine command={step.command} />}
+              </ListItem>
             ))}
           </List>
         )}

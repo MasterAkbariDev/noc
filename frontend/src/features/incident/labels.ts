@@ -71,3 +71,40 @@ export function runStatusTone(status: string): Tone {
   return RUN_STATUS_TONES.get(status) ?? "neutral";
 }
 
+
+const AGENT_LABELS = new Map<string, string>([
+  ["metrics", "Metrics specialist"],
+  ["logs", "Logs specialist"],
+  ["network", "Network specialist"],
+  ["security", "Security specialist"],
+  ["diagnosis", "Diagnosis"],
+  ["investigator", "Investigator"],
+  ["supervisor", "Supervisor"],
+]);
+
+const CATEGORY_LABELS = new Map<string, string>([
+  ["resource", "Resources (CPU, memory, disk)"],
+  ["service", "Service"],
+  ["log_pattern", "Pattern in the logs"],
+  ["change", "Recent change"],
+  ["network", "Network"],
+  ["security", "Security"],
+]);
+
+const STRENGTH_LABELS = new Map<string, string>([
+  ["direct", "Direct evidence"],
+  ["correlated", "Related evidence"],
+  ["circumstantial", "Indirect evidence"],
+]);
+
+export function agentLabel(agent: string): string {
+  return AGENT_LABELS.get(agent) ?? humanize(agent);
+}
+
+export function categoryLabel(category: string): string {
+  return CATEGORY_LABELS.get(category) ?? humanize(category);
+}
+
+export function strengthLabel(strength: string): string {
+  return STRENGTH_LABELS.get(strength) ?? humanize(strength);
+}

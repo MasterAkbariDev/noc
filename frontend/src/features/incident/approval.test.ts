@@ -32,6 +32,7 @@ function action(overrides: Partial<ActionView> = {}): ActionView {
     permission_class: "REQUIRES_APPROVAL",
     eligible: true,
     gate_failures: [],
+    gate_text: [],
     reasons: [],
     impact_score: 3,
     high_impact: false,

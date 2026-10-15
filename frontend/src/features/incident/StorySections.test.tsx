@@ -22,7 +22,7 @@ function storyFixture(overrides: Partial<IncidentStory> = {}): IncidentStory {
       root_cause_code: "disk_full_logs",
       root_cause_label: "Logs are filling the disk",
       confidence: 0.82,
-      points: [{ text: HOSTILE, agent: "logs", label: "F-2", refs: ["loki:1"], grounded: false }],
+      points: [{ text: HOSTILE, agent: "logs", label: "F-2", evidence: [{ source: "Log of demo-shop", quote: "disk full" }], grounded: false }],
     },
     what_we_did: {
       text: "Nothing — automatic actions are switched off on this server.",
@@ -37,7 +37,7 @@ function storyFixture(overrides: Partial<IncidentStory> = {}): IncidentStory {
         },
       ],
     },
-    what_you_should_do: { text: "Free space and enable log rotation.", steps: ["Remove old logs"] },
+    what_you_should_do: { text: "Free space and enable log rotation.", steps: [{ text: "Remove old logs", command: "sudo journalctl --vacuum-size=200M" }] },
     ...overrides,
   };
 }
@@ -65,6 +65,8 @@ describe("StorySections", () => {
     expect(screen.getByText("Clear logs")).toBeTruthy();
     expect(screen.getByText("automatic actions are switched off")).toBeTruthy();
     expect(screen.getByText("Remove old logs")).toBeTruthy();
+    expect(screen.getByText("sudo journalctl --vacuum-size=200M")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
   });
 
   it("shows a finding summary from an agent as text with no img element", () => {

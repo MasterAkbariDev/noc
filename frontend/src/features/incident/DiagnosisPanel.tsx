@@ -17,18 +17,35 @@ export function DiagnosisPanel({ diagnosis }: { diagnosis: DiagnosisView | null 
         items={[
           {
             key: "primary",
-            term: "Primary cause",
+            term: "Most likely cause",
             detail: <Term technical={diagnosis.primary_code}>{plainLabel(diagnosis.primary_code)}</Term>,
           },
-          { key: "confidence", term: "Confidence", detail: percentFromFraction(diagnosis.confidence) },
-          { key: "security", term: "Security incident", detail: diagnosis.is_security_incident ? "yes" : "no" },
-          { key: "more", term: "Needs more info", detail: diagnosis.needs_more_info.join(", ") || "-" },
-          { key: "ungrounded", term: "Ungrounded findings", detail: diagnosis.ungrounded_findings },
+          { key: "confidence", term: "How sure", detail: percentFromFraction(diagnosis.confidence) },
+          { key: "security", term: "Looks like an attack", detail: diagnosis.is_security_incident ? "yes" : "no" },
+          {
+            key: "more",
+            term: "To settle it, check",
+            detail:
+              diagnosis.needs_more_info.length === 0 ? (
+                "nothing more is needed"
+              ) : (
+                <List variant="bullet" gap="xs">
+                  {diagnosis.needs_more_info.map((item, index) => (
+                    <ListItem key={index}>{item}</ListItem>
+                  ))}
+                </List>
+              ),
+          },
+          {
+            key: "ungrounded",
+            term: "Findings thrown away (quote did not match the server)",
+            detail: diagnosis.ungrounded_findings,
+          },
         ]}
       />
-      <h3 className="m-0 text-sm font-semibold">Hypotheses, most likely first</h3>
+      <h3 className="m-0 text-sm font-semibold">Possible causes, most likely first</h3>
       {ranked.length === 0 ? (
-        <p className="m-0 text-muted">No hypotheses recorded.</p>
+        <p className="m-0 text-muted">No possible causes recorded.</p>
       ) : (
         <List ordered>
           {ranked.map((hypothesis, index) => (
@@ -44,15 +61,17 @@ function HypothesisItem({ hypothesis }: { hypothesis: HypothesisView }) {
   return (
     <ListItem className="hypothesis grid gap-2 rounded-card border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <code className="font-semibold">{hypothesis.root_cause_code}</code>
-        <span className="text-muted">confidence {percentFromFraction(hypothesis.confidence)}</span>
+        <strong className="font-semibold">
+          <Term technical={hypothesis.root_cause_code}>{plainLabel(hypothesis.root_cause_code)}</Term>
+        </strong>
+        <span className="text-muted">how sure: {percentFromFraction(hypothesis.confidence)}</span>
         {hypothesis.affected_resource_id !== null && (
-          <span className="text-muted">resource {hypothesis.affected_resource_id}</span>
+          <span className="text-muted">on {hypothesis.affected_resource_id.replace(/^[a-z]+:/, "")}</span>
         )}
       </div>
       <p className="m-0">{hypothesis.description}</p>
-      <FindingLinks caption="Supporting" labels={hypothesis.supporting_findings} />
-      <FindingLinks caption="Contradicting" labels={hypothesis.contradicting_findings} />
+      <FindingLinks caption="Backed by findings" labels={hypothesis.supporting_findings} />
+      <FindingLinks caption="Findings against it" labels={hypothesis.contradicting_findings} />
     </ListItem>
   );
 }

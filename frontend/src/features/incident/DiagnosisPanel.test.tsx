@@ -53,8 +53,8 @@ describe("DiagnosisPanel", () => {
 
     const items = container.querySelectorAll("li.hypothesis");
     expect(items).toHaveLength(2);
-    expect(items[0]?.textContent).toContain("service_crashed");
-    expect(items[1]?.textContent).toContain("disk_full");
+    expect(items[0]?.textContent).toContain("Service crashed");
+    expect(items[1]?.textContent).toContain("Disk full");
   });
 
   it("renders a hostile hypothesis description as text and creates no script element", () => {
@@ -77,7 +77,7 @@ describe("DiagnosisPanel", () => {
   it("shows the primary cause as a plain name with the code in a focusable term", () => {
     const { container } = renderPanel(diagnosis);
 
-    const cause = screen.getByText("Service crashed");
+    const cause = screen.getAllByText("Service crashed")[0]!;
     expect(cause.getAttribute("tabindex")).toBe("0");
     expect(container.querySelector("dl")?.querySelector("code")).toBeNull();
   });

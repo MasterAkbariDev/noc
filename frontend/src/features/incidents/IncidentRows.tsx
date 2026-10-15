@@ -1,8 +1,8 @@
-import { Link } from "react-router";
 import type { IncidentSummary } from "../../api/types";
 import { percentFromFraction } from "../../lib/format";
 import { DataTable, IncidentStatusBadge, RelativeTime, SeverityBadge, Term, type Column } from "../../ui";
 import { rootCauseLabel } from "./filters";
+import { IncidentLink } from "../incident/IncidentLink";
 
 const COLUMNS: Column<IncidentSummary>[] = [
   {
@@ -15,9 +15,9 @@ const COLUMNS: Column<IncidentSummary>[] = [
     key: "title",
     header: "Title",
     cell: (incident) => (
-      <Link to={`/incidents/${encodeURIComponent(incident.id)}`} className="font-medium text-accent hover:underline">
+      <IncidentLink id={incident.id} className="font-medium text-accent hover:underline">
         {incident.title}
-      </Link>
+      </IncidentLink>
     ),
     className: "min-w-[14rem] break-words",
   },
