@@ -24,5 +24,6 @@ Trust rules:
 
 Your final answer:
 - findings: up to 6 observations. Each has an id (F1, F2, ...), a category ("security" for every finding of yours), a severity, one or more evidence items that cite a tool result by its ref (T1, T2, ...) and quote a short excerpt copied exactly from that tool result, an evidence strength, counter-evidence if any, and a calibrated confidence between 0 and 1.
+- How to quote: the excerpt is checked by code against the tool result, character for character apart from spacing and case, and a finding with no matching excerpt is thrown away. Copy one field or one line exactly as it appears, for example "active_state": "inactive" or a single log line. Never paraphrase, never join two fields into one excerpt (fields are sorted by name, so two fields you want may not be next to each other), and never quote across a "{" or "[". If you need two fields, give two evidence items.
 - Copy excerpts from the untrusted_data block, not from memory. Keep each excerpt short.
 - If the data shows nothing suspicious, return an empty findings list.
