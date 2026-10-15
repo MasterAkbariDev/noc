@@ -2,6 +2,7 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  deleteUser,
   disableUser,
   enableUser,
   getUsers,
@@ -19,6 +20,7 @@ vi.mock("../../api/client", async (importOriginal) => ({
   getUsers: vi.fn(),
   setUserRole: vi.fn(),
   disableUser: vi.fn(),
+  deleteUser: vi.fn(),
   enableUser: vi.fn(),
   resetUserPassword: vi.fn(),
 }));
@@ -61,6 +63,7 @@ beforeEach(() => {
   vi.mocked(getUsers).mockReset();
   vi.mocked(setUserRole).mockReset();
   vi.mocked(disableUser).mockReset();
+  vi.mocked(deleteUser).mockReset();
   vi.mocked(enableUser).mockReset();
   vi.mocked(resetUserPassword).mockReset();
   vi.mocked(useSession).mockReset();
@@ -112,6 +115,7 @@ describe("UsersAdmin table", () => {
     expect((within(own).getByRole("combobox", { name: "Role for admin" }) as HTMLSelectElement).disabled).toBe(true);
     expect(within(own).getByRole("button", { name: "Disable" }).hasAttribute("disabled")).toBe(true);
     expect(within(own).getByRole("button", { name: "Reset password" }).hasAttribute("disabled")).toBe(true);
+    expect(within(own).getByRole("button", { name: "Remove admin" }).hasAttribute("disabled")).toBe(true);
     expect(within(own).getByText(OWN_ROLE_REASON)).toBeTruthy();
     expect(within(own).getByText(OWN_ACCOUNT_REASON)).toBeTruthy();
     expect(within(rowFor("alice")).getByRole("button", { name: "Disable" }).hasAttribute("disabled")).toBe(false);
@@ -216,5 +220,34 @@ describe("UsersAdmin actions", () => {
 
     expect(await screen.findByText("Reset the password for alice. Their sessions ended.")).toBeTruthy();
     expect(resetUserPassword).toHaveBeenCalledWith("u-alice", "fresh-password-123");
+  });
+
+  it("asks before removing, then removes and says the sessions ended", async () => {
+    vi.mocked(getUsers).mockResolvedValue([ALICE]);
+    vi.mocked(deleteUser).mockResolvedValue(undefined);
+    renderAs("admin");
+
+    await screen.findByRole("table", { name: "Users" });
+    fireEvent.click(within(rowFor("alice")).getByRole("button", { name: "Remove alice" }));
+
+    const dialog = dialogNamed("Remove alice?");
+    expect(deleteUser).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove account" }));
+
+    expect(await screen.findByText("Removed alice. Their sessions ended.")).toBeTruthy();
+    expect(deleteUser).toHaveBeenCalledWith("u-alice");
+  });
+
+  it("shows the server's reason when a remove is refused and keeps the dialog open", async () => {
+    vi.mocked(getUsers).mockResolvedValue([ALICE]);
+    vi.mocked(deleteUser).mockRejectedValue(new ApiError(409, "this is the last active admin"));
+    renderAs("admin");
+
+    await screen.findByRole("table", { name: "Users" });
+    fireEvent.click(within(rowFor("alice")).getByRole("button", { name: "Remove alice" }));
+    fireEvent.click(within(dialogNamed("Remove alice?")).getByRole("button", { name: "Remove account" }));
+
+    const alert = await within(dialogNamed("Remove alice?")).findByRole("alert");
+    expect(alert.textContent).toBe("this is the last active admin");
   });
 });

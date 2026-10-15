@@ -119,6 +119,20 @@ async def reset_password(session: AsyncSession, username: str, password: str, ac
     return user
 
 
+async def delete_user(session: AsyncSession, username: str, actor: str) -> str:
+    user = await require_user(session, username)
+    if user.role == Role.ADMIN.value and not user.disabled:
+        await ensure_not_last_admin(session, user)
+    name = user.username
+    role = user.role
+    await delete_user_sessions(session, user.id)
+    await clear_failures(session, name)
+    await session.delete(user)
+    await session.flush()
+    await append_audit(session, actor, "user_deleted", subject_for(name), {"role": role})
+    return name
+
+
 async def unlock_user(session: AsyncSession, username: str, actor: str) -> int:
     user = await require_user(session, username)
     cleared = await clear_failures(session, user.username)

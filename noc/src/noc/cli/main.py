@@ -30,6 +30,7 @@ from noc.auth.totp import provisioning_uri
 from noc.auth.users import (
     clear_totp,
     create_user,
+    delete_user,
     enroll_totp,
     list_users,
     require_user,
@@ -763,6 +764,25 @@ def users_unlock(username: str) -> None:
             except LookupError as error:
                 raise typer.BadParameter(str(error)) from error
             return f"{username}: cleared {cleared} failed login(s)"
+
+    typer.echo(with_admin_sessions(work))
+
+
+@users_app.command("delete")
+def users_delete(
+    username: str,
+    yes: Annotated[bool, typer.Option("--yes", help="Do not ask for confirmation")] = False,
+) -> None:
+    if not yes:
+        typer.confirm(f"Remove {username} for good? Audit entries keep the name.", abort=True)
+
+    async def work(sessions: SessionFactory) -> str:
+        async with transaction(sessions) as session:
+            try:
+                name = await delete_user(session, username, "cli")
+            except LookupError as error:
+                raise typer.BadParameter(str(error)) from error
+            return f"{name}: removed, sessions ended"
 
     typer.echo(with_admin_sessions(work))
 

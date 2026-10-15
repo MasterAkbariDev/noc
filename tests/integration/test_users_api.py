@@ -316,3 +316,72 @@ async def test_user_rows_are_not_touched_by_a_refused_create(
     async with sessions() as session:
         names = list(await session.scalars(select(User.username).order_by(User.username)))
     assert names == [ADMIN]
+
+
+@pytest.mark.usefixtures("alice")
+async def test_remove_deletes_the_account_ends_its_sessions_and_is_audited(
+    app: FastAPI, admin: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    alice_id = await user_id_of(sessions, "alice")
+    async with new_client(app) as alice_http:
+        assert (await login(alice_http, "alice", ALICE_PASSWORD)).status_code == 200
+        removed = await admin.delete(f"/api/users/{alice_id}", headers=csrf_headers(admin))
+        assert removed.status_code == 204
+        assert (await alice_http.get(ME_PATH)).status_code == 401
+    async with sessions() as session:
+        assert await find_user(session, "alice") is None
+    async with new_client(app) as again:
+        assert (await login(again, "alice", ALICE_PASSWORD)).status_code == 401
+    assert await audit_actors(sessions, "user_deleted") == [ADMIN]
+    listed = await admin.get(USERS_PATH)
+    assert [user["username"] for user in listed.json()] == [ADMIN]
+
+
+async def test_admin_cannot_remove_themselves(
+    admin: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    admin_id = await user_id_of(sessions, ADMIN)
+    response = await admin.delete(f"/api/users/{admin_id}", headers=csrf_headers(admin))
+    assert response.status_code == 409
+    assert response.json() == {"detail": "an admin cannot remove their own account"}
+
+
+async def test_the_last_active_admin_cannot_be_removed_by_the_token(
+    admin: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    admin_id = await user_id_of(sessions, ADMIN)
+    response = await admin.delete(f"/api/users/{admin_id}", headers=BEARER)
+    assert response.status_code == 409
+    assert "last active admin" in response.json()["detail"]
+    async with sessions() as session:
+        assert await find_user(session, ADMIN) is not None
+
+
+async def test_removing_an_unknown_user_is_404(admin: httpx.AsyncClient) -> None:
+    response = await admin.delete(f"/api/users/{uuid.uuid4()}", headers=csrf_headers(admin))
+    assert response.status_code == 404
+
+
+@pytest.mark.usefixtures("alice")
+async def test_only_admins_can_remove_users(app: FastAPI, sessions: SessionFactory) -> None:
+    async with transaction(sessions) as session:
+        await create_user(session, "olivia", ALICE_PASSWORD, Role.OPERATOR, "cli")
+    alice_id = await user_id_of(sessions, "alice")
+    async with new_client(app) as operator:
+        await login(operator, "olivia", ALICE_PASSWORD)
+        response = await operator.delete(f"/api/users/{alice_id}", headers=csrf_headers(operator))
+    assert response.status_code == 403
+
+
+@pytest.mark.usefixtures("alice")
+async def test_a_removed_name_can_be_created_again(
+    admin: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    alice_id = await user_id_of(sessions, "alice")
+    await admin.delete(f"/api/users/{alice_id}", headers=csrf_headers(admin))
+    created = await admin.post(
+        USERS_PATH,
+        json={"username": "alice", "password": NEW_PASSWORD, "role": "viewer"},
+        headers=csrf_headers(admin),
+    )
+    assert created.status_code == 200

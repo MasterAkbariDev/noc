@@ -240,3 +240,29 @@ async def test_cli_totp_enroll_unknown_user_is_a_usage_error(
     result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "totp-enroll", "ghost"])
     assert result.exit_code == 2
     assert "unknown user ghost" in result.output
+
+
+async def test_cli_delete_removes_the_user_with_yes(
+    sessions: SessionFactory, cli_settings: None
+) -> None:
+    async with transaction(sessions) as session:
+        await create_user(session, "alice", PASSWORD, Role.VIEWER, "cli")
+    runner = CliRunner()
+    result = await asyncio.to_thread(runner.invoke, cli_app, ["users", "delete", "alice", "--yes"])
+    assert result.exit_code == 0, result.output
+    async with sessions() as session:
+        assert await find_user(session, "alice") is None
+
+
+async def test_cli_delete_asks_first_and_keeps_the_user_on_no(
+    sessions: SessionFactory, cli_settings: None
+) -> None:
+    async with transaction(sessions) as session:
+        await create_user(session, "alice", PASSWORD, Role.VIEWER, "cli")
+    runner = CliRunner()
+    result = await asyncio.to_thread(
+        runner.invoke, cli_app, ["users", "delete", "alice"], input="n\n"
+    )
+    assert result.exit_code == 1
+    async with sessions() as session:
+        assert await find_user(session, "alice") is not None

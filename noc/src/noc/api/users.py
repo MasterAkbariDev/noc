@@ -12,6 +12,7 @@ from noc.auth.users import (
     LastAdmin,
     UserExists,
     create_user,
+    delete_user,
     list_users,
     reset_password,
     set_disabled,
@@ -28,6 +29,7 @@ NOT_FOUND = "user not found"
 SELF_DISABLE = "an admin cannot disable their own account"
 SELF_DEMOTE = "an admin cannot lower their own role"
 SELF_RESET = "use Settings > Change password for your own account"
+SELF_DELETE = "an admin cannot remove their own account"
 
 
 async def load_user(session: AsyncSession, user_id: uuid.UUID) -> User:
@@ -113,4 +115,16 @@ async def set_user_password(
         await reset_password(session, user.username, body.new_password, admin.username)
     except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    await session.commit()
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_user(user_id: uuid.UUID, admin: AdminPrincipal, session: Session) -> None:
+    user = await load_user(session, user_id)
+    if is_caller(admin, user):
+        raise HTTPException(status.HTTP_409_CONFLICT, SELF_DELETE)
+    try:
+        await delete_user(session, user.username, admin.username)
+    except LastAdmin as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     await session.commit()

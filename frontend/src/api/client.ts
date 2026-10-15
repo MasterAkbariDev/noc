@@ -129,6 +129,10 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return apiRequest<T>("POST", path, body);
 }
 
+export function apiDelete(path: string): Promise<void> {
+  return apiRequest<void>("DELETE", path);
+}
+
 export const TOTP_REQUIRED_DETAIL = "authentication code required";
 
 export function login(username: string, password: string, totp?: string): Promise<MeView> {
@@ -264,6 +268,10 @@ export function disableUser(id: string): Promise<UserView> {
 
 export function enableUser(id: string): Promise<UserView> {
   return apiPost<UserView>(`/api/users/${encodedId(id)}/enable`, {});
+}
+
+export function deleteUser(id: string): Promise<void> {
+  return apiDelete(`/api/users/${encodedId(id)}`);
 }
 
 export function resetUserPassword(id: string, newPassword: string): Promise<void> {

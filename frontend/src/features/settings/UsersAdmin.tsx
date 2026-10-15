@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CircleCheck, UserPlus } from "lucide-react";
+import { Ban, CircleCheck, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
-import { disableUser, enableUser, getUsers, setUserRole } from "../../api/client";
+import { deleteUser, disableUser, enableUser, getUsers, setUserRole } from "../../api/client";
 import type { Role, UserView } from "../../api/types";
 import { useSession } from "../../auth/session";
 import { Badge } from "../../ui/Badge";
@@ -45,6 +45,7 @@ function UsersSection({ ownUsername }: { ownUsername: string }) {
   const [creating, setCreating] = useState(false);
   const [resetting, setResetting] = useState<UserView | null>(null);
   const [toggling, setToggling] = useState<PendingToggle | null>(null);
+  const [removing, setRemoving] = useState<UserView | null>(null);
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -69,7 +70,21 @@ function UsersSection({ ownUsername }: { ownUsername: string }) {
     },
   });
 
-  const busy = roleMutation.isPending || toggleMutation.isPending;
+  const removeMutation = useMutation({
+    mutationFn: (user: UserView) => deleteUser(user.id),
+    onSuccess: (_, user) => {
+      refresh();
+      setRemoving(null);
+      toast.success(`Removed ${user.username}. Their sessions ended.`);
+    },
+  });
+
+  const busy = roleMutation.isPending || toggleMutation.isPending || removeMutation.isPending;
+
+  function openRemove(user: UserView) {
+    removeMutation.reset();
+    setRemoving(user);
+  }
 
   function changeRole(user: UserView, value: string) {
     const role = parseRole(value);
@@ -155,6 +170,16 @@ function UsersSection({ ownUsername }: { ownUsername: string }) {
               <Button size="sm" disabled={own || busy} onClick={() => openToggle(user)}>
                 {user.disabled ? "Enable" : "Disable"}
               </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                aria-label={`Remove ${user.username}`}
+                disabled={own || busy}
+                onClick={() => openRemove(user)}
+              >
+                <Trash2 aria-hidden="true" size={14} />
+                Remove
+              </Button>
             </div>
             {own && <span className="text-xs text-muted">{OWN_ACCOUNT_REASON}</span>}
           </div>
@@ -202,6 +227,17 @@ function UsersSection({ ownUsername }: { ownUsername: string }) {
           }
         }}
         onClose={() => setToggling(null)}
+      />
+      <RemoveUserDialog
+        user={removing}
+        busy={removeMutation.isPending}
+        error={removeMutation.isError ? settingsErrorText(removeMutation.error) : null}
+        onConfirm={() => {
+          if (removing !== null) {
+            removeMutation.mutate(removing);
+          }
+        }}
+        onClose={() => setRemoving(null)}
       />
     </Section>
   );
@@ -265,4 +301,45 @@ function toggleCopy(pending: PendingToggle | null): ToggleCopy {
         description: "They can sign in again with their current password.",
         confirmLabel: "Enable account",
       };
+}
+
+type RemoveUserDialogProps = {
+  user: UserView | null;
+  busy: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onClose: () => void;
+};
+
+function RemoveUserDialog({ user, busy, error, onConfirm, onClose }: RemoveUserDialogProps) {
+  return (
+    <Dialog
+      open={user !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      title={user === null ? "Remove user" : `Remove ${user.username}?`}
+      description="The account is deleted and its sessions end at once. The activity log keeps the name. To only block sign-in, disable the account instead."
+    >
+      {user !== null && (
+        <div className="grid gap-4">
+          {error !== null && (
+            <p role="alert" className="m-0 text-sm text-critical">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="danger" disabled={busy} onClick={onConfirm}>
+              Remove account
+            </Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  );
 }
