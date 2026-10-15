@@ -10,6 +10,9 @@ providers:
     models:
       small: { model: gemini-3.1-flash-lite, rpm: 12, rpd: 800 }
       strong: { model: gemini-3.6-flash, rpm: 8, rpd: 200 }
+    paid_models:
+      small: { model: gemini-3.1-flash-lite, rpm: 300, rpd: 20000 }
+      strong: { model: gemini-3.6-flash, rpm: 150, rpd: 10000 }
   groq:
     base_url: https://api.groq.com/openai/v1
     api_key_env: GROQ_API_KEY
@@ -19,6 +22,9 @@ providers:
     models:
       small: { model: openai/gpt-oss-120b, rpm: 25, rpd: 900 }
       strong: { model: openai/gpt-oss-120b, rpm: 25, rpd: 900 }
+    paid_models:
+      small: { model: openai/gpt-oss-120b, rpm: 300, rpd: 50000 }
+      strong: { model: openai/gpt-oss-120b, rpm: 300, rpd: 50000 }
 
 chains:
   small: [groq, gemini]

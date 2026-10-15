@@ -26,6 +26,7 @@ from noc.domain.variants import ModePolicy, parse_variant
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
+from noc.notify.outbox import deliver_once
 from noc.orchestration.graph import (
     IncidentGraph,
     build_incident_graph,
@@ -34,6 +35,7 @@ from noc.orchestration.graph import (
     run_incident,
 )
 from noc.orchestration.runtime import build_runtime
+from noc.secret_store import SecretStore
 from noc.store.incidents import escalate_abandoned
 from noc.store.investigations import fail_orphaned_runs
 from noc.store.remediation import REMEDIATE_JOB, expire_approvals
@@ -53,6 +55,7 @@ IDLE_SLEEP_SECONDS = 1.0
 ERROR_BACKOFF_SECONDS = 5.0
 PROMETHEUS_POLL_FAILED = "Prometheus did not answer the alert poll"
 ORPHAN_SWEEP_SECONDS = 60.0
+NOTIFY_SECONDS = 10.0
 
 
 def worker_identity() -> str:
@@ -94,6 +97,7 @@ class Worker:
             self.run_ingest_loop(),
             self.run_heartbeat_loop(),
             self.run_orphan_sweep_loop(),
+            self.run_notify_loop(),
             self._job_loop(),
         ]
         if self._settings.prometheus_targets_dir is not None:
@@ -144,6 +148,10 @@ class Worker:
                 self._settings.version,
                 utc_now(),
             )
+
+    async def run_notify_loop(self) -> None:
+        store = SecretStore(self._settings.secrets_dir)
+        await self._repeat("notify", lambda: deliver_once(self._sessions, store), NOTIFY_SECONDS)
 
     async def run_orphan_sweep_loop(self) -> None:
         await self._repeat("orphans", self.sweep_orphans_once, ORPHAN_SWEEP_SECONDS)

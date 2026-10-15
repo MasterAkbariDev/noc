@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     sentinel_timeout_seconds: float = 10.0
 
     audit_anchor_key_file: Path = Path("/etc/noc/keys/audit-anchor.key")
+    secrets_dir: Path = Path("/var/lib/noc/secrets")
+    llm_reload_seconds: float = 15.0
     chaos_key_id: str = "noc-chaos"
     chaos_key_dir: Path | None = None
     scenarios_dir: Path = Path("scenarios")

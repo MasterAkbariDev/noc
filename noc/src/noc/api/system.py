@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,7 +22,9 @@ from noc.db.base import utc_now
 from noc.db.models import Incident, IncidentEvent, Job, Target, WorkerHeartbeat
 from noc.detection.alerts import PrometheusUnavailable
 from noc.domain.incident_status import ACTIVE_STATUSES
+from noc.llm.keys import proxy_settings
 from noc.llm.providers import ProvidersDocument, load_providers
+from noc.secret_store import SecretStore
 
 router = APIRouter(
     prefix="/api/system", tags=["system"], dependencies=[Depends(require_role(Role.VIEWER))]
@@ -180,10 +182,12 @@ async def prometheus_component(reader: PrometheusReader) -> ComponentHealth:
     )
 
 
-def proxy_endpoints(providers: ProvidersDocument) -> dict[str, tuple[str, int]]:
+def proxy_endpoints(
+    providers: ProvidersDocument, urls: Mapping[str, str | None] | None = None
+) -> dict[str, tuple[str, int]]:
     endpoints: dict[str, tuple[str, int]] = {}
     for name, provider in providers.providers.items():
-        proxy = provider.proxy_url()
+        proxy = urls.get(name) if urls is not None else provider.proxy_url()
         if proxy is None:
             continue
         parts = urlsplit(proxy)
@@ -338,6 +342,17 @@ async def read_snapshot(session: AsyncSession, now: datetime) -> DatabaseSnapsho
     return DatabaseSnapshot(heartbeat=heartbeat, migration=migration, stuck=stuck)
 
 
+async def current_proxies(
+    session: AsyncSession, settings: Settings, providers: ProvidersDocument
+) -> dict[str, str | None] | None:
+    try:
+        configured = await proxy_settings(session, SecretStore(settings.secrets_dir), providers)
+    except SQLAlchemyError:
+        await session.rollback()
+        return None
+    return {name: proxy.url for name, proxy in configured.items()}
+
+
 @router.get("/health")
 async def system_health(request: Request, session: Session) -> SystemHealth:
     settings: Settings = request.app.state.settings
@@ -349,7 +364,10 @@ async def system_health(request: Request, session: Session) -> SystemHealth:
         worker_component(snapshot, settings.worker_heartbeat_seconds, now),
         alert_polling_component(snapshot, now),
         await prometheus_component(prometheus),
-        await egress_component(proxy_endpoints(providers), open_tcp),
+        await egress_component(
+            proxy_endpoints(providers, await current_proxies(session, settings, providers)),
+            open_tcp,
+        ),
         database_component(snapshot),
         version_component(settings),
         updater_component(settings.update_status_file),

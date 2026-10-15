@@ -75,6 +75,7 @@ services:
       - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
       - ${NOC_PKI_DIR:-./pki}:/etc/noc/pki:ro
       - promtargets:/var/lib/noc/prometheus-targets
+      - nocsecrets:/var/lib/noc/secrets
       - /var/lib/noc-update:/var/lib/noc-update:ro
     mem_limit: 448m
     depends_on:
@@ -84,3 +85,4 @@ volumes:
   pgdata:
   promdata:
   promtargets:
+  nocsecrets:

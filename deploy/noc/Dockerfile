@@ -20,7 +20,8 @@ ARG VERSION=dev
 ARG GIT_SHA=unknown
 ENV NOC_VERSION=${VERSION} NOC_GIT_SHA=${GIT_SHA}
 RUN useradd --system --uid 10001 noc \
-    && install -d -o noc -g noc /var/lib/noc/prometheus-targets
+    && install -d -o noc -g noc /var/lib/noc/prometheus-targets \
+    && install -d -m 0700 -o noc -g noc /var/lib/noc/secrets
 COPY --from=build /opt/venv /opt/venv
 COPY --from=frontend /frontend/dist /opt/noc-frontend
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 NOC_FRONTEND_DIST=/opt/noc-frontend

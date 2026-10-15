@@ -3,7 +3,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast, get_args
+from typing import Any, Literal, cast, get_args
 
 import yaml
 from pydantic import BaseModel, Field
@@ -18,6 +18,8 @@ class ModelLimits(BaseModel):
 
 
 TIERS: tuple[str, ...] = get_args(Tier)
+KeyTier = Literal["free", "paid"]
+KEY_TIERS: tuple[str, ...] = get_args(KeyTier)
 KEY_SEPARATORS = re.compile(r"[\s,;\"']+")
 
 
@@ -29,6 +31,12 @@ class ProviderConfig(BaseModel):
     quota_timezone: str = "UTC"
     foreign_tool_call_extra: dict[str, Any] = Field(default_factory=dict)
     models: dict[Tier, ModelLimits]
+    paid_models: dict[Tier, ModelLimits] = Field(default_factory=dict)
+
+    def limits_for(self, model_tier: Tier, key_tier: KeyTier) -> ModelLimits | None:
+        if key_tier == "paid" and model_tier in self.paid_models:
+            return self.paid_models[model_tier]
+        return self.models.get(model_tier)
 
     def api_keys(self) -> list[str]:
         variables = [self.api_keys_env, self.api_key_env]

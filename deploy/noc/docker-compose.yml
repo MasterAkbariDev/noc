@@ -62,6 +62,8 @@ services:
     <<: *noc-app
     command: ["noc", "api", "--host", "0.0.0.0", "--port", "8000"]
     ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - nocsecrets:/var/lib/noc/secrets
     mem_limit: 256m
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -77,6 +79,7 @@ services:
     volumes:
       - ${NOC_KEY_DIR:-./keys}:/etc/noc/keys:ro
       - promtargets:/var/lib/noc/prometheus-targets
+      - nocsecrets:/var/lib/noc/secrets
     depends_on:
       migrate: { condition: service_completed_successfully }
 
@@ -84,3 +87,4 @@ volumes:
   pgdata:
   promdata:
   promtargets:
+  nocsecrets:

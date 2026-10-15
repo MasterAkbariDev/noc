@@ -198,6 +198,7 @@ class LlmModelUsage(BaseModel):
 class LlmKeyView(BaseModel):
     label: str
     provider: str
+    tier: str = "free"
     state: str
     cooling_until: datetime | None
     last_error: str | None
@@ -209,6 +210,74 @@ class LlmKeyView(BaseModel):
 class LlmStatus(BaseModel):
     mode: str
     keys: list[LlmKeyView]
+
+
+KeyTierName = Literal["free", "paid"]
+
+
+class LlmModelLimitView(BaseModel):
+    tier: str
+    model: str
+    rpm: int
+    rpd: int
+
+
+class LlmProxyView(BaseModel):
+    display: str | None
+    source: Literal["env", "panel", "none"]
+
+
+class LlmProviderView(BaseModel):
+    name: str
+    base_url: str
+    proxy: LlmProxyView
+    free_models: list[LlmModelLimitView]
+    paid_models: list[LlmModelLimitView]
+
+
+class LlmManagedKeyView(BaseModel):
+    id: uuid.UUID | None
+    label: str
+    provider: str
+    name: str | None
+    tier: KeyTierName
+    source: Literal["env", "panel"]
+    last4: str
+    created_at: datetime | None
+    created_by: str | None
+
+
+class LlmConfigView(BaseModel):
+    mode: str
+    secrets_persistent: bool
+    providers: list[LlmProviderView]
+    keys: list[LlmManagedKeyView]
+
+
+class AddLlmKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(max_length=32)
+    tier: KeyTierName = "free"
+    name: str = Field(max_length=64)
+    secret: str = Field(max_length=256)
+
+
+class LlmCheckRequest(BaseModel):
+    label: str = Field(max_length=64)
+
+
+class SetProxyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = Field(default=None, max_length=512)
+
+
+class LlmCheckView(BaseModel):
+    ok: bool
+    latency_ms: int
+    model: str | None
+    detail: str
 
 
 StepState = Literal["done", "current", "pending", "skipped", "failed"]

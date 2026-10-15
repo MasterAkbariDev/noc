@@ -356,6 +356,45 @@ class EvalRun(CreatedAt, Base):
     finished_at: Mapped[datetime | None]
 
 
+class LlmKey(CreatedAt, Base):
+    __tablename__ = "llm_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    provider: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(64))
+    tier: Mapped[str] = mapped_column(String(8))
+    label: Mapped[str] = mapped_column(String(64), index=True)
+    last4: Mapped[str] = mapped_column(String(4))
+    created_by: Mapped[str] = mapped_column(String(64))
+    revoked_at: Mapped[datetime | None]
+    revoked_by: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class NocSetting(Base):
+    __tablename__ = "noc_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Json] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_by: Mapped[str] = mapped_column(String(64))
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    event_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("incident_events.id"), primary_key=True
+    )
+    channel: Mapped[str] = mapped_column(String(16), primary_key=True)
+    status: Mapped[str] = mapped_column(String(8), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    next_attempt_at: Mapped[datetime | None]
+    sent_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
 class LlmKeyStatus(Base):
     __tablename__ = "llm_key_status"
 
