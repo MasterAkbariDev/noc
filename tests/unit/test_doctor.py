@@ -6,12 +6,14 @@ import pytest
 
 from noc import doctor
 from noc.config import PACKAGE_DIR, Settings
+from noc.db.models import Target
 from noc.doctor import (
     check_certificate,
     check_key_file,
     check_llm,
     check_policy,
     check_secrets_dir,
+    check_variant_overrides,
 )
 
 SECONDS_PER_DAY = 86400
@@ -116,3 +118,19 @@ def test_secrets_folder_that_is_not_a_mount_is_a_warning(tmp_path: Path) -> None
     folder = tmp_path / "secrets"
     folder.mkdir()
     assert check_secrets_dir(folder).status == "warn"
+
+
+def test_no_override_is_ok() -> None:
+    assert check_variant_overrides([Target(name="demo-1")], False).status == "ok"
+
+
+def test_an_override_during_an_evaluation_is_ok() -> None:
+    target = Target(name="demo-1", variant_override="runbook")
+    assert check_variant_overrides([target], True).status == "ok"
+
+
+def test_a_forgotten_override_is_a_warning_naming_the_target() -> None:
+    target = Target(name="demo-1", variant_override="runbook")
+    result = check_variant_overrides([target], False)
+    assert result.status == "warn"
+    assert "demo-1" in result.detail

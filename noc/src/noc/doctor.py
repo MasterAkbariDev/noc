@@ -116,6 +116,20 @@ def check_secrets_dir(directory: Path) -> CheckResult:
     return ok(name, f"{directory} is a writable volume")
 
 
+def check_variant_overrides(targets: list[Target], running_eval: bool) -> CheckResult:
+    name = "variant overrides"
+    stale = [target.name for target in targets if target.variant_override]
+    if not stale:
+        return ok(name, "no target has a variant override")
+    if running_eval:
+        return ok(name, f"set on {', '.join(stale)} by a running evaluation")
+    return warn(
+        name,
+        f"{', '.join(stale)} still has an override with no evaluation running; "
+        "clear it with noc targets set-variant <name> --clear",
+    )
+
+
 def check_key_file(key_dir: Path, key_id: str) -> CheckResult:
     name = f"key {key_id}"
     path = key_dir / f"{key_id}.key"

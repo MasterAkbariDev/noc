@@ -41,7 +41,7 @@ from noc.auth.users import (
 )
 from noc.config import PACKAGE_DIR, Settings, get_settings
 from noc.db.base import utc_now
-from noc.db.models import ActionRow, Incident, Report, ScenarioRun, Target, User
+from noc.db.models import ActionRow, EvalRun, Incident, Report, ScenarioRun, Target, User
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.detection.file_sd import render_file_sd
 from noc.doctor import (
@@ -52,9 +52,11 @@ from noc.doctor import (
     check_prometheus,
     check_secrets_dir,
     check_targets,
+    check_variant_overrides,
 )
 from noc.domain.incident_status import InvalidTransition
 from noc.domain.variants import VARIANTS, parse_variant
+from noc.evaluation.loop import EvalLoop, LoopSettings
 from noc.evaluation.metrics import summarize_all, to_csv
 from noc.evaluation.plan import load_plan
 from noc.evaluation.store import load_records, materialize, status_counts
@@ -160,6 +162,49 @@ def eval_plan(plan_file: Annotated[Path, typer.Argument(exists=True, dir_okay=Fa
         typer.echo(f"  {status:<8} {count}")
 
 
+@eval_app.command("run")
+def eval_run(
+    plan_file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    target: Annotated[str, typer.Option(help="Lab target to inject on, e.g. demo-1")],
+    limit: Annotated[int | None, typer.Option(help="Stop after this many finished runs")] = None,
+    reset_seconds: Annotated[float, typer.Option(help="Pause between runs")] = 60.0,
+    provider_wait_seconds: Annotated[
+        float, typer.Option(help="Pause after a run lost to a model provider failure")
+    ] = 900.0,
+) -> None:
+    settings = get_settings()
+    if not settings.eval_mode:
+        raise typer.BadParameter("set NOC_EVAL_MODE=true for the worker and this command")
+    plan = load_plan(plan_file)
+    scenarios = load_scenarios(settings.scenarios_dir)
+    loop_settings = LoopSettings(
+        target=target, reset_seconds=reset_seconds, provider_wait_seconds=provider_wait_seconds
+    )
+
+    async def work(sessions: SessionFactory) -> list[str]:
+        async with transaction(sessions) as session:
+            await materialize(session, plan)
+        runner = build_scenario_runner(sessions, await target_sentinel_url(sessions, target))
+        loop = EvalLoop(sessions, runner, scenarios, loop_settings, utc_now, asyncio.sleep)
+        summary = await loop.run(plan.name, limit)
+        lines = [
+            *summary.messages,
+            f"{plan.name}: {summary.done} done, {summary.invalid} invalid, "
+            f"{summary.requeued} re-queued",
+        ]
+        if summary.stopped_reason is not None:
+            lines.append(f"stopped: {summary.stopped_reason}")
+        return lines
+
+    try:
+        lines = with_admin_sessions(work)
+    except ChaosError as error:
+        typer.echo(f"sentinel rejected chaos request: {error.code}", err=True)
+        raise typer.Exit(1) from error
+    for line in lines:
+        typer.echo(line)
+
+
 @eval_app.command("status")
 def eval_status(plan_name: str) -> None:
     async def work(sessions: SessionFactory) -> dict[str, int]:
@@ -198,12 +243,16 @@ def doctor() -> None:
     async def work(sessions: SessionFactory) -> list[CheckResult]:
         async with sessions() as session:
             targets = list(await session.scalars(select(Target).order_by(Target.name)))
+            running_eval = await session.scalar(
+                select(EvalRun.id).where(EvalRun.status == "running").limit(1)
+            )
         return [
             await check_database(sessions, expected_head),
             check_policy(settings.policy_file),
             await check_prometheus(settings.prometheus_url),
             check_llm(settings, dict(os.environ)),
             check_secrets_dir(settings.secrets_dir),
+            check_variant_overrides(targets, running_eval is not None),
             *await check_targets(settings, targets),
         ]
 
