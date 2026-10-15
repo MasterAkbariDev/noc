@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     job_lease_seconds: int = 120
     worker_metrics_port: int = 9108
     worker_heartbeat_seconds: float = 15.0
+    external_heartbeat_url: SecretStr | None = None
+    external_heartbeat_seconds: float = 60.0
     prometheus_targets_dir: Path | None = None
     file_sd_interval_seconds: float = 60
 

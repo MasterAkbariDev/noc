@@ -5,6 +5,7 @@ import socket
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -42,7 +43,7 @@ from noc.store.incidents import escalate_abandoned
 from noc.store.investigations import fail_orphaned_runs
 from noc.store.remediation import REMEDIATE_JOB, expire_approvals
 from noc.tools.sentinel_client import build_sentinel_http
-from noc.worker.heartbeat import PollStatus, write_heartbeat
+from noc.worker.heartbeat import PollStatus, polling_is_fresh, write_heartbeat
 
 logger = structlog.get_logger(__name__)
 
@@ -60,6 +61,8 @@ ORPHAN_SWEEP_SECONDS = 60.0
 NOTIFY_SECONDS = 10.0
 BOT_IDLE_SECONDS = 15.0
 BOT_BETWEEN_POLLS_SECONDS = 0.5
+EXTERNAL_PING_TIMEOUT_SECONDS = 10.0
+STALE_POLLS = 3
 
 
 def worker_identity() -> str:
@@ -107,6 +110,9 @@ class Worker:
         ]
         if self._settings.prometheus_targets_dir is not None:
             loops.append(self._file_sd_loop(self._settings.prometheus_targets_dir))
+        if self._settings.external_heartbeat_url is not None:
+            url = self._settings.external_heartbeat_url.get_secret_value()
+            loops.append(self.run_external_heartbeat_loop(url))
         await asyncio.gather(*loops)
         if self._running:
             await asyncio.wait(self._running)
@@ -157,6 +163,31 @@ class Worker:
     async def run_notify_loop(self) -> None:
         store = SecretStore(self._settings.secrets_dir)
         await self._repeat("notify", lambda: deliver_once(self._sessions, store), NOTIFY_SECONDS)
+
+    async def run_external_heartbeat_loop(self, url: str) -> None:
+        await self._repeat(
+            "external_heartbeat",
+            lambda: self.ping_external_once(url),
+            self._settings.external_heartbeat_seconds,
+        )
+
+    async def ping_external_once(self, url: str) -> bool:
+        max_age = timedelta(seconds=self._settings.poll_interval_seconds * STALE_POLLS)
+        if not polling_is_fresh(self._poll, utc_now(), max_age):
+            logger.warning("external_heartbeat_skipped", reason="alert polling is stale")
+            return False
+        async with self._sessions() as session:
+            await session.execute(select(1))
+        try:
+            async with httpx.AsyncClient(timeout=EXTERNAL_PING_TIMEOUT_SECONDS) as http:
+                response = await http.get(url)
+        except httpx.HTTPError as error:
+            logger.warning("external_heartbeat_failed", error=type(error).__name__)
+            return False
+        if response.status_code >= 400:
+            logger.warning("external_heartbeat_failed", status=response.status_code)
+            return False
+        return True
 
     async def run_bot_loop(self) -> None:
         store = SecretStore(self._settings.secrets_dir)

@@ -47,6 +47,7 @@ from noc.detection.file_sd import render_file_sd
 from noc.doctor import (
     CheckResult,
     check_database,
+    check_external_heartbeat,
     check_llm,
     check_policy,
     check_prometheus,
@@ -252,6 +253,7 @@ def doctor() -> None:
             await check_prometheus(settings.prometheus_url),
             check_llm(settings, dict(os.environ)),
             check_secrets_dir(settings.secrets_dir),
+            check_external_heartbeat(settings),
             check_variant_overrides(targets, running_eval is not None),
             *await check_targets(settings, targets),
         ]

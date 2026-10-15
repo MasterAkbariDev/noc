@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
@@ -20,6 +20,10 @@ class PollStatus:
     def failed(self, now: datetime, error: str) -> None:
         self.last_error = error
         self.last_error_at = now
+
+
+def polling_is_fresh(poll: PollStatus, now: datetime, max_age: timedelta) -> bool:
+    return poll.last_ok_at is not None and now - poll.last_ok_at <= max_age
 
 
 def heartbeat_fields(poll: PollStatus, version: str, now: datetime) -> dict[str, Any]:

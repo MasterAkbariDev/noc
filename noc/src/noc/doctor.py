@@ -100,6 +100,13 @@ def check_llm(settings: Settings, environment: dict[str, str]) -> CheckResult:
     return ok(name, f"live mode, keys present for {', '.join(sorted(providers))}")
 
 
+def check_external_heartbeat(settings: Settings) -> CheckResult:
+    name = "external heartbeat"
+    if settings.external_heartbeat_url is None:
+        return warn(name, "not set; nobody outside this server notices if the NOC stops")
+    return ok(name, f"pinged every {settings.external_heartbeat_seconds:.0f} s while healthy")
+
+
 def check_secrets_dir(directory: Path) -> CheckResult:
     name = "secrets folder"
     if not directory.is_dir():
