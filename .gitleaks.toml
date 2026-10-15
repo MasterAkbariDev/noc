@@ -1,0 +1,11 @@
+title = "NOC secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake keys in tests and key ids in example configs; real secrets never live in the repository"
+paths = [
+  '''^tests/''',
+  '''^deploy/target/sentinel/[^/]+\.example\.yaml$''',
+]
