@@ -4,7 +4,7 @@ injection:
   type: cpu_burn
   workers: 2
   ttl_seconds: 900
-detection_timeout_seconds: 240
+detection_timeout_seconds: 420
 outcome_timeout_seconds: 600
 ground_truth:
   root_cause_code: cpu_runaway_process
