@@ -482,20 +482,25 @@ export type NotifyEvents = {
   resolved: boolean;
 };
 
+export type TelegramAdminEntry = {
+  handle: string;
+  username: string | null;
+  linked: boolean;
+  muted: boolean;
+};
+
 export type TelegramSettings = {
-  enabled: boolean;
-  chat_id: string;
+  paused: boolean;
   panel_url: string;
   events: NotifyEvents;
+  admins: TelegramAdminEntry[];
   token_last4: string | null;
   proxy_display: string | null;
 };
 
 export type TelegramUpdate = {
-  enabled: boolean;
-  chat_id: string;
   panel_url: string;
-  events: NotifyEvents;
+  admins: string[];
 };
 
 export type TelegramTest = {

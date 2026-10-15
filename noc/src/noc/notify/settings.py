@@ -10,13 +10,15 @@ from noc.audit.chain import append_audit
 from noc.db.base import utc_now
 from noc.db.models import NocSetting
 from noc.llm.keys import KeyRefused, check_proxy, display_proxy
-from noc.notify.telegram import valid_chat_id, valid_token
+from noc.notify.telegram import TelegramUser, valid_token, valid_user_handle
 from noc.secret_store import SecretStore
 
 SETTING_KEY: Final = "telegram"
+OFFSET_KEY: Final = "telegram-offset"
 BOT_FILE_NAME: Final = "telegram-bot"
 PROXY_FILE_NAME: Final = "telegram-proxy"
 PANEL_URL_SCHEMES: Final = frozenset({"http", "https"})
+MAX_ADMINS: Final = 20
 
 
 class NotifyEvents(BaseModel):
@@ -28,25 +30,90 @@ class NotifyEvents(BaseModel):
     resolved: bool = True
 
 
-class TelegramSettings(BaseModel):
+class BotAdmin(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
-    chat_id: str = ""
+    handle: str
+    user_id: int | None = None
+    username: str | None = None
+    ready_since: datetime | None = None
+    muted: bool = False
+    added_by: str = ""
+
+
+class TelegramSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    paused: bool = False
     panel_url: str = ""
     events: NotifyEvents = Field(default_factory=NotifyEvents)
+    admins: list[BotAdmin] = Field(default_factory=list)
     token_last4: str | None = None
     proxy_display: str | None = None
-    enabled_at: datetime | None = None
+    active_since: datetime | None = None
 
 
-class TelegramUpdate(BaseModel):
+class TelegramPanelUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool
-    chat_id: str = Field(default="", max_length=40)
     panel_url: str = Field(default="", max_length=200)
-    events: NotifyEvents = Field(default_factory=NotifyEvents)
+    admins: list[str] = Field(default_factory=list, max_length=MAX_ADMINS)
+
+
+def admin_for_handle(raw: str, actor: str) -> BotAdmin:
+    handle = raw.strip()
+    if not valid_user_handle(handle):
+        raise KeyRefused(
+            f"{handle or 'an empty entry'} is not a Telegram user id (digits) or @username"
+        )
+    if handle.startswith("@"):
+        return BotAdmin(handle=handle.lower(), username=handle[1:].lower(), added_by=actor)
+    return BotAdmin(handle=handle, user_id=int(handle), added_by=actor)
+
+
+def find_admin(settings: TelegramSettings, user: TelegramUser) -> BotAdmin | None:
+    username = (user.username or "").lower()
+    for admin in settings.admins:
+        if admin.user_id == user.id:
+            return admin
+        if admin.user_id is None and admin.username and admin.username == username:
+            return admin
+    return None
+
+
+def find_by_handle(settings: TelegramSettings, handle: str) -> BotAdmin | None:
+    wanted = handle.strip().lower()
+    for admin in settings.admins:
+        names = {admin.handle, f"@{admin.username}" if admin.username else ""}
+        if admin.user_id is not None:
+            names.add(str(admin.user_id))
+        if wanted in names:
+            return admin
+    return None
+
+
+def merge_admins(handles: list[str], current: list[BotAdmin], actor: str) -> list[BotAdmin]:
+    current_settings = TelegramSettings(admins=current)
+    merged: list[BotAdmin] = []
+    for raw in handles:
+        if not raw.strip():
+            continue
+        fresh = admin_for_handle(raw, actor)
+        known = find_by_handle(current_settings, fresh.handle)
+        candidate = known if known is not None else fresh
+        if all(candidate.handle != existing.handle for existing in merged):
+            merged.append(candidate)
+    if len(merged) > MAX_ADMINS:
+        raise KeyRefused(f"at most {MAX_ADMINS} admins")
+    return merged
+
+
+def recipients(settings: TelegramSettings) -> list[BotAdmin]:
+    return [
+        admin
+        for admin in settings.admins
+        if admin.user_id is not None and admin.ready_since is not None and not admin.muted
+    ]
 
 
 async def load_settings(session: AsyncSession) -> TelegramSettings:
@@ -71,38 +138,45 @@ async def store_settings(
         actor,
         action,
         "notify:telegram",
-        settings.model_dump(mode="json", exclude={"enabled_at"}),
+        settings.model_dump(mode="json", exclude={"active_since"}),
     )
 
 
-def check_update(update: TelegramUpdate, current: TelegramSettings) -> None:
-    chat_id = update.chat_id.strip()
-    if chat_id and not valid_chat_id(chat_id):
-        raise KeyRefused("the chat id is a number such as -1001234567890, or @channelname")
-    if update.enabled and (not chat_id or current.token_last4 is None):
-        raise KeyRefused("set a bot token and a chat id before turning notifications on")
-    panel_url = update.panel_url.strip()
+async def load_offset(session: AsyncSession) -> int | None:
+    row = await session.get(NocSetting, OFFSET_KEY)
+    if row is None:
+        return None
+    offset = row.value.get("next")
+    return offset if isinstance(offset, int) else None
+
+
+async def store_offset(session: AsyncSession, offset: int) -> None:
+    row = await session.get(NocSetting, OFFSET_KEY)
+    if row is None:
+        session.add(NocSetting(key=OFFSET_KEY, value={"next": offset}, updated_by="telegram"))
+    else:
+        row.value = {"next": offset}
+        row.updated_at = utc_now()
+    await session.flush()
+
+
+def check_panel_url(raw: str) -> str:
+    panel_url = raw.strip().rstrip("/")
     if panel_url:
         parts = urlsplit(panel_url)
         if parts.scheme not in PANEL_URL_SCHEMES or not parts.hostname:
             raise KeyRefused("the panel address must start with https:// or http://")
+    return panel_url
 
 
 async def update_settings(
-    session: AsyncSession, update: TelegramUpdate, actor: str
+    session: AsyncSession, update: TelegramPanelUpdate, actor: str
 ) -> TelegramSettings:
     current = await load_settings(session)
-    check_update(update, current)
-    enabled_at = current.enabled_at
-    if update.enabled and not current.enabled:
-        enabled_at = utc_now()
     settings = current.model_copy(
         update={
-            "enabled": update.enabled,
-            "chat_id": update.chat_id.strip(),
-            "panel_url": update.panel_url.strip().rstrip("/"),
-            "events": update.events,
-            "enabled_at": enabled_at,
+            "panel_url": check_panel_url(update.panel_url),
+            "admins": merge_admins(update.admins, current.admins, actor),
         }
     )
     await store_settings(session, settings, actor, "telegram_settings_changed")
@@ -118,11 +192,13 @@ async def set_token(
         if not valid_token(cleaned):
             raise KeyRefused("this does not look like a bot token from @BotFather")
         await asyncio.to_thread(store.write, BOT_FILE_NAME, cleaned)
-        settings = current.model_copy(update={"token_last4": cleaned[-4:]})
+        settings = current.model_copy(
+            update={"token_last4": cleaned[-4:], "active_since": utc_now()}
+        )
         await store_settings(session, settings, actor, "telegram_token_set")
         return settings
     await asyncio.to_thread(store.delete, BOT_FILE_NAME)
-    settings = current.model_copy(update={"token_last4": None, "enabled": False})
+    settings = current.model_copy(update={"token_last4": None})
     await store_settings(session, settings, actor, "telegram_token_removed")
     return settings
 

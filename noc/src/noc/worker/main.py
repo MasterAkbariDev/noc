@@ -26,7 +26,9 @@ from noc.domain.variants import ModePolicy, parse_variant
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
+from noc.notify.bot import poll_once
 from noc.notify.outbox import deliver_once
+from noc.notify.telegram import TelegramError
 from noc.orchestration.graph import (
     IncidentGraph,
     build_incident_graph,
@@ -56,6 +58,8 @@ ERROR_BACKOFF_SECONDS = 5.0
 PROMETHEUS_POLL_FAILED = "Prometheus did not answer the alert poll"
 ORPHAN_SWEEP_SECONDS = 60.0
 NOTIFY_SECONDS = 10.0
+BOT_IDLE_SECONDS = 15.0
+BOT_BETWEEN_POLLS_SECONDS = 0.5
 
 
 def worker_identity() -> str:
@@ -98,6 +102,7 @@ class Worker:
             self.run_heartbeat_loop(),
             self.run_orphan_sweep_loop(),
             self.run_notify_loop(),
+            self.run_bot_loop(),
             self._job_loop(),
         ]
         if self._settings.prometheus_targets_dir is not None:
@@ -152,6 +157,32 @@ class Worker:
     async def run_notify_loop(self) -> None:
         store = SecretStore(self._settings.secrets_dir)
         await self._repeat("notify", lambda: deliver_once(self._sessions, store), NOTIFY_SECONDS)
+
+    async def run_bot_loop(self) -> None:
+        store = SecretStore(self._settings.secrets_dir)
+        while not self._stopping.is_set():
+            pause = BOT_IDLE_SECONDS
+            try:
+                if await self._unless_stopping(poll_once(self._sessions, store)):
+                    pause = BOT_BETWEEN_POLLS_SECONDS
+            except TelegramError as failure:
+                logger.warning("telegram_poll_failed", error=str(failure))
+            except Exception:
+                LOOP_ERRORS.labels("telegram_bot").inc()
+                logger.exception("worker_loop_error", loop="telegram_bot")
+            await self._sleep(pause)
+
+    async def _unless_stopping(self, work: Awaitable[bool]) -> bool:
+        task = asyncio.ensure_future(work)
+        stopping = asyncio.ensure_future(self._stopping.wait())
+        done, _ = await asyncio.wait({task, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        stopping.cancel()
+        if task in done:
+            return task.result()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        return False
 
     async def run_orphan_sweep_loop(self) -> None:
         await self._repeat("orphans", self.sweep_orphans_once, ORPHAN_SWEEP_SECONDS)

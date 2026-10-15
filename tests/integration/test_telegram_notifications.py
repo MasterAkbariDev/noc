@@ -14,8 +14,9 @@ from noc.db.base import utc_now
 from noc.db.models import AuditEntry, Incident, Notification
 from noc.db.session import SessionFactory, transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
+from noc.notify.bot import poll_once
 from noc.notify.outbox import FAILED, MAX_ATTEMPTS, RETRY, SENT, deliver_once
-from noc.notify.telegram import TelegramError
+from noc.notify.telegram import Keyboard, TelegramError, TelegramUpdate
 from noc.policy.models import Environment
 from noc.secret_store import SecretStore
 from noc.store.incidents import add_event, transition
@@ -27,7 +28,8 @@ pytestmark = pytest.mark.integration
 TOKEN = "test-token"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 BOT = "123456789:AAH-abcdefghijklmnopqrstuvwxyz012345"
-CHAT = "-1001234567890"
+ADMIN = 111111
+OTHER = 222222
 
 
 @pytest.fixture
@@ -52,41 +54,68 @@ async def client(sessions: SessionFactory, settings: Settings) -> AsyncIterator[
         yield http
 
 
-async def configure(client: httpx.AsyncClient, **events: bool) -> httpx.Response:
+async def configure(client: httpx.AsyncClient, admins: list[str] | None = None) -> httpx.Response:
     await client.put("/api/notifications/telegram/token", json={"token": BOT}, headers=AUTH)
     return await client.put(
         "/api/notifications/telegram",
-        json={
-            "enabled": True,
-            "chat_id": CHAT,
-            "panel_url": "https://noc.example/",
-            "events": {
-                "opened": False,
-                "approval": True,
-                "escalated": True,
-                "resolved": True,
-                **events,
-            },
-        },
+        json={"panel_url": "https://noc.example/", "admins": admins or [str(ADMIN), "@sara_ops"]},
         headers=AUTH,
     )
 
 
-class FakeSender:
+def text_update(
+    update_id: int, user_id: int, text: str, username: str | None = None
+) -> TelegramUpdate:
+    return TelegramUpdate.model_validate(
+        {
+            "update_id": update_id,
+            "message": {
+                "message_id": update_id,
+                "chat": {"id": user_id, "type": "private"},
+                "from": {"id": user_id, "username": username, "first_name": "x"},
+                "text": text,
+            },
+        }
+    )
+
+
+class FakeBot:
     def __init__(self, failures: int = 0) -> None:
         self.failures = failures
+        self.pending: list[TelegramUpdate] = []
+        self.offsets: list[int | None] = []
         self.sent: list[tuple[str, str]] = []
         self.tokens: list[str] = []
 
-    def factory(self, token: str, proxy: str | None) -> "FakeSender":
+    def factory(self, token: str, proxy: str | None) -> "FakeBot":
         self.tokens.append(token)
         return self
 
-    async def send(self, chat_id: str, text: str) -> None:
+    async def send(self, chat_id: str, text: str, keyboard: Keyboard | None = None) -> None:
         if self.failures > 0:
             self.failures -= 1
             raise TelegramError("HTTP 502: bad gateway")
         self.sent.append((chat_id, text))
+
+    async def edit(
+        self, chat_id: str, message_id: int, text: str, keyboard: Keyboard | None = None
+    ) -> None:
+        self.sent.append((chat_id, text))
+
+    async def answer(self, callback_id: str, text: str) -> None:
+        return None
+
+    async def updates(self, offset: int | None) -> list[TelegramUpdate]:
+        self.offsets.append(offset)
+        batch, self.pending = self.pending, []
+        return batch
+
+
+async def say(
+    sessions: SessionFactory, store: SecretStore, bot: FakeBot, *updates: TelegramUpdate
+) -> None:
+    bot.pending.extend(updates)
+    assert await poll_once(sessions, store, bot.factory) is True
 
 
 async def open_and_escalate(sessions: SessionFactory) -> Incident:
@@ -130,104 +159,186 @@ async def test_token_is_stored_as_a_secret_and_only_its_end_is_shown(
     assert all(BOT not in str(payload) for payload in audit)
 
 
-async def test_bad_tokens_and_chat_ids_are_refused(client: httpx.AsyncClient) -> None:
+async def test_bad_tokens_and_admin_handles_are_refused(client: httpx.AsyncClient) -> None:
     token = await client.put(
         "/api/notifications/telegram/token", json={"token": "nope"}, headers=AUTH
     )
     assert token.status_code == 422
-    await client.put("/api/notifications/telegram/token", json={"token": BOT}, headers=AUTH)
-    chat = await client.put(
-        "/api/notifications/telegram", json={"enabled": True, "chat_id": "a b"}, headers=AUTH
+    admins = await client.put(
+        "/api/notifications/telegram", json={"admins": ["-100123", "a b"]}, headers=AUTH
     )
-    assert chat.status_code == 422
-
-
-async def test_notifications_cannot_be_turned_on_without_a_token(client: httpx.AsyncClient) -> None:
-    response = await client.put(
-        "/api/notifications/telegram", json={"enabled": True, "chat_id": CHAT}, headers=AUTH
+    assert admins.status_code == 422
+    url = await client.put(
+        "/api/notifications/telegram", json={"panel_url": "ftp://x"}, headers=AUTH
     )
-    assert response.status_code == 422
-    assert "bot token" in response.json()["detail"]
+    assert url.status_code == 422
 
 
-async def test_removing_the_token_turns_notifications_off(client: httpx.AsyncClient) -> None:
-    await configure(client)
-    response = await client.delete("/api/notifications/telegram/token", headers=AUTH)
-    assert response.json()["enabled"] is False
-    assert response.json()["token_last4"] is None
+async def test_admins_are_listed_as_waiting_until_they_write_to_the_bot(
+    client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
+) -> None:
+    response = await configure(client)
+    assert [(item["handle"], item["linked"]) for item in response.json()["admins"]] == [
+        (str(ADMIN), False),
+        ("@sara_ops", False),
+    ]
+    store = SecretStore(settings.secrets_dir)
+    await say(sessions, store, FakeBot(), text_update(1, OTHER, "/start", "Sara_Ops"))
+    listed = await client.get("/api/notifications/telegram", headers=AUTH)
+    assert [item["linked"] for item in listed.json()["admins"]] == [False, True]
 
 
-async def test_escalation_is_sent_once_with_a_link_and_the_open_event_is_skipped(
+async def test_the_bot_remembers_its_offset_and_answers_strangers(
     client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
 ) -> None:
     await configure(client)
-    incident = await open_and_escalate(sessions)
-    sender = FakeSender()
     store = SecretStore(settings.secrets_dir)
-    assert await deliver_once(sessions, store, sender.factory) == 1
-    assert await deliver_once(sessions, store, sender.factory) == 0
-    assert len(sender.sent) == 1
-    chat_id, text = sender.sent[0]
-    assert chat_id == CHAT
+    bot = FakeBot()
+    await say(sessions, store, bot, text_update(41, 555555, "/pause"))
+    await say(sessions, store, bot)
+    assert bot.offsets == [None, 42]
+    assert "555555" in bot.sent[0][1]
+    listed = await client.get("/api/notifications/telegram", headers=AUTH)
+    assert listed.json()["paused"] is False
+
+
+async def test_admins_manage_the_bot_from_telegram_and_it_is_audited(
+    client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
+) -> None:
+    await configure(client)
+    store = SecretStore(settings.secrets_dir)
+    await say(
+        sessions,
+        store,
+        FakeBot(),
+        text_update(1, ADMIN, "/start"),
+        text_update(2, ADMIN, "/add 333333"),
+        text_update(3, ADMIN, "/pause"),
+    )
+    listed = (await client.get("/api/notifications/telegram", headers=AUTH)).json()
+    assert [item["handle"] for item in listed["admins"]] == [str(ADMIN), "@sara_ops", "333333"]
+    assert listed["paused"] is True
+    async with sessions() as session:
+        actions = list(
+            await session.scalars(
+                select(AuditEntry.action).where(AuditEntry.actor == f"telegram:{ADMIN}")
+            )
+        )
+    assert actions == ["telegram_admin_linked", "telegram_admin_added", "telegram_paused"]
+
+
+async def test_escalation_reaches_each_linked_admin_once_with_a_link(
+    client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
+) -> None:
+    await configure(client)
+    store = SecretStore(settings.secrets_dir)
+    bot = FakeBot()
+    await say(sessions, store, bot, text_update(1, ADMIN, "/start"))
+    bot.sent.clear()
+    incident = await open_and_escalate(sessions)
+    assert await deliver_once(sessions, store, bot.factory) == 1
+    assert await deliver_once(sessions, store, bot.factory) == 0
+    [(chat_id, text)] = bot.sent
+    assert chat_id == str(ADMIN)
     assert text.startswith("[NOC] Escalated to a person: ServiceDown on demo-1/svc:demo-shop")
     assert f"https://noc.example/incidents/{incident.id}" in text
-    assert sender.tokens == [BOT]
     async with sessions() as session:
         statuses = list(await session.scalars(select(Notification.status)))
     assert sorted(statuses) == [SENT, SENT, SENT]
 
 
-async def test_nothing_is_sent_while_notifications_are_off(
+async def test_muted_and_paused_admins_get_nothing(
+    client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
+) -> None:
+    await configure(client)
+    store = SecretStore(settings.secrets_dir)
+    bot = FakeBot()
+    await say(
+        sessions,
+        store,
+        bot,
+        text_update(1, ADMIN, "/start"),
+        text_update(2, ADMIN, "/mute"),
+        text_update(3, OTHER, "/start", "sara_ops"),
+        text_update(4, OTHER, "/pause"),
+    )
+    bot.sent.clear()
+    await open_and_escalate(sessions)
+    assert await deliver_once(sessions, store, bot.factory) == 0
+    await say(sessions, store, bot, text_update(5, OTHER, "/resume"))
+    bot.sent.clear()
+    assert await deliver_once(sessions, store, bot.factory) == 0
+
+
+async def test_nothing_is_sent_without_a_token(
     sessions: SessionFactory, settings: Settings
 ) -> None:
     await open_and_escalate(sessions)
-    sender = FakeSender()
-    assert await deliver_once(sessions, SecretStore(settings.secrets_dir), sender.factory) == 0
-    assert sender.sent == []
+    bot = FakeBot()
+    store = SecretStore(settings.secrets_dir)
+    assert await deliver_once(sessions, store, bot.factory) == 0
+    assert await poll_once(sessions, store, bot.factory) is False
+    assert bot.sent == []
 
 
-async def test_events_from_before_turning_on_are_not_replayed(
+async def test_events_from_before_an_admin_wrote_to_the_bot_are_not_replayed(
     client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
 ) -> None:
-    await open_and_escalate(sessions)
     await configure(client)
-    sender = FakeSender()
-    assert await deliver_once(sessions, SecretStore(settings.secrets_dir), sender.factory) == 0
+    await open_and_escalate(sessions)
+    store = SecretStore(settings.secrets_dir)
+    bot = FakeBot()
+    await say(sessions, store, bot, text_update(1, ADMIN, "/start"))
+    bot.sent.clear()
+    assert await deliver_once(sessions, store, bot.factory) == 0
 
 
 async def test_failures_are_retried_with_backoff_then_given_up(
     client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
 ) -> None:
     await configure(client)
-    await open_and_escalate(sessions)
     store = SecretStore(settings.secrets_dir)
-    sender = FakeSender(failures=MAX_ATTEMPTS)
+    await say(sessions, store, FakeBot(), text_update(1, ADMIN, "/start"))
+    await open_and_escalate(sessions)
+    bot = FakeBot(failures=MAX_ATTEMPTS)
     now = utc_now()
     clock_value = [now]
 
-    assert await deliver_once(sessions, store, sender.factory, lambda: clock_value[0]) == 0
+    assert await deliver_once(sessions, store, bot.factory, lambda: clock_value[0]) == 0
     async with sessions() as session:
         row = await session.scalar(select(Notification).where(Notification.status != SENT))
     assert row is not None
     assert row.status == RETRY
     assert row.attempts == 1
     assert row.last_error == "HTTP 502: bad gateway"
-    assert await deliver_once(sessions, store, sender.factory, lambda: clock_value[0]) == 0
+    assert await deliver_once(sessions, store, bot.factory, lambda: clock_value[0]) == 0
     for _ in range(MAX_ATTEMPTS):
         clock_value[0] = clock_value[0] + timedelta(hours=2)
-        await deliver_once(sessions, store, sender.factory, lambda: clock_value[0])
+        await deliver_once(sessions, store, bot.factory, lambda: clock_value[0])
     async with sessions() as session:
         row = await session.scalar(select(Notification).where(Notification.status != SENT))
     assert row is not None
     assert row.status == FAILED
     assert row.attempts == MAX_ATTEMPTS
-    assert sender.sent == []
+    assert bot.sent == []
 
 
-async def test_the_test_endpoint_sends_through_the_sender(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+async def test_removing_the_token_is_shown(client: httpx.AsyncClient) -> None:
+    await configure(client)
+    response = await client.delete("/api/notifications/telegram/token", headers=AUTH)
+    assert response.json()["token_last4"] is None
+
+
+async def test_the_test_endpoint_messages_every_linked_admin(
+    client: httpx.AsyncClient,
+    sessions: SessionFactory,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await configure(client)
+    await say(
+        sessions, SecretStore(settings.secrets_dir), FakeBot(), text_update(1, ADMIN, "/start")
+    )
     sent: list[tuple[str, str]] = []
 
     class Recorder:
@@ -239,11 +350,11 @@ async def test_the_test_endpoint_sends_through_the_sender(
 
     monkeypatch.setattr("noc.api.notifications.TelegramSender", Recorder)
     response = await client.post("/api/notifications/telegram/test", headers=AUTH)
-    assert response.json() == {"ok": True, "detail": "sent; check the chat"}
-    assert sent
-    assert sent[0][0] == CHAT
+    assert response.json() == {"ok": True, "detail": "sent to 1 admin(s)"}
+    assert [chat for chat, _ in sent] == [str(ADMIN)]
 
 
-async def test_the_test_endpoint_needs_a_token_and_chat(client: httpx.AsyncClient) -> None:
+async def test_the_test_endpoint_needs_a_linked_admin(client: httpx.AsyncClient) -> None:
+    await configure(client)
     response = await client.post("/api/notifications/telegram/test", headers=AUTH)
     assert response.status_code == 409

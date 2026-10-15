@@ -6,7 +6,7 @@ import pytest
 from noc.db.models import Incident, IncidentEvent, Target
 from noc.notify.outbox import event_kind, message_for, wanted
 from noc.notify.settings import NotifyEvents
-from noc.notify.telegram import scrub, valid_chat_id, valid_token
+from noc.notify.telegram import scrub, valid_token, valid_user_handle
 
 TOKEN = "123456789:AAH-abcdefghijklmnopqrstuvwxyz012345"
 
@@ -38,15 +38,15 @@ def incident(**changes: object) -> Incident:
 TARGET = Target(name="demo-1", environment="lab")
 
 
-def test_bot_tokens_and_chat_ids_are_checked() -> None:
+def test_bot_tokens_and_user_handles_are_checked() -> None:
     assert valid_token(TOKEN)
     assert not valid_token("not-a-token")
     assert not valid_token("123:short")
-    assert valid_chat_id("-1001234567890")
-    assert valid_chat_id("42")
-    assert valid_chat_id("@noc_alerts")
-    assert not valid_chat_id("noc alerts")
-    assert not valid_chat_id("@ab")
+    assert valid_user_handle("123456789")
+    assert valid_user_handle("@noc_admin")
+    assert not valid_user_handle("-1001234567890")
+    assert not valid_user_handle("noc admin")
+    assert not valid_user_handle("@ab")
 
 
 def test_scrub_removes_the_token() -> None:

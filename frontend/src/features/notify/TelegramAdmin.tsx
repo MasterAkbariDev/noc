@@ -9,7 +9,11 @@ import {
   setTelegramToken,
   testTelegram,
 } from "../../api/client";
-import type { NotifyEvents, TelegramSettings } from "../../api/types";
+import type {
+  NotifyEvents,
+  TelegramAdminEntry,
+  TelegramSettings,
+} from "../../api/types";
 import { useSession } from "../../auth/session";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
@@ -22,11 +26,11 @@ import { INPUT_CLASS, LABEL_CLASS } from "../settings/formStyles";
 
 export const TELEGRAM_KEY = "telegram";
 
-const EVENT_LABELS: { key: keyof NotifyEvents; label: string; hint: string }[] = [
-  { key: "approval", label: "Approval needed or expired", hint: "An action waits for a person" },
-  { key: "escalated", label: "Escalated", hint: "The NOC hands the incident to a person" },
-  { key: "resolved", label: "Resolved", hint: "Fixed, or recovered on its own" },
-  { key: "opened", label: "New incident", hint: "Every new incident (can be noisy)" },
+const EVENT_LABELS: { key: keyof NotifyEvents; label: string }[] = [
+  { key: "approval", label: "Approval needed or expired" },
+  { key: "escalated", label: "Escalated to a person" },
+  { key: "resolved", label: "Resolved" },
+  { key: "opened", label: "Every new incident" },
 ];
 
 export function TelegramAdmin() {
@@ -42,8 +46,9 @@ function TelegramSection() {
   return (
     <Section heading="Telegram">
       <p className="m-0 text-sm text-muted">
-        Messages go to one chat or channel when an incident needs a person. Create a bot with @BotFather, add it to the
-        chat, then paste its token and the chat id here.
+        Messages go straight to each admin when an incident needs a person.
+        Create a bot with @BotFather, paste its token here and list the admins;
+        everything else is managed inside the bot.
       </p>
       {query.isPending && <Skeleton lines={4} />}
       {query.isError && (
@@ -56,7 +61,10 @@ function TelegramSection() {
       {query.isSuccess && (
         <div className="grid gap-3 lg:grid-cols-2">
           <TokenCard settings={query.data} />
-          <SettingsCard key={JSON.stringify(query.data)} settings={query.data} />
+          <SettingsCard
+            key={JSON.stringify(query.data)}
+            settings={query.data}
+          />
         </div>
       )}
     </Section>
@@ -65,7 +73,8 @@ function TelegramSection() {
 
 function useStore() {
   const queryClient = useQueryClient();
-  return (settings: TelegramSettings) => queryClient.setQueryData([TELEGRAM_KEY], settings);
+  return (settings: TelegramSettings) =>
+    queryClient.setQueryData([TELEGRAM_KEY], settings);
 }
 
 function TokenCard({ settings }: { settings: TelegramSettings }) {
@@ -75,11 +84,16 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
   const [proxy, setProxy] = useState("");
 
   const tokenMutation = useMutation({
-    mutationFn: (value: string | null) => (value === null ? removeTelegramToken() : setTelegramToken(value)),
+    mutationFn: (value: string | null) =>
+      value === null ? removeTelegramToken() : setTelegramToken(value),
     onSuccess: (updated) => {
       store(updated);
       setToken("");
-      toast.success(updated.token_last4 === null ? "Removed the bot token." : "Saved the bot token.");
+      toast.success(
+        updated.token_last4 === null
+          ? "Removed the bot token."
+          : "Saved the bot token.",
+      );
     },
   });
   const proxyMutation = useMutation({
@@ -107,7 +121,9 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
         <p className="m-0 text-sm">
           Token:{" "}
           <span className="font-medium">
-            {settings.token_last4 === null ? "not set" : `…${settings.token_last4}`}
+            {settings.token_last4 === null
+              ? "not set"
+              : `…${settings.token_last4}`}
           </span>
         </p>
         <label className={LABEL_CLASS}>
@@ -129,7 +145,12 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="sm" variant="primary" disabled={tokenMutation.isPending || token.trim() === ""}>
+          <Button
+            type="submit"
+            size="sm"
+            variant="primary"
+            disabled={tokenMutation.isPending || token.trim() === ""}
+          >
             Save token
           </Button>
           <Button
@@ -142,9 +163,15 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
           </Button>
         </div>
       </form>
-      <form onSubmit={saveProxy} className="mt-5 grid gap-3 border-t border-border pt-4">
+      <form
+        onSubmit={saveProxy}
+        className="mt-5 grid gap-3 border-t border-border pt-4"
+      >
         <p className="m-0 text-sm">
-          Proxy: <span className="font-medium">{settings.proxy_display ?? "none"}</span>
+          Proxy:{" "}
+          <span className="font-medium">
+            {settings.proxy_display ?? "none"}
+          </span>
         </p>
         <label className={LABEL_CLASS}>
           Proxy URL (leave empty for none)
@@ -176,49 +203,139 @@ function TokenCard({ settings }: { settings: TelegramSettings }) {
   );
 }
 
+function adminStatus(admin: TelegramAdminEntry): string {
+  if (!admin.linked) {
+    return "has not written to the bot yet";
+  }
+  return admin.muted ? "muted in the bot" : "gets messages";
+}
+
+function adminName(admin: TelegramAdminEntry): string {
+  return admin.username !== null && !admin.handle.startsWith("@")
+    ? `${admin.handle} (@${admin.username})`
+    : admin.handle;
+}
+
+function botSummary(settings: TelegramSettings): string {
+  const chosen = EVENT_LABELS.filter((item) => settings.events[item.key]).map(
+    (item) => item.label.toLowerCase(),
+  );
+  const when = chosen.length === 0 ? "nothing is chosen" : chosen.join(", ");
+  return `Messages are ${settings.paused ? "paused" : "on"}. Sent when: ${when}.`;
+}
+
 function SettingsCard({ settings }: { settings: TelegramSettings }) {
   const toast = useToast();
   const store = useStore();
-  const [enabled, setEnabled] = useState(settings.enabled);
-  const [chatId, setChatId] = useState(settings.chat_id);
+  const [admins, setAdmins] = useState<string[]>(
+    settings.admins.map((admin) => admin.handle),
+  );
+  const [newAdmin, setNewAdmin] = useState("");
   const [panelUrl, setPanelUrl] = useState(settings.panel_url);
-  const [events, setEvents] = useState<NotifyEvents>(settings.events);
+  const known = new Map(settings.admins.map((admin) => [admin.handle, admin]));
 
   const saveMutation = useMutation({
-    mutationFn: () => saveTelegram({ enabled, chat_id: chatId.trim(), panel_url: panelUrl.trim(), events }),
+    mutationFn: () => saveTelegram({ panel_url: panelUrl.trim(), admins }),
     onSuccess: (updated) => {
       store(updated);
-      toast.success(updated.enabled ? "Telegram notifications are on." : "Saved. Telegram notifications are off.");
+      toast.success("Saved the Telegram admins.");
     },
   });
   const testMutation = useMutation({ mutationFn: testTelegram });
+
+  function addAdmin() {
+    const handle = newAdmin.trim();
+    if (handle !== "" && !admins.includes(handle)) {
+      setAdmins([...admins, handle]);
+    }
+    setNewAdmin("");
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     saveMutation.mutate();
   }
 
+  const canTest =
+    settings.token_last4 !== null &&
+    settings.admins.some((admin) => admin.linked);
+
   return (
-    <Card title="Where and when">
+    <Card title="Admins">
       <form onSubmit={submit} className="grid gap-3">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-          Send notifications
-        </label>
-        <label className={LABEL_CLASS}>
-          Chat id
-          <input
-            name="telegram-chat"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="-1001234567890 or @channel"
-            maxLength={40}
-            value={chatId}
-            onChange={(event) => setChatId(event.target.value)}
-            className={INPUT_CLASS}
-          />
-        </label>
+        <p className="m-0 text-sm text-muted">
+          Admins get the messages and manage the bot from Telegram. Each one
+          opens the bot and sends /start once; after that, /settings turns
+          messages and event types on or off, and /add or /remove changes the
+          admins.
+        </p>
+        <ul
+          aria-label="Telegram admins"
+          className="m-0 grid list-none gap-2 p-0"
+        >
+          {admins.length === 0 && (
+            <li className="text-sm text-muted">No admins yet.</li>
+          )}
+          {admins.map((handle) => {
+            const admin = known.get(handle);
+            return (
+              <li
+                key={handle}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              >
+                <span>
+                  <span className="font-medium">
+                    {admin === undefined ? handle : adminName(admin)}
+                  </span>{" "}
+                  <span className="text-xs text-muted">
+                    (
+                    {admin === undefined ? "not saved yet" : adminStatus(admin)}
+                    )
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  aria-label={`Remove ${handle}`}
+                  onClick={() =>
+                    setAdmins(admins.filter((item) => item !== handle))
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className={`${LABEL_CLASS} min-w-0 flex-1`}>
+            Telegram user id or @username
+            <input
+              name="telegram-admin"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="123456789 or @name"
+              maxLength={40}
+              value={newAdmin}
+              onChange={(event) => setNewAdmin(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addAdmin();
+                }
+              }}
+              className={INPUT_CLASS}
+            />
+          </label>
+          <Button
+            size="sm"
+            disabled={newAdmin.trim() === ""}
+            onClick={addAdmin}
+          >
+            Add
+          </Button>
+        </div>
         <label className={LABEL_CLASS}>
           Panel address for links
           <input
@@ -233,30 +350,25 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
             className={INPUT_CLASS}
           />
         </label>
-        <fieldset className="m-0 grid gap-2 border-0 p-0">
-          <legend className="mb-1 text-sm font-medium">Send a message when</legend>
-          {EVENT_LABELS.map((item) => (
-            <label key={item.key} className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={events[item.key]}
-                onChange={(event) => setEvents({ ...events, [item.key]: event.target.checked })}
-              />
-              <span>
-                {item.label} <span className="text-xs text-muted">({item.hint})</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <p className="m-0 text-sm">
+          {botSummary(settings)}{" "}
+          <span className="text-muted">
+            Change this in the bot with /settings.
+          </span>
+        </p>
         {saveMutation.isError && (
           <p role="alert" className="m-0 text-sm text-critical">
             {settingsErrorText(saveMutation.error)}
           </p>
         )}
         {testMutation.isSuccess && (
-          <p role="status" className={`m-0 text-sm ${testMutation.data.ok ? "text-ok" : "text-critical"}`}>
-            {testMutation.data.ok ? "Test message sent." : `Test failed: ${testMutation.data.detail}`}
+          <p
+            role="status"
+            className={`m-0 text-sm ${testMutation.data.ok ? "text-ok" : "text-critical"}`}
+          >
+            {testMutation.data.ok
+              ? `Test message ${testMutation.data.detail}.`
+              : `Test failed: ${testMutation.data.detail}`}
           </p>
         )}
         {testMutation.isError && (
@@ -265,12 +377,17 @@ function SettingsCard({ settings }: { settings: TelegramSettings }) {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="sm" variant="primary" disabled={saveMutation.isPending}>
+          <Button
+            type="submit"
+            size="sm"
+            variant="primary"
+            disabled={saveMutation.isPending}
+          >
             Save
           </Button>
           <Button
             size="sm"
-            disabled={testMutation.isPending || settings.token_last4 === null || settings.chat_id === ""}
+            disabled={testMutation.isPending || !canTest}
             onClick={() => testMutation.mutate()}
           >
             <Send aria-hidden="true" size={14} />

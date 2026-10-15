@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
@@ -31,23 +37,39 @@ vi.mock("../../auth/session", async (importOriginal) => ({
 }));
 
 const EMPTY: TelegramSettings = {
-  enabled: false,
-  chat_id: "",
+  paused: false,
   panel_url: "",
   events: { opened: false, approval: true, escalated: true, resolved: true },
+  admins: [],
   token_last4: null,
   proxy_display: null,
 };
 
-const READY: TelegramSettings = { ...EMPTY, chat_id: "-100123", token_last4: "x9Yz" };
+const READY: TelegramSettings = {
+  ...EMPTY,
+  token_last4: "x9Yz",
+  admins: [
+    { handle: "111111", username: "ali_ops", linked: true, muted: false },
+    { handle: "@sara_ops", username: "sara_ops", linked: false, muted: false },
+  ],
+};
 
 function renderAs(role: "operator" | "admin") {
-  vi.mocked(useSession).mockReturnValue(sessionFor({ username: "admin", role, via: "session" }));
+  vi.mocked(useSession).mockReturnValue(
+    sessionFor({ username: "admin", role, via: "session" }),
+  );
   return renderWithProviders(<TelegramAdmin />);
 }
 
 beforeEach(() => {
-  for (const mock of [getTelegram, saveTelegram, setTelegramToken, removeTelegramToken, setTelegramProxy, testTelegram]) {
+  for (const mock of [
+    getTelegram,
+    saveTelegram,
+    setTelegramToken,
+    removeTelegramToken,
+    setTelegramProxy,
+    testTelegram,
+  ]) {
     vi.mocked(mock).mockReset();
   }
   vi.mocked(useSession).mockReset();
@@ -65,7 +87,10 @@ describe("TelegramAdmin", () => {
 
   it("saves a token, shows only its end and clears the field", async () => {
     vi.mocked(getTelegram).mockResolvedValue(EMPTY);
-    vi.mocked(setTelegramToken).mockResolvedValue({ ...EMPTY, token_last4: "abcd" });
+    vi.mocked(setTelegramToken).mockResolvedValue({
+      ...EMPTY,
+      token_last4: "abcd",
+    });
     renderAs("admin");
     const field = await screen.findByLabelText("New bot token");
     expect(screen.getByText("not set")).toBeTruthy();
@@ -73,56 +98,101 @@ describe("TelegramAdmin", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
     expect(await screen.findByText("…abcd")).toBeTruthy();
     expect(setTelegramToken).toHaveBeenCalledWith("123:secret");
-    expect((screen.getByLabelText("New bot token") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("New bot token") as HTMLInputElement).value,
+    ).toBe("");
   });
 
-  it("saves chat, link address and event choices", async () => {
+  it("lists admins with their bot status and saves added and removed ones", async () => {
     vi.mocked(getTelegram).mockResolvedValue(READY);
-    vi.mocked(saveTelegram).mockResolvedValue({ ...READY, enabled: true });
+    vi.mocked(saveTelegram).mockResolvedValue(READY);
     renderAs("admin");
-    await screen.findByLabelText("Chat id");
-    fireEvent.click(screen.getByLabelText("Send notifications"));
-    fireEvent.change(screen.getByLabelText("Panel address for links"), { target: { value: "https://noc.example" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Resolved/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /New incident/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Telegram notifications are on.")).toBeTruthy();
-    expect(saveTelegram).toHaveBeenCalledWith({
-      enabled: true,
-      chat_id: "-100123",
-      panel_url: "https://noc.example",
-      events: { opened: true, approval: true, escalated: true, resolved: false },
+    const list = await screen.findByRole("list", { name: "Telegram admins" });
+    expect(within(list).getByText("111111 (@ali_ops)")).toBeTruthy();
+    expect(within(list).getByText("(gets messages)")).toBeTruthy();
+    expect(
+      within(list).getByText("(has not written to the bot yet)"),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Telegram user id or @username"), {
+      target: { value: " @new_admin " },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove @sara_ops" }));
+    fireEvent.change(screen.getByLabelText("Panel address for links"), {
+      target: { value: "https://noc.example" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved the Telegram admins.")).toBeTruthy();
+    expect(saveTelegram).toHaveBeenCalledWith({
+      panel_url: "https://noc.example",
+      admins: ["111111", "@new_admin"],
+    });
+  });
+
+  it("shows what the bot sends and points to /settings", async () => {
+    vi.mocked(getTelegram).mockResolvedValue({ ...READY, paused: true });
+    renderAs("admin");
+    expect(
+      await screen.findByText(
+        "Messages are paused. Sent when: approval needed or expired, escalated to a person, resolved.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Change this in the bot with /settings."),
+    ).toBeTruthy();
   });
 
   it("shows the server's reason when saving is refused", async () => {
     vi.mocked(getTelegram).mockResolvedValue(EMPTY);
-    vi.mocked(saveTelegram).mockRejectedValue(new ApiError(422, "set a bot token and a chat id first"));
+    vi.mocked(saveTelegram).mockRejectedValue(
+      new ApiError(
+        422,
+        "ali ops is not a Telegram user id (digits) or @username",
+      ),
+    );
     renderAs("admin");
-    await screen.findByLabelText("Chat id");
+    await screen.findByLabelText("Telegram user id or @username");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    const card = screen.getByRole("region", { name: "Where and when" });
-    expect((await within(card).findByRole("alert")).textContent).toBe("set a bot token and a chat id first");
+    const card = screen.getByRole("region", { name: "Admins" });
+    expect((await within(card).findByRole("alert")).textContent).toBe(
+      "ali ops is not a Telegram user id (digits) or @username",
+    );
   });
 
-  it("sends a test message only when a token and chat are set", async () => {
+  it("sends a test message when a token and a linked admin are set", async () => {
     vi.mocked(getTelegram).mockResolvedValue(READY);
-    vi.mocked(testTelegram).mockResolvedValue({ ok: false, detail: "HTTP 400: chat not found" });
+    vi.mocked(testTelegram).mockResolvedValue({
+      ok: false,
+      detail: "HTTP 400: chat not found",
+    });
     renderAs("admin");
-    const button = await screen.findByRole("button", { name: "Send test message" });
+    const button = await screen.findByRole("button", {
+      name: "Send test message",
+    });
     fireEvent.click(button);
-    expect(await screen.findByText("Test failed: HTTP 400: chat not found")).toBeTruthy();
+    expect(
+      await screen.findByText("Test failed: HTTP 400: chat not found"),
+    ).toBeTruthy();
   });
 
-  it("disables the test without a token", async () => {
-    vi.mocked(getTelegram).mockResolvedValue(EMPTY);
+  it("disables the test until an admin has written to the bot", async () => {
+    vi.mocked(getTelegram).mockResolvedValue({
+      ...EMPTY,
+      token_last4: "x9Yz",
+      admins: [READY.admins[1]!],
+    });
     renderAs("admin");
-    const button = await screen.findByRole("button", { name: "Send test message" });
+    const button = await screen.findByRole("button", {
+      name: "Send test message",
+    });
     expect(button.hasAttribute("disabled")).toBe(true);
   });
 
   it("saves an empty proxy as none", async () => {
-    vi.mocked(getTelegram).mockResolvedValue({ ...READY, proxy_display: "http://10.0.0.1:1" });
+    vi.mocked(getTelegram).mockResolvedValue({
+      ...READY,
+      proxy_display: "http://10.0.0.1:1",
+    });
     vi.mocked(setTelegramProxy).mockResolvedValue(READY);
     renderAs("admin");
     await screen.findByLabelText(/Proxy URL/);

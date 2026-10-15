@@ -9,9 +9,10 @@ from noc.auth.roles import Role
 from noc.config import Settings
 from noc.llm.keys import KeyRefused
 from noc.notify.settings import (
+    BotAdmin,
     NotifyEvents,
+    TelegramPanelUpdate,
     TelegramSettings,
-    TelegramUpdate,
     load_settings,
     read_proxy,
     read_token,
@@ -22,8 +23,8 @@ from noc.notify.settings import (
 from noc.notify.telegram import TelegramError, TelegramSender
 from noc.secret_store import SecretStore
 
-TEST_MESSAGE = "[NOC] Test message: Telegram notifications from the NOC reach this chat."
-NOT_READY = "set a bot token and a chat id first"
+TEST_MESSAGE = "[NOC] Test message: Telegram notifications from the NOC reach you here."
+NOT_READY = "set a bot token and an admin, then have the admin send /start to the bot"
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -39,11 +40,18 @@ def secret_store(settings: AppSettings) -> SecretStore:
 Store = Annotated[SecretStore, Depends(secret_store)]
 
 
+class AdminView(BaseModel):
+    handle: str
+    username: str | None
+    linked: bool
+    muted: bool
+
+
 class TelegramView(BaseModel):
-    enabled: bool
-    chat_id: str
+    paused: bool
     panel_url: str
     events: NotifyEvents
+    admins: list[AdminView]
     token_last4: str | None
     proxy_display: str | None
 
@@ -65,8 +73,24 @@ class TestView(BaseModel):
     detail: str
 
 
+def admin_view(admin: BotAdmin) -> AdminView:
+    return AdminView(
+        handle=admin.handle,
+        username=admin.username,
+        linked=admin.ready_since is not None,
+        muted=admin.muted,
+    )
+
+
 def view(settings: TelegramSettings) -> TelegramView:
-    return TelegramView.model_validate(settings.model_dump(exclude={"enabled_at"}))
+    return TelegramView(
+        paused=settings.paused,
+        panel_url=settings.panel_url,
+        events=settings.events,
+        admins=[admin_view(admin) for admin in settings.admins],
+        token_last4=settings.token_last4,
+        proxy_display=settings.proxy_display,
+    )
 
 
 def refused(error: KeyRefused) -> HTTPException:
@@ -80,7 +104,7 @@ async def get_telegram(admin: AdminPrincipal, session: Session) -> TelegramView:
 
 @router.put("/telegram")
 async def put_telegram(
-    body: TelegramUpdate, admin: AdminPrincipal, session: Session
+    body: TelegramPanelUpdate, admin: AdminPrincipal, session: Session
 ) -> TelegramView:
     try:
         settings = await update_settings(session, body, admin.username)
@@ -125,10 +149,16 @@ async def put_proxy(
 async def test_telegram(admin: AdminPrincipal, session: Session, store: Store) -> TestView:
     settings = await load_settings(session)
     token = await read_token(store)
-    if not token or not settings.chat_id:
+    linked = [item for item in settings.admins if item.user_id and item.ready_since]
+    if not token or not linked:
         raise HTTPException(status.HTTP_409_CONFLICT, NOT_READY)
-    try:
-        await TelegramSender(token, await read_proxy(store)).send(settings.chat_id, TEST_MESSAGE)
-    except TelegramError as error:
-        return TestView(ok=False, detail=str(error))
-    return TestView(ok=True, detail="sent; check the chat")
+    sender = TelegramSender(token, await read_proxy(store))
+    failures: list[str] = []
+    for item in linked:
+        try:
+            await sender.send(str(item.user_id), TEST_MESSAGE)
+        except TelegramError as error:
+            failures.append(f"{item.handle}: {error}")
+    if failures:
+        return TestView(ok=False, detail="; ".join(failures))
+    return TestView(ok=True, detail=f"sent to {len(linked)} admin(s)")
