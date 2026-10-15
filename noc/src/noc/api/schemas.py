@@ -5,10 +5,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from noc.auth.roles import Role
+from noc.reporting.operator_guide import GuideStep
 
 ComponentStatus = Literal["ok", "degraded", "down", "unknown"]
 Verdict = Literal["ok", "degraded", "down"]
-
 
 MAX_TOTP_FIELD_LENGTH = 16
 MAX_LOGIN_FIELD_LENGTH = 256
@@ -35,6 +35,7 @@ class EventView(BaseModel):
     type: str
     actor: str
     payload: dict[str, Any]
+    text: str = ""
 
 
 class FindingView(BaseModel):
@@ -70,6 +71,7 @@ class ActionView(BaseModel):
     permission_class: str
     eligible: bool
     gate_failures: list[str]
+    gate_text: list[str] = []
     reasons: list[str]
     impact_score: int
     high_impact: bool
@@ -152,6 +154,7 @@ class ToolCallView(BaseModel):
     agent: str
     tool: str
     args: dict[str, Any]
+    description: str = ""
     permission: str
     decision: str
     decision_reason: str | None
@@ -295,11 +298,16 @@ class StoryText(BaseModel):
     technical: str | None
 
 
+class StoryEvidence(BaseModel):
+    source: str
+    quote: str
+
+
 class StoryPoint(BaseModel):
     text: str
     agent: str
     label: str
-    refs: list[str]
+    evidence: list[StoryEvidence]
     grounded: bool
 
 
@@ -327,7 +335,7 @@ class StoryDid(BaseModel):
 
 class StoryAdvice(BaseModel):
     text: str
-    steps: list[str]
+    steps: list[GuideStep]
 
 
 class IncidentStory(BaseModel):

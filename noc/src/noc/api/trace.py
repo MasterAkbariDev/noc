@@ -9,6 +9,7 @@ from noc.api.deps import get_session, require_role
 from noc.api.schemas import AgentRunView, IncidentTrace, LlmCallView, ToolCallView
 from noc.auth.roles import Role
 from noc.db.models import AgentRun, Incident, LlmCall, ToolCall
+from noc.reporting.tool_text import tool_text
 
 router = APIRouter(
     prefix="/api/incidents", tags=["trace"], dependencies=[Depends(require_role(Role.VIEWER))]
@@ -38,6 +39,11 @@ async def get_incident_trace(incident_id: uuid.UUID, session: Session) -> Incide
     )
     return IncidentTrace(
         agent_runs=[AgentRunView.model_validate(row) for row in runs],
-        tool_calls=[ToolCallView.model_validate(row) for row in tools],
+        tool_calls=[tool_call_view(row) for row in tools],
         llm_calls=[LlmCallView.model_validate(row) for row in llm_calls],
     )
+
+
+def tool_call_view(row: ToolCall) -> ToolCallView:
+    view = ToolCallView.model_validate(row)
+    return view.model_copy(update={"description": tool_text(row.tool, row.args)})

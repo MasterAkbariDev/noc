@@ -1,0 +1,181 @@
+root_causes:
+  service_crashed:
+    - text: See whether the service is stopped, failed or restarting.
+      command: systemctl status {unit}
+    - text: Read its last log lines. The first error before it stopped is usually the reason.
+      command: journalctl -u {unit} -n 100 --no-pager
+    - text: Start it again.
+      command: sudo systemctl start {unit}
+    - text: Check that it stays up for a minute. If it stops again, fix the error from its log before starting it once more.
+      command: systemctl is-active {unit}
+  service_misconfigured:
+    - text: Read the error the service prints when it starts.
+      command: journalctl -u {unit} -n 100 --no-pager
+    - text: Check the service's configuration file for the setting named in the error (port, path, permission).
+    - text: Restart it after fixing the setting.
+      command: sudo systemctl restart {unit}
+  memory_leak:
+    - text: See how much memory the service uses and what its limit is.
+      command: systemctl show {unit} -p MemoryCurrent -p MemoryMax
+    - text: Restart it to free the memory now. This is a temporary fix.
+      command: sudo systemctl restart {unit}
+    - text: Tell the developers. The memory keeps growing because of the program itself, so it will come back until the code is fixed.
+  oom_kill_loop:
+    - text: Confirm the kernel killed it for memory.
+      command: journalctl -k --since "1 hour ago" | grep -i -E "out of memory|oom"
+    - text: See which processes use the most memory.
+      command: ps aux --sort=-%mem | head -15
+    - text: Give the service more memory or stop the process that takes it, then restart the service.
+      command: sudo systemctl restart {unit}
+  cpu_runaway_process:
+    - text: See which processes use the CPU right now.
+      command: ps aux --sort=-%cpu | head -15
+    - text: Check what the top process is before stopping it (owner, command line, start time).
+      command: ps -o pid,user,lstart,args -p <PID>
+    - text: If it is not supposed to run, stop it. If it belongs to a service, restart that service instead.
+      command: sudo kill <PID>
+  disk_full_logs:
+    - text: See how full each filesystem is.
+      command: df -h {mount}
+    - text: Find what uses the space.
+      command: sudo du -xh {mount} --max-depth=2 | sort -h | tail -20
+    - text: Remove or compress old log files you do not need, or shrink the system journal.
+      command: sudo journalctl --vacuum-size=200M
+    - text: Make sure log rotation runs so it does not fill up again.
+      command: ls /etc/logrotate.d/
+  disk_full_data:
+    - text: See how full each filesystem is.
+      command: df -h {mount}
+    - text: Find the largest folders and files.
+      command: sudo du -xh {mount} --max-depth=2 | sort -h | tail -20
+    - text: Move, delete or archive data that is no longer needed, or grow the disk.
+  inode_exhaustion:
+    - text: See which filesystem has run out of inodes.
+      command: df -i {mount}
+    - text: Find the folders with the most files (usually caches, sessions or mail queues).
+      command: sudo find {mount} -xdev -type f | cut -d/ -f2-4 | sort | uniq -c | sort -n | tail -15
+    - text: Delete the many small files that are no longer needed.
+  bad_deploy:
+    - text: Check what changed just before the problem started.
+      command: journalctl -u {unit} --since "2 hours ago" --no-pager | head -50
+    - text: Roll back to the previous version if the new one is the cause.
+  dependency_db_unavailable:
+    - text: Check that the database is running.
+      command: sudo docker ps --filter name=db
+    - text: Look for connection errors in the service log.
+      command: journalctl -u {unit} -n 100 --no-pager | grep -i -E "database|connection|refused"
+    - text: Start or fix the database, then restart the service if it does not reconnect on its own.
+  db_connection_exhaustion:
+    - text: See how many connections the database has and who holds them.
+      command: sudo docker exec <db-container> psql -U postgres -c "select usename, state, count(*) from pg_stat_activity group by 1,2"
+    - text: Restart the service that holds the most connections; it is probably leaking them.
+      command: sudo systemctl restart {unit}
+  upstream_latency:
+    - text: Find which outside service is slow in the service log.
+      command: journalctl -u {unit} -n 200 --no-pager | grep -i -E "timeout|slow|upstream"
+    - text: Check that outside service, or switch to a fallback if you have one.
+  network_latency:
+    - text: Measure the delay and packet loss to the slow host.
+      command: mtr -rwc 20 <host>
+    - text: Check whether a link or the provider is busy, and contact the provider if the loss is outside your network.
+  network_partition:
+    - text: Check whether the host answers at all.
+      command: ping -c 5 <host>
+    - text: Check the route and the firewall between the two hosts.
+      command: sudo ufw status verbose
+  dns_resolution_failure:
+    - text: Try to resolve the failing name.
+      command: resolvectl query <name>
+    - text: Check which DNS servers the host uses and whether they answer.
+      command: resolvectl status
+  tls_certificate_invalid:
+    - text: See the certificate's dates and names.
+      command: openssl s_client -connect <host>:443 -servername <host> </dev/null 2>/dev/null | openssl x509 -noout -dates -subject
+    - text: Renew or replace the certificate, then reload the web server.
+  clock_skew:
+    - text: Check the clock and whether time sync is active.
+      command: timedatectl
+    - text: Turn time synchronization on.
+      command: sudo timedatectl set-ntp true
+  noisy_neighbor:
+    - text: Check how much CPU time the provider takes away (the "st" column).
+      command: top -b -n 1 | head -5
+    - text: Ask the provider about it, or move the workload to another server.
+  brute_force_ssh:
+    - text: See where the failed logins come from.
+      command: journalctl -u ssh --since "1 hour ago" | grep -i "failed password" | awk '{print $(NF-3)}' | sort | uniq -c | sort -n | tail
+    - text: Make sure password login is off and only keys are allowed.
+      command: sudo sshd -T | grep -i passwordauthentication
+    - text: Block the worst source addresses.
+      command: sudo ufw deny from <address>
+  suspicious_process:
+    - text: Look at the process without stopping it yet (owner, command line, open network connections).
+      command: sudo ls -l /proc/<PID>/exe; sudo ss -tnp | grep <PID>
+    - text: Treat the server as possibly compromised. Save the evidence, then stop the process and check for persistence (cron jobs, new users, SSH keys).
+      command: sudo crontab -l; ls -la ~/.ssh/
+  transient_spike:
+    - text: Nothing needs to be done now. Watch whether it comes back.
+
+alerts:
+  ServiceDown:
+    - text: See whether the service is stopped, failed or restarting.
+      command: systemctl status {unit}
+    - text: Read its last log lines to find out why it stopped.
+      command: journalctl -u {unit} -n 100 --no-pager
+    - text: Start it again and check that it stays up.
+      command: sudo systemctl start {unit}
+  ServiceMemoryHigh:
+    - text: See how much memory the service uses and what its limit is.
+      command: systemctl show {unit} -p MemoryCurrent -p MemoryMax
+    - text: If it keeps growing, restart it before it is killed, and report the leak to the developers.
+      command: sudo systemctl restart {unit}
+  HostCPUSaturated:
+    - text: See which processes use the CPU right now.
+      command: ps aux --sort=-%cpu | head -15
+    - text: If one process is not supposed to run, stop it. If the load is normal work, the server needs more CPU.
+  HostMemoryPressure:
+    - text: See which processes use the most memory.
+      command: ps aux --sort=-%mem | head -15
+    - text: Restart the service that grows, or add memory or swap.
+  DiskAlmostFull:
+    - text: See how full the filesystem is.
+      command: df -h {mount}
+    - text: Find what uses the space.
+      command: sudo du -xh {mount} --max-depth=2 | sort -h | tail -20
+    - text: Remove what is not needed (old logs, backups, caches), then check again.
+  DiskFillingFast:
+    - text: Find which files are growing right now.
+      command: sudo find {mount} -xdev -type f -mmin -30 -size +50M -exec ls -lh {} +
+    - text: Stop or limit whatever writes them before the disk is full.
+  InodesAlmostExhausted:
+    - text: See which filesystem has run out of inodes.
+      command: df -i {mount}
+    - text: Find and delete the many small files that are no longer needed.
+  SentinelDown:
+    - text: Check the sentinel on the server.
+      command: systemctl status noc-sentinel
+    - text: Read its log and start it again.
+      command: journalctl -u noc-sentinel -n 50 --no-pager
+  TargetDown:
+    - text: Check that the server is reachable and the exporter runs.
+      command: systemctl status node_exporter
+
+fallback:
+  - text: Open the Evidence tab and read what the agents saw. The findings are quotes from the server, not guesses.
+  - text: Check the service log and the system log around the time the incident opened.
+    command: journalctl --since "30 minutes ago" -p warning --no-pager | tail -50
+  - text: Fix what you find, then close the incident with a short note and the real cause. The NOC learns from that note.
+
+after_fix:
+  memory_leak:
+    - text: The restart freed the memory, but the leak is in the program. Report it to the developers or it will come back.
+  oom_kill_loop:
+    - text: Give the service a memory limit that fits its real use, or find what made it use more.
+  disk_full_logs:
+    - text: Check that log rotation is configured so the disk does not fill again.
+      command: ls /etc/logrotate.d/
+  disk_full_data:
+    - text: Plan more disk space or a clean-up job for this data.
+  service_crashed:
+    - text: If it stopped on its own, read its log to learn why before it happens again.
+      command: journalctl -u {unit} -n 100 --no-pager

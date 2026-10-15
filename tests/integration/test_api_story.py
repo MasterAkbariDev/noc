@@ -203,10 +203,15 @@ async def test_escalated_story_explains_the_blocked_action(
     assert considered[0]["verdict_label"] == "Blocked"
     assert considered[0]["reasons"] == ["automatic actions are switched off on this server"]
     assert considered[0]["technical"] == ["execution_disabled"]
-    assert body["what_you_should_do"] == {
-        "text": "Fix it by hand, then close the incident with a note.",
-        "steps": ["Start the service and check why it stopped."],
+    advice = body["what_you_should_do"]
+    assert advice["text"] == "Fix it by hand, then close the incident with a note."
+    assert advice["steps"][0] == {
+        "text": "See whether the service is stopped, failed or restarting.",
+        "command": "systemctl status <service>",
     }
+    assert {"text": "Start it again.", "command": "sudo systemctl start <service>"} in advice[
+        "steps"
+    ]
     assert body["what_we_found"]["root_cause_label"] == "The service crashed and did not restart"
     assert body["what_we_found"]["text"] == (
         "Root cause: The service crashed and did not restart (90% confidence)."
@@ -240,10 +245,9 @@ async def test_resolved_story_shows_every_step_done(
     assert body["steps"][-1]["at"] is not None
     assert body["what_we_did"]["text"] == "Ran restart service."
     assert body["what_we_did"]["considered"][0]["verdict"] == "ran"
-    assert body["what_you_should_do"] == {
-        "text": "Nothing. This incident is finished.",
-        "steps": [],
-    }
+    advice = body["what_you_should_do"]
+    assert advice["text"] == "Nothing. This incident is finished."
+    assert advice["steps"][0]["text"].startswith("If it stopped on its own")
 
 
 async def test_investigating_story_has_one_current_step_and_pending_rest(
@@ -312,10 +316,9 @@ async def test_investigation_that_escalated_without_a_diagnosis_marks_the_step_f
     assert step_states(body)["outcome"] == "current"
     assert body["what_we_found"]["text"] == "Not diagnosed yet."
     assert body["what_we_did"]["text"] == "Nothing — the investigation stopped before it finished."
-    assert body["what_you_should_do"] == {
-        "text": "Investigate by hand, then close the incident with a note.",
-        "steps": [],
-    }
+    advice = body["what_you_should_do"]
+    assert advice["text"] == "Investigate by hand, then close the incident with a note."
+    assert advice["steps"][0]["command"] == "systemctl status <service>"
 
 
 async def test_story_cites_the_alert_and_ranks_supporting_findings_first(
@@ -347,7 +350,7 @@ async def test_story_cites_the_alert_and_ranks_supporting_findings_first(
         "text": "supporting finding",
         "agent": "metrics",
         "label": "F2",
-        "refs": ["T1"],
+        "evidence": [{"source": "a check on the server", "quote": "active_state"}],
         "grounded": True,
     }
 
@@ -377,8 +380,11 @@ async def test_story_waiting_for_approval_asks_for_a_decision(
     assert body["what_you_should_do"] == {
         "text": "Review the planned action below and approve or reject it.",
         "steps": [
-            "Check the gates and the impact score.",
-            "Approve to let the NOC run it, or reject to handle it yourself.",
+            {"text": "Check the gates and the impact score.", "command": None},
+            {
+                "text": "Approve to let the NOC run it, or reject to handle it yourself.",
+                "command": None,
+            },
         ],
     }
     assert body["what_we_did"]["considered"][0]["verdict"] == "approval"

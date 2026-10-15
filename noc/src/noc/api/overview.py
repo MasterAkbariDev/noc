@@ -148,7 +148,7 @@ def attention_since_column() -> ColumnElement[datetime]:
 def attention_advice(status: IncidentStatus, advice: StoryAdvice) -> str:
     if status is IncidentStatus.AWAITING_APPROVAL or not advice.steps:
         return advice.text
-    return advice.steps[0]
+    return advice.steps[0].text
 
 
 def attention_item(

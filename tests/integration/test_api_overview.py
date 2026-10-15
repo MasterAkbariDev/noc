@@ -37,7 +37,10 @@ ALPHA_TITLE = "CPU busy on alpha-1"
 ESCALATED_HEADLINE = (
     "Disk almost full on zeta-2 needs you: automatic actions are switched off on this server."
 )
-ESCALATED_ADVICE = "Fix it by hand, then close the incident with a note."
+ESCALATED_ADVICE = (
+    "Open the Evidence tab and read what the agents saw. The findings are quotes from the "
+    "server, not guesses."
+)
 SCRAPED_AT = "2026-10-13T09:00:00+00:00"
 Reader = Callable[[httpx.Request], httpx.Response]
 

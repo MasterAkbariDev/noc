@@ -1,19 +1,21 @@
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import get_session, require_role
+from noc.api.incidents import tool_sources
 from noc.api.schemas import (
     IncidentStory,
     StepState,
     StoryAction,
     StoryAdvice,
     StoryDid,
+    StoryEvidence,
     StoryFound,
     StoryPoint,
     StoryStep,
@@ -21,9 +23,26 @@ from noc.api.schemas import (
 )
 from noc.auth.roles import Role
 from noc.db.base import utc_now
-from noc.db.models import ActionRow, AlertEvent, DiagnosisRow, FindingRow, Incident, Target
+from noc.db.models import (
+    ActionRow,
+    AlertEvent,
+    DiagnosisRow,
+    FindingRow,
+    Incident,
+    ManagedResourceRow,
+    Target,
+)
 from noc.domain.incident_status import ACTIVE_STATUSES, CLOSED_STATUSES, IncidentStatus
 from noc.reporting import plain_language as words
+from noc.reporting.event_text import resource_name
+from noc.reporting.operator_guide import (
+    GuideContext,
+    GuideStep,
+    load_guide,
+    steps_after_fix,
+    steps_to_fix,
+)
+from noc.reporting.tool_text import evidence_with_sources
 from noc.store.decisions import EXECUTED_STATUSES, IN_FLIGHT_STATUSES
 from noc.store.remediation import (
     AUTHORIZED,
@@ -99,7 +118,38 @@ async def get_incident_story(incident_id: uuid.UUID, session: Session) -> Incide
     actions = await session.scalars(
         select(ActionRow).where(ActionRow.incident_id == incident_id).order_by(ActionRow.created_at)
     )
-    return build_story(incident, target.name, alert, list(findings), diagnosis, list(actions))
+    context = await guide_context(session, incident, alert, diagnosis)
+    sources = await tool_sources(session, incident_id)
+    return build_story(
+        incident, target.name, alert, list(findings), diagnosis, list(actions), context, sources
+    )
+
+
+def affected_resource_id(alert: AlertEvent | None, diagnosis: DiagnosisRow | None) -> str | None:
+    if diagnosis is not None and diagnosis.hypotheses:
+        primary = max(diagnosis.hypotheses, key=lambda item: float(item.get("confidence", 0)))
+        if primary.get("affected_resource_id"):
+            return str(primary["affected_resource_id"])
+    if alert is not None:
+        return alert.labels.get("resource")
+    return None
+
+
+async def guide_context(
+    session: AsyncSession,
+    incident: Incident,
+    alert: AlertEvent | None,
+    diagnosis: DiagnosisRow | None,
+) -> GuideContext:
+    resource_id = affected_resource_id(alert, diagnosis)
+    resource = (
+        await session.get(ManagedResourceRow, (incident.target_id, resource_id))
+        if resource_id
+        else None
+    )
+    unit = resource.name if resource is not None and resource.kind == "systemd_unit" else None
+    mount = alert.labels.get("mountpoint") if alert is not None else None
+    return GuideContext(unit=unit, mount=mount)
 
 
 def build_story(
@@ -109,6 +159,8 @@ def build_story(
     findings: list[FindingRow],
     diagnosis: DiagnosisRow | None,
     actions: list[ActionRow],
+    context: GuideContext | None = None,
+    sources: Mapping[str, str] | None = None,
 ) -> IncidentStory:
     status = IncidentStatus(incident.status)
     status_label = words.text_for(words.STATUS_LABELS, incident.status)
@@ -125,9 +177,16 @@ def build_story(
         headline=build_headline(incident, status, status_label, pending),
         steps=build_steps(incident, status, actions),
         what_happened=build_what_happened(incident, alert),
-        what_we_found=build_found(incident, diagnosis, findings),
+        what_we_found=build_found(incident, diagnosis, findings, sources or {}),
         what_we_did=build_did(incident, actions, now),
-        what_you_should_do=build_advice(incident, status, code, pending),
+        what_you_should_do=build_advice(
+            incident,
+            status,
+            code,
+            pending,
+            alert.alertname if alert is not None else None,
+            context or GuideContext(),
+        ),
     )
 
 
@@ -275,7 +334,10 @@ def root_cause_code(incident: Incident, diagnosis: DiagnosisRow | None) -> str |
 
 
 def build_found(
-    incident: Incident, diagnosis: DiagnosisRow | None, findings: list[FindingRow]
+    incident: Incident,
+    diagnosis: DiagnosisRow | None,
+    findings: list[FindingRow],
+    sources: Mapping[str, str],
 ) -> StoryFound:
     code = root_cause_code(incident, diagnosis)
     confidence = diagnosis.confidence if diagnosis is not None else incident.confidence
@@ -286,7 +348,7 @@ def build_found(
         root_cause_code=code,
         root_cause_label=words.root_cause_pair(code)[0] if code is not None else None,
         confidence=confidence,
-        points=[story_point(finding) for finding in ranked[:MAX_POINTS]],
+        points=[story_point(finding, sources) for finding in ranked[:MAX_POINTS]],
     )
 
 
@@ -322,18 +384,17 @@ def found_text(code: str | None, confidence: float | None) -> str:
     return f"Root cause: {label} ({round(confidence * 100)}% confidence)."
 
 
-def story_point(finding: FindingRow) -> StoryPoint:
+def story_point(finding: FindingRow, sources: Mapping[str, str]) -> StoryPoint:
     return StoryPoint(
         text=finding.summary,
         agent=finding.agent,
         label=finding.label,
-        refs=evidence_refs(finding.evidence),
+        evidence=[
+            StoryEvidence(source=item["source"], quote=str(item.get("excerpt", "")))
+            for item in evidence_with_sources(finding.evidence, sources)
+        ],
         grounded=finding.grounded,
     )
-
-
-def evidence_refs(evidence: list[dict[str, Any]]) -> list[str]:
-    return [str(item["tool_call_ref"]) for item in evidence if "tool_call_ref" in item]
 
 
 def build_did(incident: Incident, actions: list[ActionRow], now: datetime) -> StoryDid:
@@ -367,7 +428,7 @@ def story_action(action: ActionRow, now: datetime) -> StoryAction:
     verdict = action_verdict(action, now)
     return StoryAction(
         action=action.action_type,
-        action_label=words.humanize(action.action_type),
+        action_label=f"{words.humanize(action.action_type)} on {resource_name(action.resource_id)}",
         verdict=verdict,
         verdict_label=words.text_for(words.VERDICT_LABELS, verdict),
         reasons=[words.text_for(words.GATE_TEXT, gate) for gate in action.gate_failures],
@@ -387,22 +448,27 @@ def action_verdict(action: ActionRow, now: datetime) -> str:
 
 
 def build_advice(
-    incident: Incident, status: IncidentStatus, code: str | None, pending: ActionRow | None
+    incident: Incident,
+    status: IncidentStatus,
+    code: str | None,
+    pending: ActionRow | None,
+    alertname: str | None = None,
+    context: GuideContext | None = None,
 ) -> StoryAdvice:
+    guide = load_guide()
+    where = context or GuideContext()
     if status is IncidentStatus.ESCALATED:
         _, what_to_do = words.escalation_pair(incident.escalation_reason)
-        return StoryAdvice(text=what_to_do, steps=root_cause_steps(code))
+        return StoryAdvice(text=what_to_do, steps=steps_to_fix(guide, code, alertname, where))
     if status is IncidentStatus.AWAITING_APPROVAL and pending is None:
-        return StoryAdvice(text=words.APPROVAL_EXPIRED_TEXT, steps=[])
+        return StoryAdvice(
+            text=words.APPROVAL_EXPIRED_TEXT, steps=steps_to_fix(guide, code, alertname, where)
+        )
     if status is IncidentStatus.AWAITING_APPROVAL:
-        return StoryAdvice(text=words.APPROVAL_WAIT_TEXT, steps=list(words.APPROVAL_WAIT_STEPS))
+        return StoryAdvice(
+            text=words.APPROVAL_WAIT_TEXT,
+            steps=[GuideStep(text=step) for step in words.APPROVAL_WAIT_STEPS],
+        )
     if status in ACTIVE_STATUSES:
         return StoryAdvice(text=words.WORKING_TEXT, steps=[])
-    return StoryAdvice(text=words.FINISHED_TEXT, steps=[])
-
-
-def root_cause_steps(code: str | None) -> list[str]:
-    if code is None:
-        return []
-    _, advice = words.root_cause_pair(code)
-    return [advice]
+    return StoryAdvice(text=words.FINISHED_TEXT, steps=steps_after_fix(guide, code, where))

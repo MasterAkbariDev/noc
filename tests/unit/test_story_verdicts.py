@@ -8,6 +8,7 @@ from noc.api.story import VERDICT_BY_STATUS, action_verdict, build_advice, build
 from noc.db.models import ActionRow, Incident
 from noc.domain.incident_status import IncidentStatus
 from noc.reporting import plain_language as words
+from noc.reporting.operator_guide import GuideStep, load_guide
 from noc.store import remediation
 from noc.store.decisions import EXECUTED_STATUSES, IN_FLIGHT_STATUSES
 
@@ -139,8 +140,8 @@ def test_the_advice_for_an_action_waiting_for_approval_lists_the_steps() -> None
     assert advice == StoryAdvice(
         text="Review the planned action below and approve or reject it.",
         steps=[
-            "Check the gates and the impact score.",
-            "Approve to let the NOC run it, or reject to handle it yourself.",
+            GuideStep(text="Check the gates and the impact score."),
+            GuideStep(text="Approve to let the NOC run it, or reject to handle it yourself."),
         ],
     )
 
@@ -149,5 +150,5 @@ def test_the_advice_without_an_open_request_says_to_decide_by_hand() -> None:
     advice = build_advice(
         incident("AWAITING_APPROVAL"), IncidentStatus.AWAITING_APPROVAL, None, None
     )
-    assert advice.steps == []
+    assert advice.steps == load_guide().fallback
     assert advice.text == words.APPROVAL_EXPIRED_TEXT

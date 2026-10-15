@@ -30,9 +30,13 @@ from noc.db.models import (
     IncidentEvent,
     Report,
     Target,
+    ToolCall,
 )
 from noc.domain.incident_status import InvalidTransition
 from noc.policy.models import Environment
+from noc.reporting import plain_language as words
+from noc.reporting.event_text import event_text
+from noc.reporting.tool_text import evidence_with_sources, tool_text
 from noc.store.incidents import IncidentResolution, close_incident
 from noc.store.remediation import ApprovalConflict, record_approval
 
@@ -136,6 +140,7 @@ async def get_incident(incident_id: uuid.UUID, session: Session) -> IncidentDeta
         .order_by(DiagnosisRow.created_at.desc())
         .limit(1)
     )
+    sources = await tool_sources(session, incident_id)
     summary = summarize(incident, target.name)
     return IncidentDetail(
         **summary.model_dump(),
@@ -149,9 +154,9 @@ async def get_incident(incident_id: uuid.UUID, session: Session) -> IncidentDeta
         resolved_at=incident.resolved_at,
         closed_at=incident.closed_at,
         trace_id=incident.trace_id,
-        events=[EventView.model_validate(event) for event in events],
-        findings=[FindingView.model_validate(finding) for finding in findings],
-        actions=[ActionView.model_validate(action) for action in actions],
+        events=[event_view(event) for event in events],
+        findings=[finding_view(finding, sources) for finding in findings],
+        actions=[action_view(action) for action in actions],
         report_markdown=report,
         diagnosis=diagnosis_view(diagnosis),
     )
@@ -226,4 +231,32 @@ async def decide_on_action(
     await session.commit()
     return ApprovalView(
         approval_id=recorded.approval_id, incident_status=recorded.incident_status.value
+    )
+
+
+def event_view(event: IncidentEvent) -> EventView:
+    view = EventView.model_validate(event)
+    return view.model_copy(update={"text": event_text(event.type, event.actor, event.payload)})
+
+
+async def tool_sources(session: AsyncSession, incident_id: uuid.UUID) -> dict[str, str]:
+    rows = await session.execute(
+        select(ToolCall.ref, ToolCall.tool, ToolCall.args).where(
+            ToolCall.incident_id == incident_id
+        )
+    )
+    return {ref: tool_text(tool, args) for ref, tool, args in rows.all()}
+
+
+def finding_view(finding: FindingRow, sources: dict[str, str]) -> FindingView:
+    view = FindingView.model_validate(finding)
+    return view.model_copy(update={"evidence": evidence_with_sources(finding.evidence, sources)})
+
+
+def action_view(action: ActionRow) -> ActionView:
+    view = ActionView.model_validate(action)
+    return view.model_copy(
+        update={
+            "gate_text": [words.text_for(words.GATE_TEXT, gate) for gate in action.gate_failures]
+        }
     )
