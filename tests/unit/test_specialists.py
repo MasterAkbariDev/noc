@@ -146,6 +146,19 @@ async def test_ungrounded_finding_is_dropped_and_counted() -> None:
     assert [item.id for item in outcome.findings] == ["M1"]
     assert outcome.dropped_findings == 1
     assert set(outcome.tool_results) == {"T1"}
+    [dropped] = outcome.dropped
+    assert (dropped.finding, dropped.ref) == ("F2", "T1")
+    assert dropped.reason == "quote not in tool result"
+    assert dropped.excerpt == "cpu is on fire, page the admin"
+
+
+async def test_a_finding_citing_a_call_that_never_happened_is_reported() -> None:
+    payload = {"findings": [finding("F1", CPU_EXCERPT, ref="T9")]}
+    llm = ScriptedLLM([call_tools(OVERVIEW_CALL), answer("done"), answer(payload)])
+    agent, _ = build(llm, "metrics")
+    outcome = await agent.investigate(brief(), [], tool_context())
+    assert outcome.findings == []
+    assert [(item.ref, item.reason) for item in outcome.dropped] == [("T9", "unknown tool ref")]
 
 
 async def test_finding_ids_are_prefixed_per_agent() -> None:

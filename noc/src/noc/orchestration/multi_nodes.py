@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 
 import structlog
 from langgraph.types import Send
@@ -195,7 +196,11 @@ class MultiNodes(IncidentNodes):
                 incident_id,
                 FINISHED_EVENT,
                 name,
-                {"findings": len(outcome.findings), "dropped_findings": outcome.dropped_findings},
+                {
+                    "findings": len(outcome.findings),
+                    "dropped_findings": outcome.dropped_findings,
+                    "dropped": [asdict(item) for item in outcome.dropped],
+                },
             )
         return {}
 
