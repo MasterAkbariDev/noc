@@ -36,32 +36,25 @@ Where the files go:
 
 ## Rotation
 
-Certificates expire after 90 days. Re-issue 21 days before expiry at the latest.
+Certificates expire after 90 days. Renew them at least 21 days before expiry. `noc doctor` warns when the sentinel certificate gets close.
 
-1. Check the expiry date:
+Run this on the machine that holds the intermediate key, never on the NOC host:
 
-   ```bash
-   openssl x509 -in deploy/pki/out/demo-1.pem -noout -enddate
-   openssl x509 -in deploy/pki/out/demo-1.pem -noout -checkend $((21 * 86400)) \
-     || echo "renew now: less than 21 days left"
-   ```
+```bash
+deploy/pki/renew.sh staging-104 127.0.0.1 localhost
+```
 
-2. Move the old pair out of the way (the scripts refuse to overwrite it):
+It re-issues the server certificate (with the SANs you give, the same as when it was first issued), `noc-worker` and `noc-prometheus`, but only those that expire within `RENEW_DAYS` (default 21). `FORCE=1` renews all three. Old pairs are moved to `deploy/pki/out/retired/<time>/`, never deleted. Nothing to renew prints `nothing to renew` and changes nothing, so it is safe to run every week.
 
-   ```bash
-   mkdir -p deploy/pki/out/retired
-   mv deploy/pki/out/demo-1.pem deploy/pki/out/demo-1-key.pem deploy/pki/out/retired/
-   ```
+For the single-host layout (NOC, Prometheus and the sentinel on one server, as on staging), install the result with:
 
-3. Re-issue with the same arguments as before. This generates a new key and a new certificate:
+```bash
+deploy/pki/install-single-host.sh staging-104 -- -i ~/.ssh/key root@203.0.113.7
+```
 
-   ```bash
-   deploy/pki/issue-server.sh demo-1 10.0.0.5 demo-1.lab.example
-   ```
+Everything after `--` is passed to `ssh`. The script copies the files into a private temporary folder on the server, backs up `/etc/noc-sentinel/tls` and `/opt/noc/pki` to `/root/noc-pki-backup-<time>`, installs each file with the owner and mode its reader needs (the sentinel key readable by the `noc-sentinel` group, the worker key owned by uid 10001, the Prometheus key owned by `nobody`), restarts the sentinel, the NOC and Prometheus, and ends with `noc doctor`, which must show the sentinel answering a signed request.
 
-4. Copy the new files to the target or client, then restart the service that reads them (`sudo systemctl restart noc-sentinel`, or `docker compose restart prometheus`). Keep the old files in `retired/` until the new certificate is confirmed working.
-
-Renew certificates at least 21 days before they expire. The check above is the manual form. Automated alerting is a separate task.
+To renew by hand instead: check the date with `openssl x509 -in deploy/pki/out/demo-1.pem -noout -enddate`, move the old pair to `retired/` (the issue scripts refuse to overwrite), re-issue with the same arguments, copy the files and restart the service that reads them.
 
 ## Checks
 

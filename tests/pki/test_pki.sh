@@ -102,6 +102,20 @@ check_fails "issue-client rejects a path-like name" quietly "$pki/issue-client.s
 
 check "ca.pem contains intermediate and root" certificate_count_is "$out/ca.pem" 2
 
+quietly "$pki/issue-client.sh" noc-prometheus
+cp "$out/demo-1.pem" "$work/demo-1.fresh"
+check "renew keeps certificates that are far from expiry" contains "$("$pki/renew.sh" demo-1 10.0.0.5)" "nothing to renew"
+check "renew left the fresh server certificate untouched" same_bytes "$out/demo-1.pem" "$work/demo-1.fresh"
+check "renew re-issues all three when they expire within RENEW_DAYS" contains "$(RENEW_DAYS=100 "$pki/renew.sh" demo-1 10.0.0.5)" "renewed 3"
+check_fails "renewed server certificate is a new one" same_bytes "$out/demo-1.pem" "$work/demo-1.fresh"
+check "renewed server certificate verifies against ca.pem" verifies "$out/demo-1.pem"
+check "renewed server certificate keeps its SAN" contains "$(cert_extension "$out/demo-1.pem" subjectAltName)" "IP Address:10.0.0.5"
+check "renewed client key is mode 600" mode_is_600 "$out/noc-worker-key.pem"
+retired_dirs=("$out"/retired/*/)
+check "renew keeps the old pair in retired/" same_bytes "${retired_dirs[0]}demo-1.pem" "$work/demo-1.fresh"
+check_fails "renew rejects a RENEW_DAYS that is not a number" quietly env RENEW_DAYS=abc "$pki/renew.sh" demo-1 10.0.0.5
+check_fails "install-single-host needs the -- before the ssh arguments" quietly "$pki/install-single-host.sh" demo-1 root@example
+
 other="$work/other"
 PKI_OUT="$other" quietly "$pki/init-ca.sh"
 PKI_OUT="$other" quietly "$pki/issue-client.sh" intruder
