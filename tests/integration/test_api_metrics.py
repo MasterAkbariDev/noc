@@ -130,6 +130,9 @@ async def history(sessions: SessionFactory) -> datetime:
         old = incident(
             target.id, today - timedelta(days=40), resolved_at=today - timedelta(days=40)
         )
+        handed_over.closed_at = today
+        handed_over.resolution_note = "restarted by hand"
+        handed_over.corrected_root_cause_code = "service_crashed"
         session.add_all([fixed, handed_over, old])
         await session.flush()
         session.add_all(
@@ -167,6 +170,8 @@ async def test_totals_cover_only_the_chosen_window(client: httpx.AsyncClient) ->
     assert totals["tokens"] == 360
     assert totals["tool_calls"] == 2
     assert totals["actions_run"] == 1
+    assert totals["reviewed"] == 1
+    assert totals["confirmed"] == 0
 
 
 async def test_days_are_bucketed_with_empty_days_filled(

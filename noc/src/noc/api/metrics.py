@@ -63,6 +63,8 @@ class Totals(BaseModel):
     tokens: int
     tool_calls: int
     actions_run: int
+    reviewed: int
+    confirmed: int
 
 
 class MetricsView(BaseModel):
@@ -91,6 +93,15 @@ def top_with_other(counts: dict[str, int]) -> list[CategoryCount]:
     if tail:
         head.append(CategoryCount(label=OTHER, count=tail))
     return head
+
+
+def was_reviewed(incident: Incident) -> bool:
+    return incident.closed_at is not None and bool(incident.resolution_note)
+
+
+def was_confirmed(incident: Incident) -> bool:
+    corrected = incident.corrected_root_cause_code
+    return corrected is None or corrected == incident.root_cause_code
 
 
 def minutes_between(start: datetime | None, end: datetime | None) -> float | None:
@@ -185,6 +196,7 @@ async def get_metrics(
     )
     action_counts = {status: count for status, count in actions.all()}
     finished = len(resolved) + len(escalated)
+    reviewed = [item for item in incidents if was_reviewed(item)]
 
     return MetricsView(
         days=days,
@@ -202,6 +214,8 @@ async def get_metrics(
             tokens=sum(used for _, _, used in llm.values()),
             tool_calls=sum(point.tool_calls for point in series.values()),
             actions_run=sum(action_counts.get(status, 0) for status in EXECUTED_ACTIONS),
+            reviewed=len(reviewed),
+            confirmed=sum(1 for item in reviewed if was_confirmed(item)),
         ),
         per_day=list(series.values()),
         root_causes=top_with_other(

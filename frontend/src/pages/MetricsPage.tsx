@@ -75,13 +75,18 @@ function MetricsBody({ metrics }: { metrics: Metrics }) {
   const totals = metrics.totals;
   return (
     <>
-      <section aria-label="Key figures" className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Key figures" className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiTile label="Incidents" value={fullNumber(totals.incidents)} hint={`${totals.open} still open`} />
         <KpiTile
           label="Resolved by the NOC"
           value={percent(totals.auto_resolved_share)}
           hint={resolvedHint(metrics)}
           tone={totals.auto_resolved_share !== null && totals.auto_resolved_share >= 0.5 ? "ok" : "neutral"}
+        />
+        <KpiTile
+          label="Diagnosis confirmed by people"
+          value={totals.reviewed === 0 ? "–" : `${totals.confirmed} of ${totals.reviewed}`}
+          hint="Checked when someone closes an incident"
         />
         <KpiTile label="Median time to resolve" value={minutes(totals.median_minutes_to_resolve)} />
         <KpiTile label="Median time to diagnose" value={minutes(totals.median_minutes_to_diagnose)} />

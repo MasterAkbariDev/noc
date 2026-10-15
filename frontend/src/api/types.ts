@@ -536,6 +536,8 @@ export type MetricsTotals = {
   tokens: number;
   tool_calls: number;
   actions_run: number;
+  reviewed: number;
+  confirmed: number;
 };
 
 export type Metrics = {

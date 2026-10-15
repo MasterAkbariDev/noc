@@ -28,6 +28,8 @@ const METRICS: Metrics = {
     tokens: 2_400_000,
     tool_calls: 88,
     actions_run: 5,
+    reviewed: 4,
+    confirmed: 3,
   },
   per_day: [
     { day: "2026-10-14", opened: 4, resolved: 3, escalated: 1, llm_calls: 500, tokens: 900_000, tool_calls: 30 },
@@ -75,6 +77,7 @@ describe("MetricsPage", () => {
     expect(within(figures).getByText("30 s")).toBeTruthy();
     expect(within(figures).getByText("1.5K")).toBeTruthy();
     expect(within(figures).getByText("2.4M tokens, 3 failed")).toBeTruthy();
+    expect(within(figures).getByText("3 of 4")).toBeTruthy();
   });
 
   it("draws the charts with plain labels and a variants table", async () => {
