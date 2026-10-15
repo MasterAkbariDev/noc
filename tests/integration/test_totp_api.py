@@ -218,15 +218,16 @@ async def test_disable_needs_password_and_a_fresh_code(
 ) -> None:
     await make_user(sessions, "alice")
     secret = await enrolled_secret(sessions, "alice")
-    await login(client, "alice", current_code(secret))
-    same_code = current_code(secret)
+    step = step_at(utc_now())
+    same_code = counter_code(secret, step)
+    await login(client, "alice", same_code)
     reused = await client.post(
         DISABLE_PATH,
         json={"current_password": PASSWORD, "code": same_code},
         headers=csrf(client),
     )
     assert reused.status_code == 401
-    next_code = current_code(secret, 1)
+    next_code = counter_code(secret, step + 1)
     disabled = await client.post(
         DISABLE_PATH,
         json={"current_password": PASSWORD, "code": next_code},
