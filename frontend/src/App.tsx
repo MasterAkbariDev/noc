@@ -19,6 +19,7 @@ const loadSettingsPage = () => import("./pages/SettingsPage").then((module) => (
 
 const PAGE_LOADERS = [loadIncidentDetailPage, loadSettingsPage];
 
+const FleetPage = lazy(() => import("./pages/FleetPage").then((module) => ({ default: module.FleetPage })));
 const IncidentDetailPage = lazy(loadIncidentDetailPage);
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
 const SettingsPage = lazy(loadSettingsPage);
@@ -62,6 +63,7 @@ export function App() {
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:id" element={<ServerPage />} />
           <Route path="/system" element={<SystemPage />} />
+          <Route path="/fleet" element={<FleetPage />} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/stats" element={<MetricsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

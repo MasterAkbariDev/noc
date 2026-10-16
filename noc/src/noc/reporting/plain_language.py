@@ -305,6 +305,13 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     "target_profile_set": "Service profile changed",
     "scenario_run_started": "Chaos scenario started",
     "scenario_run_finished": "Chaos scenario finished",
+    "fleet_host_added": "Server added to the fleet",
+    "fleet_host_offboarded": "Server removed from the fleet",
+    "ssh_key_generated": "SSH key generated",
+    "ssh_key_installed": "SSH key installed",
+    "ssh_key_rotation_started": "SSH key rotation started",
+    "ssh_key_rotated": "SSH key rotated",
+    "ssh_key_revoked": "SSH key revoked",
 }
 
 

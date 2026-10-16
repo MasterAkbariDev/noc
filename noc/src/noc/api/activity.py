@@ -19,7 +19,7 @@ router = APIRouter(
 Session = Annotated[AsyncSession, Depends(get_session)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 DEFAULT_LIMIT = 50
-USER_SUBJECT_PREFIX = "user:"
+SHOWN_WITHOUT_PREFIX = ("user:", "host:", "ssh-key:")
 SHORT_ID_LENGTH = 8
 
 SENTENCES: dict[str, str] = {
@@ -39,6 +39,13 @@ SENTENCES: dict[str, str] = {
     "target_profile_set": "{actor} changed the service profile of {subject}",
     "scenario_run_started": "{actor} started the chaos scenario {subject}",
     "scenario_run_finished": "The chaos scenario {subject} finished",
+    "fleet_host_added": "{actor} added {subject} to the fleet",
+    "fleet_host_offboarded": "{actor} removed {subject} from the fleet",
+    "ssh_key_generated": "{actor} generated the SSH key {subject}",
+    "ssh_key_installed": "{actor} confirmed an SSH key is installed on {subject}",
+    "ssh_key_rotation_started": "{actor} started rotating the SSH key {subject}",
+    "ssh_key_rotated": "{actor} finished rotating the SSH key {subject}",
+    "ssh_key_revoked": "{actor} revoked the SSH key {subject}",
 }
 
 
@@ -51,8 +58,9 @@ def is_uuid(value: str) -> bool:
 
 
 def shown_subject(subject: str) -> str:
-    if subject.startswith(USER_SUBJECT_PREFIX):
-        return subject.removeprefix(USER_SUBJECT_PREFIX)
+    for prefix in SHOWN_WITHOUT_PREFIX:
+        if subject.startswith(prefix):
+            return subject.removeprefix(prefix)
     if is_uuid(subject):
         return f"{subject[:SHORT_ID_LENGTH]}…"
     return subject

@@ -8,6 +8,8 @@ from noc.domain.variants import Variant
 from noc.policy.models import AutomationLevel, Environment, ServiceProfile
 from noc_shared.resources import Inventory
 
+SENTINEL_VERSION_LENGTH = 32
+
 
 async def add_target(
     session: AsyncSession,
@@ -63,6 +65,7 @@ async def apply_inventory(session: AsyncSession, target: Target, inventory: Inve
         row.allowed_actions = list(resource.allowed_actions)
         session.add(row)
     target.halted = inventory.halted
+    target.sentinel_version = inventory.sentinel_version[:SENTINEL_VERSION_LENGTH] or None
     target.last_inventory_at = utc_now()
     await session.flush()
     return len(inventory.resources)

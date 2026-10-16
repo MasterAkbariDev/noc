@@ -621,3 +621,132 @@ class ServerLive(BaseModel):
     uptime_seconds: float | None
     cpu_count: int | None
     services: list[ServiceLive]
+
+
+SshKeyPurposeName = Literal["bootstrap", "ops", "operator-shell"]
+EnvironmentName = Literal["lab", "prod"]
+SshKeyState = Literal["active", "rotate_soon", "rotating", "expired", "retired"]
+
+
+class TotpConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    totp: str | None = Field(default=None, max_length=MAX_TOTP_FIELD_LENGTH)
+
+
+class AddFleetHostRequest(TotpConfirmation):
+    name: str = Field(max_length=63)
+    address: str = Field(max_length=64)
+    ssh_port: int = 22
+    ssh_user: str = Field(default="ops", max_length=32)
+    environment: EnvironmentName
+
+
+class GenerateSshKeyRequest(TotpConfirmation):
+    label: str = Field(max_length=64)
+    purpose: SshKeyPurposeName
+    environment: EnvironmentName
+    from_pin: str | None = Field(default=None, max_length=255)
+    forced_command: str | None = Field(default=None, max_length=32)
+    with_passphrase: bool = False
+    rotation_days: int | None = None
+
+
+class MarkInstalledRequest(TotpConfirmation):
+    key_id: uuid.UUID
+    sudo_scope_ok: bool
+
+
+class PasteCommandRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key_id: uuid.UUID
+
+
+class CommandStepView(BaseModel):
+    title: str
+    where: str
+    command: str
+
+
+class CommandsView(BaseModel):
+    steps: list[CommandStepView]
+
+
+class SshKeyView(BaseModel):
+    id: uuid.UUID
+    label: str
+    purpose: SshKeyPurposeName
+    environment: EnvironmentName
+    public_key: str
+    fingerprint: str
+    from_pin: str | None
+    forced_command: str | None
+    has_passphrase: bool
+    rotation_days: int
+    created_at: datetime
+    created_by: str
+    expires_at: datetime
+    rotation_due_at: datetime
+    state: SshKeyState
+    replaces_id: uuid.UUID | None
+    retired_at: datetime | None
+    hosts: list[str]
+
+
+class RotationView(BaseModel):
+    new_key: SshKeyView
+    steps: list[CommandStepView]
+
+
+class InstalledKeyView(BaseModel):
+    key_id: uuid.UUID
+    label: str
+    purpose: SshKeyPurposeName
+    fingerprint: str
+    installed_at: datetime
+    expires_at: datetime
+    rotation_due_at: datetime
+    state: SshKeyState
+    sudo_scope_ok: bool
+
+
+class FleetRowView(BaseModel):
+    host_id: uuid.UUID | None
+    target_id: uuid.UUID | None
+    name: str
+    address: str
+    ssh_port: int | None
+    ssh_user: str | None
+    environment: EnvironmentName
+    reachable: bool | None
+    helper_up: bool | None
+    helper_version: str | None
+    keys: list[InstalledKeyView]
+    automation_level: str | None
+    automation_label: str | None
+    notes: list[str]
+
+
+class ForcedCommandView(BaseModel):
+    name: str
+    command: str
+
+
+class SshKeyRuleView(BaseModel):
+    purpose: SshKeyPurposeName
+    default_days: int
+    min_days: int
+    max_days: int
+    needs_pin: bool
+    allows_forced_command: bool
+    has_paste_command: bool
+
+
+class FleetView(BaseModel):
+    secrets_persistent: bool
+    metrics_available: bool
+    hosts: list[FleetRowView]
+    keys: list[SshKeyView]
+    rules: list[SshKeyRuleView]
+    forced_commands: list[ForcedCommandView]

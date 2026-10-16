@@ -13,10 +13,13 @@ from noc.db.models import (
     AgentRun,
     DiagnosisRow,
     FindingRow,
+    FleetHost,
     Incident,
     IncidentEvent,
     LlmCall,
     Report,
+    SshKey,
+    SshKeyInstall,
     Target,
     ToolCall,
     User,
@@ -202,3 +205,25 @@ async def test_with_users_creates_three_roles_and_a_rerun_resets_the_password(
     admin = users["e2e-admin"]
     assert verify_password(admin.password_hash, SECOND_PASSWORD)
     assert not verify_password(admin.password_hash, FIRST_PASSWORD)
+
+
+async def test_fleet_seed_adds_hosts_and_keys_once(
+    sessions: SessionFactory, tmp_path: Path
+) -> None:
+    seed = load_seed_script()
+    await seed.seed(sessions)
+    store = seed.SecretStore(tmp_path / "secrets")
+
+    assert await seed.seed_fleet(sessions, store) is True
+    assert await seed.seed_fleet(sessions, store) is False
+
+    async with sessions() as session:
+        hosts = set(await session.scalars(select(FleetHost.name)))
+        keys = list(await session.scalars(select(SshKey)))
+        installs = int(await session.scalar(select(func.count()).select_from(SshKeyInstall)) or 0)
+    assert hosts == {"demo-1", "web-5"}
+    assert len(keys) == 5
+    assert {key.environment for key in keys} == {"lab", "prod"}
+    assert sum(key.replaces_id is not None for key in keys) == 1
+    assert installs == 3
+    assert all(store.read(f"ssh-key-{key.id}") is not None for key in keys)

@@ -41,6 +41,7 @@ class Target(CreatedAt, Base):
     halted: Mapped[bool] = mapped_column(default=False)
     last_inventory_at: Mapped[datetime | None]
     variant_override: Mapped[str | None] = mapped_column(String(16))
+    sentinel_version: Mapped[str | None] = mapped_column(String(32))
 
     resources: Mapped[list["ManagedResourceRow"]] = relationship(
         back_populates="target", cascade="all, delete-orphan"
@@ -369,6 +370,52 @@ class LlmKey(CreatedAt, Base):
     revoked_at: Mapped[datetime | None]
     revoked_by: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class FleetHost(CreatedAt, Base):
+    __tablename__ = "fleet_hosts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    address: Mapped[str] = mapped_column(String(255))
+    ssh_port: Mapped[int] = mapped_column(Integer, default=22)
+    ssh_user: Mapped[str] = mapped_column(String(32))
+    environment: Mapped[str] = mapped_column(String(8))
+    created_by: Mapped[str] = mapped_column(String(64))
+
+
+class SshKey(CreatedAt, Base):
+    __tablename__ = "ssh_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    label: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(16))
+    environment: Mapped[str] = mapped_column(String(8))
+    public_key: Mapped[str] = mapped_column(Text)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True)
+    from_pin: Mapped[str | None] = mapped_column(String(255))
+    forced_command: Mapped[str | None] = mapped_column(String(32))
+    has_passphrase: Mapped[bool] = mapped_column(default=False)
+    rotation_days: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime]
+    created_by: Mapped[str] = mapped_column(String(64))
+    replaces_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ssh_keys.id"))
+    retired_at: Mapped[datetime | None]
+    retired_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class SshKeyInstall(Base):
+    __tablename__ = "ssh_key_installs"
+
+    key_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ssh_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("fleet_hosts.id", ondelete="CASCADE"), primary_key=True
+    )
+    sudo_scope_ok: Mapped[bool] = mapped_column(default=False)
+    marked_at: Mapped[datetime] = mapped_column(default=utc_now)
+    marked_by: Mapped[str] = mapped_column(String(64))
 
 
 class NocSetting(Base):

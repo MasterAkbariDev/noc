@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -23,6 +24,7 @@ from noc.db.models import (
     ActionRow,
     AgentRun,
     DiagnosisRow,
+    FleetHost,
     Incident,
     LlmCall,
     Report,
@@ -31,9 +33,12 @@ from noc.db.models import (
 )
 from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
+from noc.fleet.keys import KeyPurpose
+from noc.fleet.store import NewHost, NewKey, add_host, generate_key, mark_installed, start_rotation
 from noc.policy.loader import load_policy
 from noc.policy.models import AutomationLevel, Environment, Gate
 from noc.reporting.builder import load_report_data, render_report
+from noc.secret_store import SecretStore
 from noc.store.decisions import decide_actions
 from noc.store.incidents import add_event, transition
 from noc.store.investigations import add_findings, persist_diagnosis
@@ -53,6 +58,11 @@ E2E_USERS: tuple[tuple[str, Role], ...] = (
     ("e2e-viewer", Role.VIEWER),
 )
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1"})
+DEMO_NOC_IP = "198.51.100.4"
+FLEET_HOSTS: tuple[NewHost, ...] = (
+    NewHost("demo-1", "10.0.0.2", 22, "ops", Environment.LAB),
+    NewHost("web-5", "203.0.113.20", 2222, "ops", Environment.LAB),
+)
 KEY_ID = "noc-demo-key"
 DEMO_SHOP = "svc:demo-shop"
 DEMO_DB = "ctr:demo-db"
@@ -823,6 +833,41 @@ async def seed(sessions: SessionFactory) -> int:
     return inserted
 
 
+def demo_key(label: str, purpose: KeyPurpose, environment: Environment, days: int | None) -> NewKey:
+    pin = None if purpose is KeyPurpose.BOOTSTRAP else DEMO_NOC_IP
+    return NewKey(label, purpose, environment, pin, None, True, days)
+
+
+async def seed_fleet(sessions: SessionFactory, store: SecretStore) -> bool:
+    async with transaction(sessions) as session:
+        if await session.scalar(select(FleetHost.id).limit(1)) is not None:
+            return False
+        hosts = [await add_host(session, host, SEED_ACTOR) for host in FLEET_HOSTS]
+        lab_ops = await generate_key(
+            session, store, demo_key("lab ops", KeyPurpose.OPS, Environment.LAB, None), SEED_ACTOR
+        )
+        bootstrap = await generate_key(
+            session,
+            store,
+            demo_key("web-5 bootstrap", KeyPurpose.BOOTSTRAP, Environment.LAB, 1),
+            SEED_ACTOR,
+        )
+        short_ops = await generate_key(
+            session,
+            store,
+            demo_key("lab ops short", KeyPurpose.OPS, Environment.LAB, 7),
+            SEED_ACTOR,
+        )
+        await generate_key(
+            session, store, demo_key("prod ops", KeyPurpose.OPS, Environment.PROD, None), SEED_ACTOR
+        )
+        await mark_installed(session, hosts[0].id, lab_ops.id, True, SEED_ACTOR)
+        await mark_installed(session, hosts[0].id, short_ops.id, True, SEED_ACTOR)
+        await mark_installed(session, hosts[1].id, bootstrap.id, False, SEED_ACTOR)
+        await start_rotation(session, store, short_ops.id, SEED_ACTOR)
+    return True
+
+
 async def ensure_user(session: AsyncSession, username: str, role: Role, password: str) -> None:
     if await find_user(session, username) is None:
         await create_user(session, username, password, role, SEED_ACTOR)
@@ -847,13 +892,15 @@ def refuses_remote(url: str, force: bool) -> bool:
     return not force and make_url(url).host not in LOCAL_HOSTS
 
 
-async def run(url: str, password: str | None) -> int:
+async def run(url: str, password: str | None, fleet_secrets: Path | None = None) -> int:
     engine = create_engine(url)
     try:
         sessions = create_session_factory(engine)
         inserted = await seed(sessions)
         if password is not None:
             await seed_users(sessions, password)
+        if fleet_secrets is not None:
+            await seed_fleet(sessions, SecretStore(fleet_secrets))
         return inserted
     finally:
         await engine.dispose()
@@ -868,6 +915,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--with-users",
         action="store_true",
         help=f"create or reset the e2e users; the password comes from {E2E_CREDENTIAL_ENV}",
+    )
+    parser.add_argument(
+        "--fleet-secrets-dir",
+        type=Path,
+        help="also seed fleet servers and SSH keys; their private keys are written to this folder",
     )
     args = parser.parse_args(argv)
     password: str | None = None
@@ -890,7 +942,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    inserted = asyncio.run(run(url, password))
+    inserted = asyncio.run(run(url, password, args.fleet_secrets_dir))
     print(f"panel demo seeded: {inserted} new incident(s)")
     if args.with_users:
         print("e2e users ready: " + ", ".join(username for username, _ in E2E_USERS))

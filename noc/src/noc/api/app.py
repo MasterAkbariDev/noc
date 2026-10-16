@@ -10,6 +10,7 @@ from sqlalchemy import text
 from noc.api.activity import router as activity_router
 from noc.api.auth import router as auth_router
 from noc.api.events import router as events_router
+from noc.api.fleet import router as fleet_router
 from noc.api.incidents import router as incidents_router
 from noc.api.live_metrics import router as live_router
 from noc.api.llm_admin import router as llm_admin_router
@@ -68,6 +69,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(overview_router)
     app.include_router(users_router)
     app.include_router(llm_admin_router)
+    app.include_router(fleet_router)
     app.include_router(notifications_router)
     app.include_router(metrics_router)
     app.include_router(live_router)
