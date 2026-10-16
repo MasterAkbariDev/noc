@@ -92,10 +92,10 @@ def test_every_verdict_has_a_plain_label() -> None:
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        ("succeeded", "Ran restart service."),
-        ("failed", "Tried restart service, and it failed."),
-        ("outcome_unknown", "Ran restart service, but the result is not known."),
-        ("dispatched", "Running restart service."),
+        ("succeeded", "The NOC chose to restart the service."),
+        ("failed", "The NOC tried to restart the service, and it failed."),
+        ("outcome_unknown", "The NOC chose to restart the service, but the result is not known."),
+        ("dispatched", "The NOC is about to restart the service."),
         ("rejected", "Nothing — a person rejected the planned action."),
         ("expired", "Nothing — nobody approved the planned action in time."),
         ("cancelled", "Nothing — the planned action was cancelled."),

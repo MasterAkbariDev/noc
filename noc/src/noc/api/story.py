@@ -89,10 +89,10 @@ HEADLINE_ENDINGS: dict[IncidentStatus, str] = {
     IncidentStatus.CLOSED: "closed.",
 }
 DID_BY_STATUS: tuple[tuple[tuple[str, ...], str], ...] = (
-    ((SUCCEEDED,), "Ran {names}."),
-    ((FAILED, REFUSED), "Tried {names}, and it failed."),
-    ((OUTCOME_UNKNOWN,), "Ran {names}, but the result is not known."),
-    ((AUTHORIZED, DISPATCHED, EXECUTING), "Running {names}."),
+    ((SUCCEEDED,), "The NOC chose to {names}."),
+    ((FAILED, REFUSED), "The NOC tried to {names}, and it failed."),
+    ((OUTCOME_UNKNOWN,), "The NOC chose to {names}, but the result is not known."),
+    ((AUTHORIZED, DISPATCHED, EXECUTING), "The NOC is about to {names}."),
     ((REJECTED,), "Nothing — a person rejected the planned action."),
     ((EXPIRED,), "Nothing — nobody approved the planned action in time."),
     ((CANCELLED,), "Nothing — the planned action was cancelled."),
@@ -121,7 +121,9 @@ async def get_incident_story(incident_id: uuid.UUID, session: Session) -> Incide
         .limit(1)
     )
     actions = await session.scalars(
-        select(ActionRow).where(ActionRow.incident_id == incident_id).order_by(ActionRow.created_at)
+        select(ActionRow)
+        .where(ActionRow.incident_id == incident_id)
+        .order_by(ActionRow.finished_at.asc().nulls_last(), ActionRow.rung, ActionRow.created_at)
     )
     context = await guide_context(session, incident, alert, diagnosis)
     sources = await tool_sources(session, incident_id)
@@ -429,7 +431,7 @@ def did_text(incident: Incident, actions: list[ActionRow]) -> str:
 
 
 def action_names(actions: list[ActionRow]) -> str:
-    return ", ".join(words.humanize(action.action_type).lower() for action in actions)
+    return " and then ".join(words.action_label(action.action_type) for action in actions)
 
 
 def story_action(action: ActionRow, now: datetime) -> StoryAction:

@@ -20,10 +20,12 @@ def incident(status: str) -> Incident:
     )
 
 
-def action(authorization: str) -> ActionRow:
+def action(
+    authorization: str, action_type: str = "start_service", resource_id: str = "svc:demo-shop"
+) -> ActionRow:
     return ActionRow(
-        action_type="start_service",
-        resource_id="svc:demo-shop",
+        action_type=action_type,
+        resource_id=resource_id,
         status="succeeded",
         authorization=authorization,
     )
@@ -53,6 +55,24 @@ def test_the_automatic_sentence_names_the_action_and_the_resource() -> None:
     assert item.sentence == (
         "The NOC chose to start the service on demo-shop and did it on its own. "
         "The check afterwards passed."
+    )
+
+
+def test_the_approved_sentence_says_a_person_approved_the_plan() -> None:
+    item = fixed_item(incident("RESOLVED"), "demo-1", [action("approval:1234")])
+    assert item.sentence == (
+        "A person approved the plan to start the service on demo-shop. "
+        "The NOC did it and the check afterwards passed."
+    )
+
+
+def test_two_fixes_are_told_in_the_order_they_ran() -> None:
+    first = action("policy:v3", "throttle_cpu", "job:report-gen")
+    second = action("policy:v3", "stop_service", "job:report-gen")
+    item = fixed_item(incident("RESOLVED"), "demo-1", [first, second])
+    assert item.sentence.startswith(
+        "The NOC chose to limit the CPU use on report-gen "
+        "and then stop the service on report-gen and did it on its own."
     )
 
 

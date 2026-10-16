@@ -243,7 +243,7 @@ async def test_resolved_story_shows_every_step_done(
     assert set(step_states(body).values()) == {"done"}
     assert body["steps"][-1]["label"] == "Resolved"
     assert body["steps"][-1]["at"] is not None
-    assert body["what_we_did"]["text"] == "Ran restart service."
+    assert body["what_we_did"]["text"] == "The NOC chose to restart the service."
     assert body["what_we_did"]["considered"][0]["verdict"] == "ran"
     advice = body["what_you_should_do"]
     assert advice["text"] == "Nothing. This incident is finished."
@@ -410,7 +410,7 @@ async def test_a_failed_action_is_described_as_tried_and_failed(
     await add_rows(sessions, diagnosis_row(incident_id, "service_crashed", 0.9, []))
     await add_action(sessions, incident_id, "failed", True, [])
     body = await story(client, incident_id)
-    assert body["what_we_did"]["text"] == "Tried restart service, and it failed."
+    assert body["what_we_did"]["text"] == "The NOC tried to restart the service, and it failed."
     assert body["what_we_did"]["considered"][0]["verdict"] == "failed"
     assert body["what_we_did"]["considered"][0]["verdict_label"] == "Failed"
 

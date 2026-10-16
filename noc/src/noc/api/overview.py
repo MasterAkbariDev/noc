@@ -65,7 +65,9 @@ FIXED_LIMIT = 8
 APPROVAL_AUTHORIZATION_PREFIX = "approval:"
 FIXED_SENTENCES: dict[FixKind, str] = {
     "automatic": "The NOC chose to {action} and did it on its own. The check afterwards passed.",
-    "approved": "A person approved {action}. The NOC ran it and the check afterwards passed.",
+    "approved": (
+        "A person approved the plan to {action}. The NOC did it and the check afterwards passed."
+    ),
     "by_itself": "The problem went away on its own before the NOC had to act.",
 }
 
@@ -297,7 +299,7 @@ def fix_kind(incident: Incident, succeeded: list[ActionRow]) -> FixKind:
 
 
 def fixed_action_phrase(succeeded: list[ActionRow]) -> str:
-    return ", ".join(
+    return " and then ".join(
         f"{words.action_label(action.action_type)} on {resource_name(action.resource_id)}"
         for action in succeeded
     )
@@ -325,7 +327,7 @@ async def succeeded_actions(
     rows = await session.scalars(
         select(ActionRow)
         .where(ActionRow.incident_id.in_(incident_ids), ActionRow.status == SUCCEEDED)
-        .order_by(ActionRow.created_at)
+        .order_by(ActionRow.finished_at, ActionRow.created_at)
     )
     for row in rows:
         found.setdefault(row.incident_id, []).append(row)
