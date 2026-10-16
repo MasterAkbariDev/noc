@@ -42,6 +42,7 @@ export const EVENT_TYPE_LABELS = new Map<string, string>([
   ["action_cancelled", "Action cancelled"],
   ["verification_passed", "Check after the fix passed"],
   ["verification_failed", "Check after the fix failed"],
+  ["next_action_planned", "Trying a second fix"],
 ]);
 
 const RUN_STATUS_TONES = new Map<string, Tone>([

@@ -24,6 +24,7 @@ const BACKEND_EVENT_TYPES = [
   "action_cancelled",
   "verification_passed",
   "verification_failed",
+  "next_action_planned",
   "approval_requested",
   "approval_decided",
   "approval_expired",
