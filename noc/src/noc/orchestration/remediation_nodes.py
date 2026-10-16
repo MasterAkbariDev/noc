@@ -1,5 +1,4 @@
 import asyncio
-import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -12,12 +11,7 @@ from noc.db.base import utc_now
 from noc.db.models import ActionRow, DiagnosisRow, Incident, ManagedResourceRow, Target
 from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
-from noc.orchestration.action_checks import (
-    CHECK_TOOLS,
-    CheckReading,
-    check_arguments,
-    reading_from,
-)
+from noc.orchestration.action_checks import CheckReading, read_check
 from noc.orchestration.nodes import POLICY, Update, incident_id_of
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
@@ -175,17 +169,16 @@ class RemediationNodes:
     async def _probe(
         self, incident_id: uuid.UUID, target: TargetRef, trace_id: str, check_target: CheckTarget
     ) -> CheckReading:
-        tool = CHECK_TOOLS.get(check_target.check)
-        if tool is None:
-            return CheckReading(ok=True, passed=True)
         context = ToolContext(
             incident_id=incident_id, agent=EXECUTOR, target=target, trace_id=trace_id
         )
-        arguments = json.dumps(check_arguments(check_target.check, check_target.resource_id))
-        result = await self._runtime.registry.execute(tool, arguments, context)
-        if not result.ok or result.data is None:
-            return CheckReading(ok=False, passed=False, error=result.content[:300])
-        return reading_from(check_target.check, result.data, check_target.resource_name)
+        return await read_check(
+            self._runtime.registry,
+            context,
+            check_target.check,
+            check_target.resource_id,
+            check_target.resource_name,
+        )
 
     async def _authorize_dispatch(
         self, incident_id: uuid.UUID, snapshot: CheckReading

@@ -5,18 +5,32 @@ import structlog
 from sqlalchemy import select
 
 from noc.db.base import utc_now
-from noc.db.models import ActionRow, AgentRun, AlertEvent, DiagnosisRow, Incident, Report
+from noc.db.models import (
+    ActionRow,
+    AgentRun,
+    AlertEvent,
+    DiagnosisRow,
+    Incident,
+    ManagedResourceRow,
+    Report,
+    Target,
+)
 from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
 from noc.llm.client import LLMError, LLMUnavailable, describe_error
+from noc.orchestration.action_checks import read_check
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
+from noc.policy.loader import PolicyDocument
+from noc.policy.models import ActionCheck
 from noc.reporting.builder import load_report_data, render_report
-from noc.store.briefs import all_alerts_resolved, load_investigation_input
+from noc.store.briefs import all_alerts_resolved, load_investigation_input, target_ref
 from noc.store.decisions import decide_actions, decisions_exist
 from noc.store.incidents import add_event, lock_incident, transition
 from noc.store.investigations import new_agent_run, save_investigation
 from noc.store.remediation import plan_remediation
+from noc.tools.catalog import EXECUTOR
+from noc.tools.spec import ToolContext
 
 logger = structlog.get_logger(__name__)
 
@@ -113,6 +127,7 @@ class IncidentNodes:
     async def decide(self, state: IncidentState) -> Update:
         incident_id = incident_id_of(state)
         settings = self._runtime.settings
+        await self._refresh_evidence(incident_id)
         async with transaction(self._sessions) as session:
             incident = await lock_incident(session, incident_id)
             if IncidentStatus(incident.status) is not IncidentStatus.DIAGNOSED:
@@ -174,6 +189,40 @@ class IncidentNodes:
             await transition(session, incident, IncidentStatus.ESCALATED, POLICY, reason)
         return {"outcome": "escalated"}
 
+    async def _refresh_evidence(self, incident_id: uuid.UUID) -> None:
+        policy = self._runtime.policy
+        async with transaction(self._sessions) as session:
+            incident = await session.get_one(Incident, incident_id)
+            if IncidentStatus(incident.status) is not IncidentStatus.DIAGNOSED:
+                return
+            if await decisions_exist(session, incident_id):
+                return
+            diagnosis = await session.scalar(
+                select(DiagnosisRow)
+                .where(DiagnosisRow.incident_id == incident_id)
+                .order_by(DiagnosisRow.created_at.desc())
+                .limit(1)
+            )
+            if diagnosis is None or diagnosis.confidence < MIN_ACTIONABLE_CONFIDENCE:
+                return
+            alerts = list(
+                await session.scalars(
+                    select(AlertEvent).where(AlertEvent.incident_id == incident_id)
+                )
+            )
+            resource_id = affected_resource(diagnosis, alerts) or ""
+            resource = await session.get(ManagedResourceRow, (incident.target_id, resource_id))
+            resource_name = resource.name if resource is not None else ""
+            checks = evidence_checks(policy.candidate_actions(diagnosis.primary_code), policy)
+            context = ToolContext(
+                incident_id=incident_id,
+                agent=EXECUTOR,
+                target=target_ref(await session.get_one(Target, incident.target_id)),
+                trace_id=incident.trace_id,
+            )
+        for check in checks:
+            await read_check(self._runtime.registry, context, check, resource_id, resource_name)
+
     async def report(self, state: IncidentState) -> Update:
         incident_id = incident_id_of(state)
         async with transaction(self._sessions) as session:
@@ -188,6 +237,17 @@ class IncidentNodes:
             if IncidentStatus(incident.status) is IncidentStatus.SELF_RESOLVED:
                 await transition(session, incident, IncidentStatus.CLOSED, REPORTER)
         return {}
+
+
+def evidence_checks(candidates: list[str], policy: PolicyDocument) -> list[ActionCheck]:
+    checks: list[ActionCheck] = []
+    for action in candidates:
+        definition = policy.actions.get(action)
+        if definition is None or definition.check is ActionCheck.NONE:
+            continue
+        if definition.check not in checks:
+            checks.append(definition.check)
+    return checks
 
 
 def route_after_begin(state: IncidentState) -> str:

@@ -9,6 +9,7 @@ from noc.orchestration.action_checks import (
     mount_for,
     reading_from,
 )
+from noc.orchestration.nodes import evidence_checks
 from noc.policy.loader import load_policy
 from noc.policy.models import ActionCheck
 from noc_shared.actions import HostActionType, ServiceActionType
@@ -125,3 +126,14 @@ def test_only_service_checks_send_the_resource_id() -> None:
     assert check_arguments(ActionCheck.SERVICE_INACTIVE, "job:x") == {"resource_id": "job:x"}
     assert check_arguments(ActionCheck.DISK_FREE, "dir:x") == {}
     assert ActionCheck.NONE not in CHECK_TOOLS
+
+
+def test_decide_reads_each_check_of_the_candidates_once() -> None:
+    checks = evidence_checks(
+        ["rotate_logs", "vacuum_journal", "clean_temp_dir", "wait_and_watch", "nope"], POLICY
+    )
+    assert checks == [ActionCheck.DISK_FREE]
+    assert evidence_checks(["throttle_cpu", "stop_service"], POLICY) == [
+        ActionCheck.CPU_RELIEVED,
+        ActionCheck.SERVICE_INACTIVE,
+    ]

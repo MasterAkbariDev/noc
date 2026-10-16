@@ -145,7 +145,7 @@ async def test_alert_to_report_without_any_mutation(skeleton: Skeleton) -> None:
     assert incident.status == "ESCALATED"
     assert incident.escalation_reason == "no_allowed_action"
     assert incident.root_cause_code == "service_crashed"
-    assert skeleton.systemctl.calls == ["demo-shop.service"]
+    assert skeleton.systemctl.calls == ["demo-shop.service", "demo-shop.service"]
 
     tool_call = await skeleton.scalar(select(ToolCall))
     assert isinstance(tool_call, ToolCall)

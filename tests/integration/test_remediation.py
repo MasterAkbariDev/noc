@@ -8,11 +8,20 @@ import httpx
 import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import SecretStr
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from noc.api.app import create_app as create_api
 from noc.config import Settings
-from noc.db.models import ActionRow, Approval, Incident, IncidentEvent, Job, Report, Target
+from noc.db.models import (
+    ActionRow,
+    Approval,
+    Incident,
+    IncidentEvent,
+    Job,
+    Report,
+    Target,
+    ToolCall,
+)
 from noc.db.session import SessionFactory, transaction
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
@@ -257,6 +266,14 @@ async def test_auto_safe_lab_starts_the_service_and_verifies_recovery(auto_lab: 
     assert events.index("action_dispatched") < events.index("action_succeeded")
     assert "verification_passed" in events
     assert await auto_lab.has_report(incident_id)
+    async with auto_lab.sessions() as session:
+        first_reading = await session.scalar(
+            select(func.min(ToolCall.started_at)).where(
+                ToolCall.incident_id == incident_id, ToolCall.agent == "executor"
+            )
+        )
+    assert first_reading is not None
+    assert first_reading < action.created_at
 
 
 async def test_approval_is_bound_to_the_hash_and_then_executes(approval_lab: Lab) -> None:

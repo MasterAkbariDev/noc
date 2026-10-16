@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
@@ -5,6 +6,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from noc.policy.models import ActionCheck
+from noc.tools.registry import ToolRegistry
+from noc.tools.spec import ToolContext
 from noc_shared.tools import CpuUsage, DiskUsage, MemoryUsage, MountUsage
 
 MIN_FREE_RATIO = 0.10
@@ -85,3 +88,20 @@ def reading_from(check: ActionCheck, data: dict[str, Any], resource_name: str) -
         return CheckReading(ok=False, passed=False, error="the tool answer had an unexpected shape")
     state = data.get("active_state") if check in SERVICE_CHECKS else None
     return CheckReading(ok=True, passed=passed, active_state=None if state is None else str(state))
+
+
+async def read_check(
+    registry: ToolRegistry,
+    context: ToolContext,
+    check: ActionCheck,
+    resource_id: str,
+    resource_name: str,
+) -> CheckReading:
+    tool = CHECK_TOOLS.get(check)
+    if tool is None:
+        return CheckReading(ok=True, passed=True)
+    arguments = json.dumps(check_arguments(check, resource_id))
+    result = await registry.execute(tool, arguments, context)
+    if not result.ok or result.data is None:
+        return CheckReading(ok=False, passed=False, error=result.content[:300])
+    return reading_from(check, result.data, resource_name)

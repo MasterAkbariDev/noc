@@ -27,5 +27,5 @@ providers:
       strong: { model: openai/gpt-oss-120b, rpm: 300, rpd: 50000 }
 
 chains:
-  small: [groq, gemini]
+  small: [groq, gemini, "gemini:strong"]
   strong: [groq, gemini, "gemini:small"]

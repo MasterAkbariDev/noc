@@ -135,10 +135,18 @@ def test_factory_builds_routes_from_given_keys_with_their_tier_limits() -> None:
     keys = [entry("gemini-paid-key", "paid"), entry("gemini-free-key")]
     llm = build_routed_llm(Settings(_env_file=None), cast(SessionFactory, None), keys, {})
     small = llm.routes_for("small")
-    assert [route.label for route in small] == [keys[0].label, keys[1].label]
+    assert [route.label for route in small] == [
+        keys[0].label,
+        keys[1].label,
+        f"{keys[0].label}/strong",
+        f"{keys[1].label}/strong",
+    ]
     paid_limits = GEMINI.limits_for("small", "paid")
     assert paid_limits is not None
     assert small[0].budget.model == paid_limits.model
+    strong_limits = GEMINI.limits_for("strong", "paid")
+    assert strong_limits is not None
+    assert small[2].budget.model == strong_limits.model
 
 
 def test_factory_with_no_keys_has_no_routes() -> None:

@@ -530,8 +530,10 @@ async def test_runbook_variant_diagnoses_from_the_alert_with_one_tool_call_and_n
     assert await skeleton.scalar(select(Incident.confidence)) == 1.0
     assert await skeleton.scalar(select(func.count()).select_from(LlmCall)) == 0
 
-    calls = await skeleton.rows(select(ToolCall))
+    calls = await skeleton.rows(select(ToolCall).where(ToolCall.agent == "runbook"))
     assert [(c.agent, c.tool, c.ok) for c in calls] == [("runbook", "get_service_status", True)]
+    decision_reads = await skeleton.rows(select(ToolCall).where(ToolCall.agent == "executor"))
+    assert [(c.tool, c.ok) for c in decision_reads] == [("get_service_status", True)]
 
     findings = await skeleton.rows(select(FindingRow))
     assert [(f.agent, f.label, f.grounded) for f in findings] == [("runbook", "F1", True)]
