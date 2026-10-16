@@ -15,8 +15,8 @@ What each root_cause_code means:
 - cpu_runaway_process: one process (or a few) uses most of the CPU for minutes and was not expected to.
 - memory_leak: one service's memory keeps growing towards its limit while its load does not explain it.
 - oom_kill_loop: processes are killed by the out-of-memory killer, often again after each restart.
-- disk_full_logs: a filesystem is nearly full and log files are what fill it.
-- disk_full_data: a filesystem is nearly full and application data or another single large file fills it.
+- disk_full_logs: a filesystem is nearly full and log files are what fill it: files ending in .log (also rotated ones such as .log.1), files under a log folder, or the systemd journal. This holds even when it is one single big log file.
+- disk_full_data: a filesystem is nearly full and application data fills it: databases, uploads, backups, images, caches or another large file that is not a log.
 - inode_exhaustion: a filesystem has free space but no free inodes, usually from very many small files.
 - service_crashed: a registered service that should be running is not running. It exited, was killed or was stopped, and the findings show no deeper cause such as memory, disk, a bad deploy or a broken dependency. Use it even when the findings cannot say who stopped the service; put that question in needs_more_info.
 - service_misconfigured: the service runs or restarts but fails because of its own configuration (wrong port, path, permission or setting).
