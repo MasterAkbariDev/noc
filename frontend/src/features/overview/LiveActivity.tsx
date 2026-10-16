@@ -1,30 +1,38 @@
+import { useMemo } from "react";
 import { Activity } from "lucide-react";
 import { Link } from "react-router";
 import type { ActivityItem } from "../../api/types";
 import { cx } from "../../lib/cx";
-import { EmptyState, List, ListItem, RelativeTime } from "../../ui";
+import { AnimatedList, EmptyState, RelativeTime } from "../../ui";
 import { recentActivity } from "./model";
 
 export function LiveActivity({ items }: { items: ActivityItem[] }) {
-  const recent = recentActivity(items);
+  const recent = useMemo(() => recentActivity(items), [items]);
   if (recent.length === 0) {
-    return <EmptyState icon={Activity} title="No activity yet." />;
+    return <EmptyState icon={Activity} title="Nothing has happened yet." text="Sign-ins, alerts and fixes appear here as they happen." />;
   }
   return (
-    <List ordered gap="xs" className="relative before:absolute before:inset-y-1 before:left-[3px] before:w-px before:bg-border before:content-['']">
-      {recent.map((item) => (
-        <ListItem key={`${item.ts}-${item.kind}-${item.text}`} className="relative grid gap-0.5 py-1.5 pl-5 text-sm">
+    <AnimatedList
+      items={recent}
+      itemKey={activityKey}
+      label="Recent activity"
+      className="relative before:absolute before:inset-y-2 before:left-[3px] before:w-px before:bg-border before:content-['']"
+      itemClassName="relative grid gap-0.5 py-2 pl-5 text-[15px]"
+      render={(item) => (
+        <>
           <span
             aria-hidden="true"
-            className={cx("absolute top-3 left-0 size-[7px] rounded-full", item.kind === "incident" ? "bg-accent" : "bg-muted")}
+            className={cx("absolute top-[0.95rem] left-0 size-[7px] rounded-full", item.kind === "incident" ? "bg-accent" : "bg-border-strong")}
           />
           <ActivityText item={item} />
-          <RelativeTime iso={item.ts} className="text-xs text-muted" />
-        </ListItem>
-      ))}
-    </List>
+          <RelativeTime iso={item.ts} className="text-sm text-muted" />
+        </>
+      )}
+    />
   );
 }
+
+const activityKey = (item: ActivityItem) => `${item.ts}-${item.kind}-${item.text}`;
 
 function ActivityText({ item }: { item: ActivityItem }) {
   if (item.incident_id === null) {

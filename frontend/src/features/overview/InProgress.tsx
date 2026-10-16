@@ -1,12 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity } from "lucide-react";
 import { listIncidents } from "../../api/client";
 import type { IncidentSummary } from "../../api/types";
 import { errorMessage } from "../../lib/format";
 import { incidentStatusView } from "../../lib/tones";
-import { Badge, ButtonLink, EmptyState, ErrorState, List, ListItem, RelativeTime, Skeleton } from "../../ui";
+import { AnimatedList, ErrorState, RelativeTime, Skeleton } from "../../ui";
+import { IncidentLink } from "../incident/IncidentLink";
 import { OVERVIEW_FALLBACK_POLL_MS } from "./model";
-import { usePrefetchIncident } from "../incident/prefetch";
 
 export const IN_PROGRESS_KEY = ["overview", "in-progress"] as const;
 
@@ -45,35 +44,26 @@ export function InProgress() {
 
   const rows = inProgressIncidents(query.data);
   if (rows.length === 0) {
-    return <EmptyState icon={Activity} title="Nothing is in progress." />;
+    return <p className="m-0 text-muted">Nothing else is in progress right now.</p>;
   }
-  return (
-    <List variant="divided">
-      {rows.map((incident) => (
-        <InProgressRow key={incident.id} incident={incident} />
-      ))}
-    </List>
-  );
+  return <AnimatedList items={rows} itemKey={rowKey} label="In progress" className="gap-1" render={(incident) => <InProgressRow incident={incident} />} />;
 }
+
+const rowKey = (incident: IncidentSummary) => incident.id;
 
 function InProgressRow({ incident }: { incident: IncidentSummary }) {
   const view = incidentStatusView(incident.status);
-  const prefetch = usePrefetchIncident();
   return (
-    <ListItem className="flex flex-wrap items-center gap-2">
-      <Badge tone={view.tone}>{view.label}</Badge>
-      <span className="min-w-0 flex-1 basis-48 break-words font-medium">{incident.title}</span>
-      <span className="text-sm text-muted">
-        Started <RelativeTime iso={incident.opened_at} />
-      </span>
-      <ButtonLink
-        to={`/incidents/${encodeURIComponent(incident.id)}`}
-        size="sm"
-        onMouseEnter={() => prefetch(incident.id)}
-        onFocus={() => prefetch(incident.id)}
-      >
-        Open
-      </ButtonLink>
-    </ListItem>
+    <div className="flex items-start gap-4 py-2">
+      <span aria-hidden="true" className="mt-2 inline-block size-2.5 shrink-0 rounded-full bg-info step-current" />
+      <div className="grid min-w-0 gap-0.5">
+        <IncidentLink id={incident.id} className="font-semibold break-words hover:text-accent hover:underline">
+          {incident.title}
+        </IncidentLink>
+        <span className="text-sm text-muted">
+          {view.label}, started <RelativeTime iso={incident.opened_at} />
+        </span>
+      </div>
+    </div>
   );
 }

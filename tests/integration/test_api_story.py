@@ -258,7 +258,7 @@ async def test_investigating_story_has_one_current_step_and_pending_rest(
     incident_id = await open_incident(sessions, alerts)
     await walk(sessions, incident_id, [IncidentStatus.INVESTIGATING])
     body = await story(client, incident_id)
-    assert body["headline"] == f"{TITLE}: investigating."
+    assert body["headline"] == f"{TITLE}: investigating. The NOC is working on it."
     assert step_states(body) == {
         "detected": "done",
         "investigated": "current",

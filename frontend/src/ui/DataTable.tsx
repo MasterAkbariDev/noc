@@ -6,6 +6,7 @@ export type Column<Row> = {
   header: ReactNode;
   cell: (row: Row) => ReactNode;
   className?: string;
+  labelOnPhone?: boolean;
 };
 
 export type FooterCell = { key: string; content: ReactNode; span?: number };
@@ -29,7 +30,11 @@ type DataTableProps<Row> = {
   framed?: boolean;
   dense?: boolean;
   minWidth?: TableWidth;
+  stackOnPhone?: boolean;
 };
+
+const STACK_CLASS =
+  "stack-table max-sm:min-w-0 max-sm:[&_thead]:sr-only max-sm:[&_tbody]:block max-sm:[&_tr]:grid max-sm:[&_tr]:gap-1.5 max-sm:[&_tr]:px-4 max-sm:[&_tr]:py-3 max-sm:[&_td]:block max-sm:[&_td]:p-0";
 
 export function DataTable<Row>({
   label,
@@ -41,6 +46,7 @@ export function DataTable<Row>({
   framed = true,
   dense = false,
   minWidth = "md",
+  stackOnPhone = true,
 }: DataTableProps<Row>) {
   const cellClass = dense ? "px-2 py-1.5" : "px-4 py-2.5";
   return (
@@ -48,17 +54,17 @@ export function DataTable<Row>({
       role="region"
       aria-label={label}
       tabIndex={0}
-      className={cx("m-0 min-w-0 overflow-x-auto", framed && "rounded-card border border-border bg-surface shadow-card")}
+      className={cx("m-0 min-w-0 overflow-x-auto", framed && "rounded-card border border-border bg-surface")}
     >
-      <table className={cx("m-0 w-full border-collapse text-sm", WIDTH_CLASSES[minWidth])}>
+      <table className={cx("m-0 w-full border-collapse text-[15px]", WIDTH_CLASSES[minWidth], stackOnPhone && STACK_CLASS)}>
         <caption className="sr-only">{label}</caption>
-        <thead className="bg-surface-2 text-left text-xs tracking-wide text-muted uppercase">
+        <thead className="text-left text-sm text-muted">
           <tr>
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
-                className={cx("border-b border-border font-semibold", cellClass, column.className)}
+                className={cx("border-b border-border font-medium", cellClass, column.className)}
               >
                 {column.header}
               </th>
@@ -74,9 +80,13 @@ export function DataTable<Row>({
             </tr>
           ) : (
             rows.map((row) => (
-              <tr key={rowKey(row)} className="border-b border-border align-top transition-colors last:border-b-0 hover:bg-surface-2/60">
+              <tr key={rowKey(row)} className="border-b border-border align-top transition-colors duration-150 last:border-b-0 hover:bg-surface-2/60">
                 {columns.map((column) => (
-                  <td key={column.key} className={cx(cellClass, column.className)}>
+                  <td
+                    key={column.key}
+                    data-label={stackOnPhone && column.labelOnPhone !== false && typeof column.header === "string" ? column.header : undefined}
+                    className={cx(cellClass, column.className)}
+                  >
                     {column.cell(row)}
                   </td>
                 ))}

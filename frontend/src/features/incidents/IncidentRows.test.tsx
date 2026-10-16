@@ -73,7 +73,7 @@ describe("IncidentRows", () => {
 
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     const cause = within(rows[1]!).getByText("Service crashed");
-    expect(within(rows[1]!).getByText(/82% confidence/)).toBeTruthy();
+    expect(within(rows[1]!).getByText(/82% sure/)).toBeTruthy();
     expect(within(rows[2]!).getByText("Not diagnosed yet")).toBeTruthy();
 
     fireEvent.focus(cause);

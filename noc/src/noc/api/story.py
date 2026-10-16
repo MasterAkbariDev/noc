@@ -83,6 +83,11 @@ VERDICT_BY_STATUS: dict[str, str] = {
     EXPIRED: "expired",
     CANCELLED: "cancelled",
 }
+HEADLINE_ENDINGS: dict[IncidentStatus, str] = {
+    IncidentStatus.RESOLVED: "the NOC fixed it and the check afterwards passed.",
+    IncidentStatus.SELF_RESOLVED: "the problem went away on its own.",
+    IncidentStatus.CLOSED: "closed.",
+}
 DID_BY_STATUS: tuple[tuple[tuple[str, ...], str], ...] = (
     ((SUCCEEDED,), "Ran {names}."),
     ((FAILED, REFUSED), "Tried {names}, and it failed."),
@@ -200,7 +205,10 @@ def build_headline(
         return f"{incident.title} needs you: the approval request expired."
     if status is IncidentStatus.AWAITING_APPROVAL:
         return f"{incident.title} needs you: a planned action is waiting for your approval."
-    return f"{incident.title}: {status_label.lower()}."
+    ending = HEADLINE_ENDINGS.get(status)
+    if ending is not None:
+        return f"{incident.title}: {ending}"
+    return f"{incident.title}: {status_label.lower()}. The NOC is working on it."
 
 
 def approval_open(action: ActionRow, now: datetime) -> bool:

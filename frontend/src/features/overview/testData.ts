@@ -1,4 +1,4 @@
-import type { ActivityItem, AttentionItem, Metrics, Overview, ServerSummary, SystemHealth } from "../../api/types";
+import type { ActivityItem, AttentionItem, FixedItem, Metrics, Overview, ServerSummary, SystemHealth } from "../../api/types";
 
 export const HOSTILE_IMG = "<img src=x onerror=alert(1)>";
 export const HOSTILE_SCRIPT = "<script>alert(1)</script>";
@@ -14,6 +14,18 @@ export function attentionItem(overrides: Partial<AttentionItem> = {}): Attention
     since: "2026-10-14T10:00:00Z",
     summary: "Logs are filling the root disk.",
     advice: "Review the logs and free space.",
+    ...overrides,
+  };
+}
+
+export function fixedItem(overrides: Partial<FixedItem> = {}): FixedItem {
+  return {
+    incident_id: "33333333-3333-3333-3333-333333333333",
+    title: "demo-shop.service stopped",
+    target: "demo-1",
+    resolved_at: "2026-10-14T09:00:00Z",
+    kind: "automatic",
+    sentence: "The NOC chose to start service on demo-shop and did it on its own. The check afterwards passed.",
     ...overrides,
   };
 }
@@ -57,8 +69,11 @@ export function overviewFixture(overrides: Partial<Overview> = {}): Overview {
       servers_total: 2,
       llm_keys_ok: 9,
       llm_keys_total: 10,
+      fixed_today: 2,
+      fixed_automatically_today: 1,
     },
     needs_attention: [attentionItem()],
+    fixed: [fixedItem()],
     activity: [activityItem()],
     servers: [serverSummary()],
     ...overrides,

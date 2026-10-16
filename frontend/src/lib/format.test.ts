@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import {
-  absoluteTime,
-  errorMessage,
-  percentFromFraction,
-  percentFromHundred,
-  relativeTime,
-} from "./format";
+import { absoluteTime, asSentence, errorMessage, percentFromFraction, percentFromHundred, relativeTime, withoutTitle } from "./format";
 
 const NOW = new Date("2026-10-13T12:00:00Z");
 
@@ -17,8 +11,9 @@ function minutesBefore(minutes: number): string {
 describe("relativeTime", () => {
   it.each([
     [30 * 1_000, "just now"],
-    [12 * 60_000, "12 min ago"],
-    [3 * 60 * 60_000, "3 h ago"],
+    [12 * 60_000, "12 minutes ago"],
+    [3 * 60 * 60_000, "3 hours ago"],
+    [60 * 60_000, "1 hour ago"],
     [25 * 60 * 60_000, "1 day ago"],
     [50 * 60 * 60_000, "2 days ago"],
   ])("formats %i ms ago as %s", (elapsedMs, expected) => {
@@ -35,7 +30,7 @@ describe("relativeTime", () => {
   });
 
   it("uses minutes for the first hour", () => {
-    expect(relativeTime(minutesBefore(59), NOW)).toBe("59 min ago");
+    expect(relativeTime(minutesBefore(59), NOW)).toBe("59 minutes ago");
   });
 });
 
@@ -78,5 +73,24 @@ describe("errorMessage", () => {
 
   it("falls back to a generic text for values that are not errors", () => {
     expect(errorMessage("<script>alert(1)</script>")).toBe("Request failed.");
+  });
+});
+
+describe("asSentence", () => {
+  it("capitalises and ends with a full stop once", () => {
+    expect(asSentence("everything is running normally")).toBe("Everything is running normally.");
+    expect(asSentence("The worker has never reported.")).toBe("The worker has never reported.");
+    expect(asSentence("  ")).toBe("");
+  });
+});
+
+describe("withoutTitle", () => {
+  it("drops the repeated title from a server headline", () => {
+    expect(withoutTitle("Disk full", "Disk full needs you: no safe fix is allowed.")).toBe("No safe fix is allowed.");
+    expect(withoutTitle("Disk full", "Disk full: the problem went away on its own.")).toBe("The problem went away on its own.");
+  });
+
+  it("keeps a headline that does not start with the title", () => {
+    expect(withoutTitle("Disk full", "something else")).toBe("Something else.");
   });
 });

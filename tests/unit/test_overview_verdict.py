@@ -94,7 +94,9 @@ def test_a_down_core_component_makes_the_verdict_down() -> None:
     ]
     verdict = overview_verdict(health("down", components), kpis(), 0, [], True)
     assert verdict == OverviewVerdict(
-        level="down", sentence="The NOC is not working: The worker has never reported"
+        level="down",
+        sentence="The NOC itself is not working right now",
+        detail="The worker has never reported",
     )
 
 
@@ -115,7 +117,9 @@ def test_attention_names_the_noc_problem_as_well_when_there_is_one() -> None:
     ]
     verdict = overview_verdict(health("degraded", components), kpis(needs_you=1), 1, [], True)
     assert verdict == OverviewVerdict(
-        level="attention", sentence="1 incident needs you · Worker: Last heartbeat 6 min ago"
+        level="attention",
+        sentence="1 incident needs you",
+        detail="Worker: Last heartbeat 6 min ago",
     )
 
 
@@ -127,37 +131,49 @@ def test_a_degraded_component_names_the_first_problem() -> None:
     ]
     verdict = overview_verdict(health("degraded", components), kpis(), 0, [], True)
     assert verdict == OverviewVerdict(
-        level="degraded", sentence="Alert polling: No alert poll has succeeded yet"
+        level="degraded",
+        sentence="Something needs a look",
+        detail="Alert polling: No alert poll has succeeded yet",
     )
 
 
 def test_a_server_that_is_down_makes_the_verdict_degraded() -> None:
     servers = [server("alpha-1", "up"), server("zeta-2", "down")]
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 0, servers, True)
-    assert verdict == OverviewVerdict(level="degraded", sentence="zeta-2 is not reachable")
+    assert verdict == OverviewVerdict(
+        level="degraded", sentence="Something needs a look", detail="zeta-2 is not reachable"
+    )
 
 
 def test_a_server_with_unknown_status_makes_the_verdict_degraded() -> None:
     servers = [server("alpha-1", "up"), server("zeta-2", "unknown")]
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 0, servers, True)
-    assert verdict == OverviewVerdict(level="degraded", sentence="zeta-2 status is unknown")
+    assert verdict == OverviewVerdict(
+        level="degraded", sentence="Something needs a look", detail="zeta-2 status is unknown"
+    )
 
 
 def test_a_halted_server_makes_the_verdict_degraded() -> None:
     servers = [server("alpha-1", "up", halted=True)]
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 0, servers, True)
-    assert verdict == OverviewVerdict(level="degraded", sentence="alpha-1 is halted")
+    assert verdict == OverviewVerdict(
+        level="degraded", sentence="Something needs a look", detail="alpha-1 is halted"
+    )
 
 
 def test_no_working_llm_key_makes_the_verdict_degraded() -> None:
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 0, [], False)
-    assert verdict == OverviewVerdict(level="degraded", sentence="No AI model key is working")
+    assert verdict == OverviewVerdict(
+        level="degraded", sentence="Something needs a look", detail="No AI model key is working"
+    )
 
 
 def test_a_problem_beats_a_running_incident() -> None:
     servers = [server("zeta-2", "down")]
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 1, servers, True)
-    assert verdict == OverviewVerdict(level="degraded", sentence="zeta-2 is not reachable")
+    assert verdict == OverviewVerdict(
+        level="degraded", sentence="Something needs a look", detail="zeta-2 is not reachable"
+    )
 
 
 def test_a_running_incident_makes_the_verdict_working() -> None:
@@ -166,7 +182,9 @@ def test_a_running_incident_makes_the_verdict_working() -> None:
         health("ok", healthy_components()), kpis(servers_up=2, servers_total=2), 1, servers, True
     )
     assert verdict == OverviewVerdict(
-        level="working", sentence="Working on 1 incident · 2 servers up · LLM OK"
+        level="working",
+        sentence="The NOC is working on 1 incident",
+        detail="You do not need to do anything yet",
     )
 
 
@@ -174,11 +192,13 @@ def test_the_working_sentence_counts_several_incidents() -> None:
     servers = [server("alpha-1", "up")]
     verdict = overview_verdict(health("ok", healthy_components()), kpis(), 3, servers, True)
     assert verdict == OverviewVerdict(
-        level="working", sentence="Working on 3 incidents · 1 server up · LLM OK"
+        level="working",
+        sentence="The NOC is working on 3 incidents",
+        detail="You do not need to do anything yet",
     )
 
 
-def test_a_quiet_fleet_says_ok_with_the_summary_line() -> None:
+def test_a_quiet_fleet_says_everything_is_running() -> None:
     verdict = overview_verdict(
         health("ok", healthy_components()),
         kpis(open_incidents=1, servers_up=2, servers_total=2),
@@ -186,14 +206,29 @@ def test_a_quiet_fleet_says_ok_with_the_summary_line() -> None:
         [server("alpha-1", "up"), server("zeta-2", "up")],
         True,
     )
-    assert verdict == OverviewVerdict(level="ok", sentence="2 servers · 1 open incident · LLM OK")
+    assert verdict == OverviewVerdict(
+        level="ok", sentence="Everything is running normally", detail="Watching 2 servers"
+    )
 
 
-def test_the_ok_summary_uses_singular_and_plural_counts() -> None:
+def test_the_ok_detail_uses_singular_and_plural_counts() -> None:
     verdict = overview_verdict(
         health("ok", healthy_components()), kpis(), 0, [server("a", "up")], True
     )
-    assert verdict == OverviewVerdict(level="ok", sentence="1 server · 0 open incidents · LLM OK")
+    assert verdict == OverviewVerdict(
+        level="ok", sentence="Everything is running normally", detail="Watching 1 server"
+    )
+
+
+def test_an_empty_fleet_says_how_to_add_the_first_server() -> None:
+    verdict = overview_verdict(
+        health("ok", healthy_components()), kpis(servers_up=0, servers_total=0), 0, [], True
+    )
+    assert verdict == OverviewVerdict(
+        level="ok",
+        sentence="No servers are watched yet",
+        detail="Add one with noc targets add on the NOC server, and it appears here",
+    )
 
 
 @pytest.mark.parametrize(

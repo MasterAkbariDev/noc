@@ -10,7 +10,7 @@ export function SettingsPage() {
   useDocumentTitle("Settings");
   return (
     <>
-      <PageHeader eyebrow="Administration" title="Settings" status="Your account, and for admins, the people who can sign in, the model providers the agents use and Telegram notifications." />
+      <PageHeader title="Settings" status="Your account, and for admins, the people who can sign in, the model providers the agents use and Telegram notifications." />
       <Section heading="My account">
         <MyAccount />
       </Section>

@@ -12,11 +12,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & ButtonOptions;
 type ButtonLinkProps = LinkProps & ButtonOptions;
 
 const BASE_CLASS =
-  "inline-flex items-center justify-center justify-self-start gap-2 rounded-control border font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center justify-self-start gap-2 rounded-control border font-medium whitespace-nowrap transition-[color,background-color,border-color,transform] duration-150 disabled:cursor-not-allowed disabled:opacity-50";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "border-accent bg-accent text-accent-fg shadow-card hover:brightness-110",
-  secondary: "border-border bg-surface text-fg shadow-card hover:border-border-strong hover:bg-surface-2",
+  primary: "border-accent bg-accent text-accent-fg hover:brightness-110 active:scale-[0.98]",
+  secondary: "border-border bg-surface text-fg hover:border-border-strong hover:bg-surface-2 active:scale-[0.98]",
   ghost: "border-transparent bg-transparent text-fg hover:bg-surface-2",
   danger: "border-critical bg-critical text-critical-fg shadow-card hover:brightness-110",
   link: "w-fit border-transparent bg-transparent p-0 text-accent underline underline-offset-4 hover:brightness-125",

@@ -6,7 +6,7 @@ export function ServersPage() {
   useDocumentTitle("Servers");
   return (
     <>
-      <PageHeader eyebrow="Monitor" title="Servers" status="Every machine the NOC watches, with its health and automation level." />
+      <PageHeader title="Servers" status="Every machine the NOC watches, with its health and automation level." />
       <ServersList />
     </>
   );

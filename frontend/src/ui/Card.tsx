@@ -37,7 +37,7 @@ export function Card({ title, subtitle, icon, iconTone, actions, children, class
   return (
     <section
       aria-labelledby={title === undefined ? undefined : titleId}
-      className={cx("m-0 min-w-0 rounded-card border border-border bg-surface shadow-card", !flush && "p-5", className)}
+      className={cx("m-0 min-w-0 rounded-card border border-border bg-surface", !flush && "p-5", className)}
     >
       {hasHeader && (
         <header className={cx("mb-4 flex flex-wrap items-center justify-between gap-2", flush && "mb-0 border-b border-border px-5 py-4")}>
@@ -45,11 +45,11 @@ export function Card({ title, subtitle, icon, iconTone, actions, children, class
             {icon !== undefined && <CardIcon icon={icon} tone={iconTone} />}
             <div className="grid min-w-0 gap-0.5">
               {title !== undefined && (
-                <h2 id={titleId} className="m-0 text-base font-semibold break-words">
+                <h2 id={titleId} className="m-0 text-[17px] font-semibold tracking-tight break-words">
                   {title}
                 </h2>
               )}
-              {subtitle !== undefined && <p className="m-0 text-xs text-muted">{subtitle}</p>}
+              {subtitle !== undefined && <p className="m-0 text-sm text-muted">{subtitle}</p>}
             </div>
           </div>
           {actions}

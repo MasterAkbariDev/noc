@@ -564,6 +564,30 @@ def single_report(
     )
 
 
+def automatic_restart(incident: Incident, resource_id: str, finished: datetime) -> ActionRow:
+    return ActionRow(
+        incident_id=incident.id,
+        target_id=incident.target_id,
+        action_type="restart_container",
+        resource_id=resource_id,
+        params={},
+        status="succeeded",
+        permission_class=PermissionClass.SAFE_ACTION.name,
+        eligible=True,
+        auto_executable=True,
+        gate_failures=[],
+        reasons=[],
+        impact_score=2,
+        high_impact=False,
+        policy_version="seed",
+        action_hash=hashlib.sha256(f"{incident.id}:{resource_id}".encode()).hexdigest(),
+        authorization="policy:seed",
+        dispatched_at=finished,
+        finished_at=finished,
+        result_code="ok",
+    )
+
+
 async def populate_resolved(session: AsyncSession, target: Target, title: str) -> None:
     incident = await open_incident(session, target, title, "warning", "single")
     base = incident.opened_at
@@ -605,6 +629,7 @@ async def populate_resolved(session: AsyncSession, target: Target, title: str) -
         DEMO_DB,
     )
     await record_report(session, incident, report, {"F1": "investigator"}, ungrounded=0)
+    session.add(automatic_restart(incident, DEMO_DB, at(base, 1800)))
     await advance(
         session,
         incident,

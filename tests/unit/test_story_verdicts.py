@@ -130,6 +130,18 @@ def test_the_headline_says_when_the_approval_request_expired() -> None:
     assert headline == "CPU busy on alpha-1 needs you: the approval request expired."
 
 
+def test_the_headline_of_a_resolved_incident_says_the_noc_fixed_it() -> None:
+    headline = build_headline(incident("RESOLVED"), IncidentStatus.RESOLVED, "Resolved", None)
+    assert headline == "CPU busy on alpha-1: the NOC fixed it and the check afterwards passed."
+
+
+def test_the_headline_of_a_moving_incident_says_the_noc_is_working_on_it() -> None:
+    headline = build_headline(
+        incident("INVESTIGATING"), IncidentStatus.INVESTIGATING, "Investigating", None
+    )
+    assert headline == "CPU busy on alpha-1: investigating. The NOC is working on it."
+
+
 def test_the_advice_for_an_action_waiting_for_approval_lists_the_steps() -> None:
     advice = build_advice(
         incident("AWAITING_APPROVAL"),

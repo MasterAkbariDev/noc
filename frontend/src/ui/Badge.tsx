@@ -23,7 +23,7 @@ export function Badge({ tone, icon: Icon, children, className }: BadgeProps) {
   return (
     <span
       className={cx(
-        "inline-flex max-w-full items-center gap-1 rounded-full border border-current/25 px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
+        "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
         TONE_CLASSES[tone],
         className,
       )}

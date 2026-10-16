@@ -25,6 +25,6 @@ describe("KpiTile", () => {
     );
 
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByText("0").className).toContain("text-critical");
+    expect(screen.getByText("0").closest(".text-critical")).not.toBeNull();
   });
 });

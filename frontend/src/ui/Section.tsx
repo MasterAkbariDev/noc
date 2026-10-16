@@ -10,10 +10,10 @@ type SectionProps = {
 export function Section({ heading, children, description, actions }: SectionProps) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="m-0 mb-8 grid gap-3">
+    <section aria-labelledby={headingId} className="m-0 mb-10 grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="grid gap-0.5">
-          <h2 id={headingId} className="m-0 text-base font-semibold">
+          <h2 id={headingId} className="m-0 text-lg font-semibold tracking-tight">
             {heading}
           </h2>
           {description !== undefined && <p className="m-0 text-sm text-muted">{description}</p>}

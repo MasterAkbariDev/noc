@@ -19,10 +19,12 @@ test("hostile text from the evidence is shown as text, not markup", async ({ pag
   await expect(page.getByText(HOSTILE_TEXT, { exact: false }).first()).toBeVisible();
 });
 
-test("the tabs switch and the choice is kept in the URL", async ({ page }) => {
+test("the technical tabs wait behind Technical details, switch, and keep the choice in the URL", async ({ page }) => {
   await signIn(page, USERS.admin);
   await openEscalatedIncident(page);
 
+  await expect(page.getByRole("tab", { name: "Agent activity" })).toBeHidden();
+  await page.getByText("Technical details", { exact: true }).click();
   await page.getByRole("tab", { name: "Agent activity" }).click();
   await expect(page).toHaveURL(/tab=activity/);
   await expect(page.getByRole("tab", { name: "Agent activity" })).toHaveAttribute(
@@ -32,4 +34,12 @@ test("the tabs switch and the choice is kept in the URL", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page).toHaveURL(/tab=timeline/);
+});
+
+test("a link with a tab opens Technical details on that tab", async ({ page }) => {
+  await signIn(page, USERS.admin);
+  await openEscalatedIncident(page);
+
+  await page.goto(`${page.url().split("?")[0] ?? ""}?tab=timeline`);
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
 });

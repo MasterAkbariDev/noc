@@ -1,8 +1,9 @@
 import os
 import stat
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -184,13 +185,17 @@ async def test_check_key_reports_failures_without_the_secret(
     assert status.events == ([] if state is None else [(state, key.label)])
 
 
+def provider_today() -> date:
+    return datetime.now(ZoneInfo(GEMINI.quota_timezone)).date()
+
+
 async def test_check_key_respects_the_daily_quota() -> None:
     quota = MemoryQuotaStore()
     key = entry("gemini-test-key")
     small = GEMINI.limits_for("small", "free")
     assert small is not None
     for _ in range(small.rpd):
-        await quota.reserve(key.label, small.model, datetime.now().date(), small.rpd)
+        await quota.reserve(key.label, small.model, provider_today(), small.rpd)
     provider = StubProvider()
     result = await check_key(key, GEMINI, lambda _c, _k: provider, quota, RecordingStatus())
     assert not result.ok

@@ -1,11 +1,14 @@
 export { Alert } from "./Alert";
+export { AnimatedList } from "./AnimatedList";
 export { Avatar } from "./Avatar";
 export { Badge } from "./Badge";
 export { Button, ButtonLink, buttonClass, type ButtonSize, type ButtonVariant } from "./Button";
 export { Card, CardIcon } from "./Card";
 export { CommandLine } from "./CommandLine";
+export { CountUp } from "./CountUp";
 export { DataTable, type Column, type FooterCell } from "./DataTable";
 export { Dialog } from "./Dialog";
+export { Disclosure } from "./Disclosure";
 export { EmptyState } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export {

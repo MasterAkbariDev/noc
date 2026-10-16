@@ -43,7 +43,6 @@ export function MetricsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Insights"
         title="Metrics"
         status="How the NOC has been doing: incidents, outcomes, model use and actions."
         actions={

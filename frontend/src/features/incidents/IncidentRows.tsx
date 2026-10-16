@@ -19,11 +19,12 @@ const COLUMNS: Column<IncidentSummary>[] = [
         {incident.title}
       </IncidentLink>
     ),
-    className: "min-w-[14rem] break-words",
+    className: "break-words font-semibold sm:min-w-[14rem]",
+    labelOnPhone: false,
   },
   {
     key: "target",
-    header: "Target",
+    header: "Server",
     cell: (incident) => <span className="whitespace-nowrap">{incident.target}</span>,
     className: "whitespace-nowrap",
   },
@@ -35,9 +36,9 @@ const COLUMNS: Column<IncidentSummary>[] = [
   },
   {
     key: "root-cause",
-    header: "Root cause",
+    header: "Likely cause",
     cell: (incident) => <RootCause incident={incident} />,
-    className: "min-w-[10rem]",
+    className: "sm:min-w-[10rem]",
   },
   {
     key: "opened",
@@ -55,7 +56,7 @@ function RootCause({ incident }: { incident: IncidentSummary }) {
     <span>
       <Term technical={incident.root_cause_code}>{rootCauseLabel(incident.root_cause_code)}</Term>
       {incident.confidence !== null && (
-        <span className="text-muted"> · {percentFromFraction(incident.confidence)} confidence</span>
+        <span className="text-muted">, {percentFromFraction(incident.confidence)} sure</span>
       )}
     </span>
   );

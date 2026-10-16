@@ -42,7 +42,7 @@ export function SystemPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Administration" title="System" status={verdictStatus(health)} />
+      <PageHeader title="System" status={verdictStatus(health)} />
       <Section heading="Components">
         <QueryBody query={health} failure="System health did not load">
           {(data) => (

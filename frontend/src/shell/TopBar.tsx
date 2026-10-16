@@ -1,3 +1,4 @@
+import { useLocation } from "react-router";
 import { Menu as MenuIcon } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { IconButton } from "../ui/IconButton";
@@ -10,8 +11,9 @@ type TopBarProps = {
 };
 
 export function TopBar({ menuOpen, onToggleMenu }: TopBarProps) {
+  const onOverview = useLocation().pathname === "/";
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border bg-surface/90 px-4 py-2.5 backdrop-blur md:px-6">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border bg-bg/85 px-4 py-2.5 backdrop-blur md:px-8">
       <IconButton
         label="Menu"
         icon={MenuIcon}
@@ -23,7 +25,7 @@ export function TopBar({ menuOpen, onToggleMenu }: TopBarProps) {
         className="md:hidden"
       />
       <div className="order-last min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto">
-        <StatusPill />
+        {!onOverview && <StatusPill />}
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">
         <ThemeToggle />

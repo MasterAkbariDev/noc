@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
-import { getLlmStatus, getMetrics, getOverview, getSystemHealth } from "../api/client";
+import { getLlmStatus, getMetrics, getOverview, getSystemHealth, listIncidents } from "../api/client";
 import type { LlmStatus, Role } from "../api/types";
-import { metricsFixture, overviewFixture, serverSummary, systemHealthFixture } from "../features/overview/testData";
+import { fixedItem, metricsFixture, overviewFixture, serverSummary, systemHealthFixture } from "../features/overview/testData";
 import { OverviewPage } from "./OverviewPage";
 
 const session = vi.hoisted(() => ({ role: "operator" as Role }));
@@ -15,6 +15,7 @@ vi.mock("../api/client", async (importOriginal) => ({
   getLlmStatus: vi.fn(),
   getMetrics: vi.fn(),
   getSystemHealth: vi.fn(),
+  listIncidents: vi.fn(),
 }));
 
 function llmStatus(mode: LlmStatus["mode"]): LlmStatus {
@@ -50,6 +51,8 @@ beforeEach(() => {
   vi.mocked(getMetrics).mockResolvedValue(metricsFixture());
   vi.mocked(getSystemHealth).mockReset();
   vi.mocked(getSystemHealth).mockResolvedValue(systemHealthFixture());
+  vi.mocked(listIncidents).mockReset();
+  vi.mocked(listIncidents).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -62,7 +65,7 @@ describe("OverviewPage", () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
-    expect(screen.getByText("Loading…")).toBeTruthy();
+    expect(screen.getByText("Loading the overview…")).toBeTruthy();
   });
 
   it("shows an error with a retry that loads the overview again", async () => {
@@ -75,50 +78,64 @@ describe("OverviewPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByText("1 incident needs you")).toBeTruthy();
+    expect(await screen.findByText("1 incident needs you.")).toBeTruthy();
     expect(getOverview).toHaveBeenCalledTimes(2);
   });
 
-  it("shows the verdict, the counts, the incident to act on and the servers", async () => {
-    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
-    renderPage();
-
-    expect(await screen.findByText("1 incident needs you")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Needs you/ })).toBeTruthy();
-    expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
-    expect(screen.getByText("Incident opened: DiskAlmostFull")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "demo-1" })).toBeTruthy();
-  });
-
-  it("draws the server status, the incident trend, the server resources and the NOC health", async () => {
+  it("leads with the status sentence and its detail as full sentences", async () => {
     vi.mocked(getOverview).mockResolvedValue(
-      overviewFixture({
-        servers: [
-          serverSummary({ id: "a", name: "web-1", metrics: { cpu_percent: 42, memory_percent: 95, disk_percent: 50, disk_mount: "/" } }),
-          serverSummary({ id: "b", name: "db-1", status: "down" }),
-        ],
-      }),
+      overviewFixture({ verdict: { level: "down", sentence: "The NOC itself is not working right now", detail: "The worker has never reported" } }),
     );
     renderPage();
 
-    expect(await screen.findByRole("img", { name: "Server status: Up 1, Down 1, Unknown 0" })).toBeTruthy();
+    expect(await screen.findByText("The NOC itself is not working right now.")).toBeTruthy();
+    expect(screen.getByText("The worker has never reported.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "See which part" }).getAttribute("href")).toBe("/system");
+  });
+
+  it("puts what the NOC fixed on its own before what needs a person", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
+    renderPage();
+
+    const fixedFact = await screen.findByRole("link", { name: /fixed on its own in the last 24 hours/ });
+    const needsFact = screen.getByRole("link", { name: /needs you/ });
+    expect(fixedFact.textContent).toContain("1");
+    expect(fixedFact.getAttribute("href")).toBe("/incidents?filter=resolved");
+    expect(fixedFact.compareDocumentPosition(needsFact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the incident to act on, the fixed incident, the activity and the servers", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Needs you" })).toBeTruthy();
+    expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "demo-shop.service stopped" })).toBeTruthy();
+    expect(screen.getByText(/did it on its own/)).toBeTruthy();
+    expect(screen.getByText("Incident opened: DiskAlmostFull")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /demo-1/ })).toBeTruthy();
+  });
+
+  it("keeps the charts and the NOC health behind More details", async () => {
+    vi.mocked(getOverview).mockResolvedValue(
+      overviewFixture({ servers: [serverSummary({ id: "a", name: "web-1", open_incidents: 0, metrics: { cpu_percent: 42, memory_percent: 95, disk_percent: 50, disk_mount: "/" } })] }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("More details")).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Incidents, last 14 days" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Top root causes" })).toBeTruthy();
     expect(getMetrics).toHaveBeenCalledWith(14);
-
-    const resources = screen.getByRole("table", { name: "Server resources" });
-    expect(within(resources).getByRole("meter", { name: "Memory on web-1" }).getAttribute("aria-valuetext")).toBe("95%");
-    expect(within(resources).getAllByText("No data").length).toBeGreaterThan(0);
-
+    expect(screen.getByText("Busiest: memory 95 %")).toBeTruthy();
     expect(await screen.findByText("The worker has never reported")).toBeTruthy();
   });
 
-  it("keeps the rest of the dashboard when the incident history fails", async () => {
+  it("keeps the rest of the page when the history fails", async () => {
     vi.mocked(getOverview).mockResolvedValue(overviewFixture());
     vi.mocked(getMetrics).mockRejectedValue(new Error("metrics down"));
     renderPage();
 
-    expect(await screen.findByText("The incident history could not be loaded.")).toBeTruthy();
+    expect(await screen.findByText("The history could not be loaded. It is tried again every minute.")).toBeTruthy();
     expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Top root causes" })).toBeNull();
   });
@@ -139,33 +156,46 @@ describe("OverviewPage", () => {
     expect(screen.queryByRole("button", { name: "Mark resolved" })).toBeNull();
   });
 
-  it("shows Replay mode on the LLM tile instead of 0/0 when answers are replayed", async () => {
-    vi.mocked(getOverview).mockResolvedValue(
-      overviewFixture({
-        kpis: { ...overviewFixture().kpis, llm_keys_ok: 0, llm_keys_total: 0 },
-      }),
-    );
+  it("says the numbers come from a demo run when answers are replayed", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
     vi.mocked(getLlmStatus).mockResolvedValue(llmStatus("replay"));
     renderPage();
 
-    expect(await screen.findByText("Replay mode")).toBeTruthy();
-    expect(screen.getByText("recorded answers")).toBeTruthy();
-    expect(screen.queryByText("0/0")).toBeNull();
+    expect(await screen.findByText(/replaying recorded answers/)).toBeTruthy();
   });
 
-  it("shows the empty texts when nothing needs attention and nothing has happened", async () => {
+  it("hides Needs you and explains the empty lists when all is quiet", async () => {
     vi.mocked(getOverview).mockResolvedValue(
       overviewFixture({
-        verdict: { level: "ok", sentence: "All systems operational" },
+        verdict: { level: "ok", sentence: "Everything is running normally", detail: "Watching 0 servers" },
         needs_attention: [],
+        fixed: [],
         activity: [],
         servers: [],
       }),
     );
     renderPage();
 
-    expect(await screen.findByText("Nothing needs you right now.")).toBeTruthy();
-    expect(screen.getByText("No activity yet.")).toBeTruthy();
+    expect(await screen.findByText("Everything is running normally.")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
+    expect(screen.getByText("Nothing needed fixing in the last 24 hours.")).toBeTruthy();
+    expect(screen.getByText("Nothing has happened yet.")).toBeTruthy();
     expect(screen.getByText("No servers yet.")).toBeTruthy();
+    expect(await screen.findByText("Nothing else is in progress right now.")).toBeTruthy();
+  });
+
+  it("names how each incident was fixed", async () => {
+    vi.mocked(getOverview).mockResolvedValue(
+      overviewFixture({
+        fixed: [
+          fixedItem({ incident_id: "a", kind: "approved", title: "Approved fix" }),
+          fixedItem({ incident_id: "b", kind: "by_itself", title: "Went away" }),
+        ],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Fixed after your approval on demo-1/)).toBeTruthy();
+    expect(screen.getByText(/Went away on its own on demo-1/)).toBeTruthy();
   });
 });

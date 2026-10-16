@@ -35,10 +35,10 @@ describe("StoryProgress", () => {
     expect(current[0]?.textContent).toContain("Diagnosed");
   });
 
-  it("shows a relative time when the step has one, and says so when it does not", () => {
+  it("shows a relative time only for the steps that have one", () => {
     const { container } = render(<StoryProgress steps={steps} />);
 
     expect(container.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-12T10:00:00Z");
-    expect(screen.getAllByText("No time yet")).toHaveLength(5);
+    expect(container.querySelectorAll("time")).toHaveLength(1);
   });
 });

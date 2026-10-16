@@ -214,6 +214,7 @@ export type VerdictLevel = "ok" | "working" | "attention" | "degraded" | "down";
 export type Verdict = {
   level: VerdictLevel;
   sentence: string;
+  detail?: string | null;
 };
 
 export type Kpis = {
@@ -223,6 +224,19 @@ export type Kpis = {
   servers_total: number;
   llm_keys_ok: number;
   llm_keys_total: number;
+  fixed_today: number;
+  fixed_automatically_today: number;
+};
+
+export type FixKind = "automatic" | "approved" | "by_itself";
+
+export type FixedItem = {
+  incident_id: string;
+  title: string;
+  target: string;
+  resolved_at: string;
+  kind: FixKind;
+  sentence: string;
 };
 
 export type AttentionItem = {
@@ -286,6 +300,7 @@ export type Overview = {
   verdict: Verdict;
   kpis: Kpis;
   needs_attention: AttentionItem[];
+  fixed: FixedItem[];
   activity: ActivityItem[];
   servers: ServerSummary[];
 };

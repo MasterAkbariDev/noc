@@ -1,7 +1,7 @@
 import { CircleCheck, CircleDashed, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { ComponentHealth, ComponentStatus } from "../../api/types";
 import { healthView } from "../../lib/tones";
-import { Card, DescriptionList, HealthBadge, KpiTile, RelativeTime } from "../../ui";
+import { Card, DescriptionList, Disclosure, HealthBadge, KpiTile, RelativeTime } from "../../ui";
 
 const SUMMARY_STATUSES: { status: ComponentStatus; icon: LucideIcon }[] = [
   { status: "ok", icon: CircleCheck },
@@ -41,14 +41,16 @@ function DetailList({ details }: { details: Record<string, string> }) {
     return null;
   }
   return (
-    <DescriptionList className="mt-3" items={entries.map(([name, value]) => ({ key: name, term: name, detail: value }))} />
+    <Disclosure quiet summary="Details" className="mt-2">
+      <DescriptionList items={entries.map(([name, value]) => ({ key: name, term: name, detail: value }))} />
+    </Disclosure>
   );
 }
 
 function ComponentCard({ component }: { component: ComponentHealth }) {
   return (
     <Card title={component.label} actions={<HealthBadge status={component.status} />}>
-      <p className="m-0 text-sm break-words">{component.summary}</p>
+      <p className="m-0 break-words">{component.summary}</p>
       <DetailList details={component.details} />
       {component.since !== null && (
         <p className="m-0 mt-3 text-xs text-muted">

@@ -27,8 +27,11 @@ function overviewFixture(level: OverviewLevel, sentence: string): Overview {
       servers_total: 0,
       llm_keys_ok: 0,
       llm_keys_total: 0,
+      fixed_today: 2,
+      fixed_automatically_today: 1,
     },
     needs_attention: [],
+    fixed: [],
     activity: [],
     servers: [],
   };

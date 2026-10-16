@@ -497,6 +497,7 @@ ActivityKind = Literal["incident", "audit"]
 class OverviewVerdict(BaseModel):
     level: OverviewLevel
     sentence: str
+    detail: str | None = None
 
 
 class Kpis(BaseModel):
@@ -506,6 +507,8 @@ class Kpis(BaseModel):
     servers_total: int
     llm_keys_ok: int
     llm_keys_total: int
+    fixed_today: int = 0
+    fixed_automatically_today: int = 0
 
 
 class AttentionItem(BaseModel):
@@ -528,10 +531,23 @@ class ActivityItem(BaseModel):
     actor: str
 
 
+FixKind = Literal["automatic", "approved", "by_itself"]
+
+
+class FixedItem(BaseModel):
+    incident_id: uuid.UUID
+    title: str
+    target: str
+    resolved_at: datetime
+    kind: FixKind
+    sentence: str
+
+
 class Overview(BaseModel):
     verdict: OverviewVerdict
     kpis: Kpis
     needs_attention: list[AttentionItem]
+    fixed: list[FixedItem] = Field(default_factory=list)
     activity: list[ActivityItem]
     servers: list[ServerSummary]
 

@@ -273,7 +273,8 @@ async def test_the_verdict_asks_for_attention_when_incidents_need_a_person(
         body = await fetch_overview(client)
     assert body["verdict"] == {
         "level": "attention",
-        "sentence": "2 incidents need you · Prometheus: 1 of 2 scrape targets are down",
+        "sentence": "2 incidents need you",
+        "detail": "Prometheus: 1 of 2 scrape targets are down",
     }
 
 
@@ -305,12 +306,16 @@ async def test_activity_is_capped_at_fifteen_entries(
     assert body["activity"][0]["text"] == "cli added the target lab-19"
 
 
-async def test_a_quiet_fleet_says_ok_with_the_summary_line(
+async def test_a_quiet_fleet_says_everything_is_running(
     sessions: SessionFactory, quiet_fleet: None
 ) -> None:
     async with api_client(sessions, make_settings(), ZETA_UP) as client:
         body = await fetch_overview(client)
-    assert body["verdict"] == {"level": "ok", "sentence": "2 servers · 0 open incidents · LLM OK"}
+    assert body["verdict"] == {
+        "level": "ok",
+        "sentence": "Everything is running normally",
+        "detail": "Watching 2 servers",
+    }
     assert body["needs_attention"] == []
     assert body["kpis"]["open_incidents"] == 0
 
@@ -324,7 +329,8 @@ async def test_an_unreachable_prometheus_degrades_the_verdict_without_a_500(
     body = response.json()
     assert body["verdict"] == {
         "level": "degraded",
-        "sentence": "Prometheus: Prometheus cannot be reached",
+        "sentence": "Something needs a look",
+        "detail": "Prometheus: Prometheus cannot be reached",
     }
     assert [server["status"] for server in body["servers"]] == ["unknown", "unknown"]
     assert all(server["metrics"] is None for server in body["servers"])
@@ -349,7 +355,8 @@ async def test_an_incident_in_progress_makes_the_verdict_working(
         body = await fetch_overview(client)
     assert body["verdict"] == {
         "level": "working",
-        "sentence": "Working on 1 incident · 2 servers up · LLM OK",
+        "sentence": "The NOC is working on 1 incident",
+        "detail": "You do not need to do anything yet",
     }
 
 
@@ -395,6 +402,67 @@ async def test_a_failed_health_snapshot_does_not_break_the_rest_of_the_overview(
         body = await fetch_overview(client)
     assert body["verdict"] == {
         "level": "down",
-        "sentence": "The NOC is not working: The database did not answer",
+        "sentence": "The NOC itself is not working right now",
+        "detail": "The database did not answer",
     }
     assert body["kpis"]["open_incidents"] == 0
+
+
+def succeeded_action(incident: Incident, authorization: str) -> ActionRow:
+    return ActionRow(
+        incident_id=incident.id,
+        target_id=incident.target_id,
+        action_type="start_service",
+        resource_id="svc:demo-shop",
+        params={},
+        status="succeeded",
+        permission_class="SAFE_ACTION",
+        eligible=True,
+        auto_executable=True,
+        gate_failures=[],
+        reasons=[],
+        impact_score=2,
+        high_impact=False,
+        policy_version="test",
+        action_hash=authorization[:1] * 64,
+        authorization=authorization,
+    )
+
+
+def resolved_incident(target: Target, title: str, status: str, hours_ago: float) -> Incident:
+    moment = utc_now() - timedelta(hours=hours_ago)
+    return Incident(
+        target_id=target.id,
+        status=status,
+        severity="critical",
+        title=title,
+        trace_id="e" * 32,
+        opened_at=moment - timedelta(minutes=5),
+        resolved_at=moment,
+    )
+
+
+async def test_fixed_lists_the_last_day_newest_first_and_counts_automatic_fixes(
+    sessions: SessionFactory, quiet_fleet: None
+) -> None:
+    async with transaction(sessions) as session:
+        alpha = (await session.scalars(select(Target).where(Target.name == "alpha-1"))).one()
+        automatic = resolved_incident(alpha, "Shop stopped", "RESOLVED", 1)
+        approved = resolved_incident(alpha, "Shop stopped again", "CLOSED", 2)
+        by_itself = resolved_incident(alpha, "Short CPU spike", "SELF_RESOLVED", 3)
+        too_old = resolved_incident(alpha, "Last week", "RESOLVED", 30)
+        session.add_all([automatic, approved, by_itself, too_old])
+        await session.flush()
+        session.add(succeeded_action(automatic, "policy:test"))
+        session.add(succeeded_action(approved, "approval:abc"))
+    async with api_client(sessions, make_settings(), ZETA_UP) as client:
+        body = await fetch_overview(client)
+    assert [(item["title"], item["kind"]) for item in body["fixed"]] == [
+        ("Shop stopped", "automatic"),
+        ("Shop stopped again", "approved"),
+        ("Short CPU spike", "by_itself"),
+    ]
+    assert body["fixed"][0]["target"] == "alpha-1"
+    assert "start service on demo-shop" in body["fixed"][0]["sentence"]
+    assert body["kpis"]["fixed_today"] == 3
+    assert body["kpis"]["fixed_automatically_today"] == 1

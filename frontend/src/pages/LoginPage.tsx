@@ -70,18 +70,18 @@ export function LoginPage() {
   }
 
   return (
-    <main id="main" tabIndex={-1} className="grid min-h-screen place-items-center bg-nav-bg p-4">
-      <section aria-labelledby="login-title" className="w-full max-w-sm rounded-card border border-border bg-surface p-7 shadow-raised">
+    <main id="main" tabIndex={-1} className="grid min-h-screen place-items-center bg-bg p-4">
+      <section aria-labelledby="login-title" className="page-enter w-full max-w-sm rounded-card border border-border bg-surface p-8 shadow-raised">
         <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="inline-grid size-9 place-items-center rounded-control bg-accent text-accent-fg">
+          <span aria-hidden="true" className="inline-grid size-9 place-items-center rounded-full bg-accent text-accent-fg">
             <Radar size={20} strokeWidth={2.25} />
           </span>
           <p className="m-0 text-sm font-semibold text-muted">Multi-Agent NOC</p>
         </div>
-        <h1 id="login-title" className="mt-5 mb-0 text-xl font-semibold text-fg">
+        <h1 id="login-title" className="mt-6 mb-0 text-2xl font-semibold tracking-tight text-fg">
           Sign in
         </h1>
-        <p className="m-0 mt-1 text-sm text-muted">Use the account an admin created for you.</p>
+        <p className="m-0 mt-1 text-muted">See what your servers are doing and what the NOC fixed for you. Use the account an admin made for you.</p>
         {expired && (
           <div className="mt-4">
             <Alert tone="warning" role="status">

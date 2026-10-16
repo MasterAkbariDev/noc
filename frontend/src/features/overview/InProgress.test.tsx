@@ -68,15 +68,14 @@ describe("InProgress", () => {
     vi.mocked(listIncidents).mockResolvedValue([incident({ status: "REMEDIATING" })]);
     renderInProgress();
 
-    expect(await screen.findByText("Taking action")).toBeTruthy();
-    expect(screen.getByText(/Started/)).toBeTruthy();
+    expect(await screen.findByText(/Taking action, started/)).toBeTruthy();
   });
 
   it("links each incident to its page", async () => {
     vi.mocked(listIncidents).mockResolvedValue([incident()]);
     renderInProgress();
 
-    const link = await screen.findByRole("link", { name: "Open" });
+    const link = await screen.findByRole("link", { name: "Disk almost full on demo-1" });
     expect(link.getAttribute("href")).toBe("/incidents/11111111-1111-1111-1111-111111111111");
   });
 
@@ -84,7 +83,7 @@ describe("InProgress", () => {
     vi.mocked(listIncidents).mockResolvedValue([incident({ status: "RESOLVED" })]);
     renderInProgress();
 
-    expect(await screen.findByText("Nothing is in progress.")).toBeTruthy();
+    expect(await screen.findByText("Nothing else is in progress right now.")).toBeTruthy();
   });
 
   it("shows an error with a retry that asks again", async () => {
