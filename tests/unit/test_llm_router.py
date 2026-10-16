@@ -333,6 +333,55 @@ async def test_a_long_rate_limit_falls_back_without_waiting() -> None:
     assert time.slept == []
 
 
+def deadline_90(routes: list[Route], time: FakeTime) -> RoutedLLM:
+    return RoutedLLM({"small": routes}, True, 90, clock=time.clock, sleep=time.sleep)
+
+
+async def test_a_short_cooldown_is_waited_out_when_the_fallback_is_overloaded() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=14.0)])
+    gemini = StubProvider("gemini", [ProviderUnavailable("503")])
+    llm = deadline_90([route(groq, "q#1"), route(gemini, "g#1")], time)
+    response = await llm.complete(REQUEST)
+    assert response.provider == "groq"
+    assert not response.fallback
+    assert time.slept == [14.0]
+    assert (groq.calls, gemini.calls) == (2, 1)
+
+
+async def test_a_long_cooldown_with_an_overloaded_fallback_still_fails_fast() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=45.0)])
+    gemini = StubProvider("gemini", [ProviderUnavailable("503")])
+    llm = deadline_90([route(groq, "q#1"), route(gemini, "g#1")], time)
+    with pytest.raises(LLMUnavailable):
+        await llm.complete(REQUEST)
+    assert time.slept == []
+    assert (groq.calls, gemini.calls) == (1, 1)
+
+
+async def test_a_short_cooldown_is_waited_out_only_once() -> None:
+    time = FakeTime()
+    limited = [ProviderRateLimited("429", retry_after=14.0)] * 2
+    groq = StubProvider("groq", limited)
+    gemini = StubProvider("gemini", [ProviderUnavailable("503")] * 2)
+    llm = deadline_90([route(groq, "q#1"), route(gemini, "g#1")], time)
+    with pytest.raises(LLMUnavailable):
+        await llm.complete(REQUEST)
+    assert time.slept == [14.0]
+    assert (groq.calls, gemini.calls) == (2, 2)
+
+
+async def test_a_short_cooldown_wait_stays_within_the_deadline() -> None:
+    time = FakeTime()
+    groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=14.0)])
+    gemini = StubProvider("gemini", [ProviderUnavailable("503")])
+    llm = routed([route(groq, "q#1"), route(gemini, "g#1")], time=time)
+    with pytest.raises(LLMUnavailable):
+        await llm.complete(REQUEST)
+    assert time.slept == []
+
+
 async def test_a_rate_limited_key_cools_only_as_long_as_the_provider_asked() -> None:
     time = FakeTime()
     groq = StubProvider("groq", [ProviderRateLimited("429", retry_after=40.0)])

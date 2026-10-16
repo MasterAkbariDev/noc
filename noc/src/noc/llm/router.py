@@ -32,6 +32,7 @@ RECOVERABLE = (
 TRANSIENT = (ProviderUnavailable, TimeoutError)
 OVERLOAD_BACKOFF_SECONDS = (5.0, 15.0)
 PRIMARY_RETRY_MAX_SECONDS = 10.0
+SHORT_COOLDOWN_MAX_SECONDS = 30.0
 
 
 def is_overload(error: Exception) -> bool:
@@ -133,16 +134,34 @@ class RoutedLLM:
             ready = [soonest]
         primary = chain[0].provider.name
         waited = 0.0
-        for backoff in (*OVERLOAD_BACKOFF_SECONDS, None):
+        backoffs = iter(OVERLOAD_BACKOFF_SECONDS)
+        cooldown_waited = False
+        while True:
             response, only_transient = await self._try(request, ready, primary)
             if response is not None:
                 return response
-            if backoff is None or not only_transient or waited + backoff > self._deadline:
+            if only_transient:
+                pause = next(backoffs, None)
+            elif not cooldown_waited:
+                pause = self._short_cooldown(chain)
+                cooldown_waited = True
+            else:
+                pause = None
+            if pause is None or waited + pause > self._deadline:
                 break
-            await self._sleep(backoff)
-            waited += backoff
+            if not only_transient:
+                logger.info("llm_waiting_for_cooldown", tier=request.tier, seconds=pause)
+            await self._sleep(pause)
+            waited += pause
             ready = [route for route in chain if not self._cooldowns.is_cooling(route.label)]
         raise LLMUnavailable(f"all routes failed for tier {request.tier}")
+
+    def _short_cooldown(self, chain: list[Route]) -> float | None:
+        cooling = [self._cooldowns.remaining(route.label) for route in chain]
+        soonest = min((seconds for seconds in cooling if seconds > 0), default=None)
+        if soonest is None or soonest > SHORT_COOLDOWN_MAX_SECONDS:
+            return None
+        return soonest
 
     async def _try(
         self, request: LLMRequest, routes: list[Route], primary: str
