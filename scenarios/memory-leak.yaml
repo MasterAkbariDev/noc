@@ -1,5 +1,5 @@
 name: memory-leak
-description: Turn on the demo-shop memory leak so it grows about 36 MiB a minute towards its 600M MemoryMax; the NOC should see the service's memory near its limit, name a memory leak and restart demo-shop.
+description: Turn on the demo-shop memory leak so it grows about 48 MiB a minute towards its 600M MemoryMax; the NOC should see the service's memory near its limit, name a memory leak and restart demo-shop.
 injection:
   type: app_fault
   resource_id: svc:demo-shop
