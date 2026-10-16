@@ -155,7 +155,7 @@ echo 'journal 200M' | sudo tee /etc/noc-sentinel/actions/vacuum-journal.allow
 sudo chmod 0644 /etc/noc-sentinel/actions/*.allow
 ```
 
-Manual check: `sudo -u noc-sentinel systemctl start noc-action-stop-service@not-listed.service` must start the unit and then fail with `refused: not-listed is not listed in ...` in `journalctl -u 'noc-action-stop-service@not-listed.service'`. `sudo -u noc-sentinel systemctl stop demo-shop.service` must still be refused by polkit.
+Manual check: `sudo -u noc-sentinel systemctl start noc-action-stop-service@not-listed.service` must start the unit and then fail with `refused: not-listed is not listed in ...` in `journalctl -u 'noc-action-stop-service@not-listed.service'`. `sudo -u noc-sentinel systemctl stop not-registered-check.service` must still be refused by polkit with an authorization error (use a unit name that does not exist, and never a lab unit: on a lab host the chaos rule `51-noc-sentinel-chaos.rules` really may stop `demo-shop.service`, so that check would take the shop down).
 
 ## Firewall
 
