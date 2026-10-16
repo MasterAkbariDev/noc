@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useContext } from "react";
 import { getLlmStatus, getMetrics, getOverview } from "../api/client";
-import type { Metrics, Overview } from "../api/types";
+import type { ActivityItem, Metrics, Overview } from "../api/types";
 import { useSession } from "../auth/session";
 import { FixedByNoc } from "../features/overview/FixedByNoc";
 import { InProgress } from "../features/overview/InProgress";
@@ -9,7 +9,10 @@ import { IncidentTrend, OutcomeChart, RootCauseChart } from "../features/overvie
 import { LiveActivity } from "../features/overview/LiveActivity";
 import { NeedsAttention } from "../features/overview/NeedsAttention";
 import { OVERVIEW_FALLBACK_POLL_MS, TREND_DAYS, canCloseIncidents } from "../features/overview/model";
-import { ServerStrip } from "../features/overview/ServerStrip";
+import { ServerLiveGrid } from "../features/overview/ServerLiveGrid";
+import { useFleetLive } from "../features/live/queries";
+import { useLiveRange } from "../features/live/range";
+import { RangeSelect } from "../features/live/RangeSelect";
 import { StatusHero } from "../features/overview/StatusHero";
 import { SystemSnapshot } from "../features/overview/SystemSnapshot";
 import { LLM_STATUS_KEY } from "../features/system/queries";
@@ -92,63 +95,75 @@ type OverviewContentProps = {
 };
 
 function OverviewContent({ overview, updatedAt, canClose, replay, metrics, metricsFailed }: OverviewContentProps) {
+  const [range, setRange] = useLiveRange();
+  const live = useFleetLive(range);
   return (
     <>
       <StatusHero verdict={overview.verdict} kpis={overview.kpis} updatedAt={updatedAt} />
-      <div className="grid gap-x-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-w-0">
-          {overview.needs_attention.length > 0 && (
-            <Section heading="Needs you" description="The NOC stopped here and is waiting for a person.">
-              <NeedsAttention items={overview.needs_attention} canClose={canClose} />
-            </Section>
-          )}
-          <Section
-            heading="Fixed by the NOC"
-            description="Problems from the last 24 hours that are solved now."
-            actions={
-              <ButtonLink to="/incidents?filter=resolved" size="sm" variant="ghost">
-                All solved incidents
-              </ButtonLink>
-            }
-          >
-            <FixedByNoc items={overview.fixed} />
-          </Section>
-          <Section heading="Working on it now" description="The agents are looking into these. You do not need to do anything yet.">
-            <InProgress />
-          </Section>
-        </div>
-        <aside aria-label="Servers and activity" className="min-w-0">
-          <Section
-            heading="Servers"
-            actions={
-              <ButtonLink to="/servers" size="sm" variant="ghost">
-                All servers
-              </ButtonLink>
-            }
-          >
-            <ServerStrip servers={overview.servers} />
-          </Section>
-          <Section
-            heading="Recent activity"
-            actions={
-              <ButtonLink to="/activity" size="sm" variant="ghost">
-                Full log
-              </ButtonLink>
-            }
-          >
-            <LiveActivity items={overview.activity} />
-          </Section>
-        </aside>
+      {overview.needs_attention.length > 0 && (
+        <Section heading="Needs you" description="The NOC stopped here and is waiting for a person.">
+          <NeedsAttention items={overview.needs_attention} canClose={canClose} />
+        </Section>
+      )}
+      <Section
+        heading="Servers"
+        description="Live readings from each machine."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <RangeSelect value={range} onChange={setRange} />
+            <ButtonLink to="/servers" size="sm" variant="ghost">
+              All servers
+            </ButtonLink>
+          </div>
+        }
+      >
+        <ServerLiveGrid servers={overview.servers} live={live.data} />
+      </Section>
+      <div className="grid gap-x-12 lg:grid-cols-2">
+        <Section
+          heading="Fixed by the NOC"
+          description="Solved in the last 24 hours."
+          actions={
+            <ButtonLink to="/incidents?filter=resolved" size="sm" variant="ghost">
+              All solved
+            </ButtonLink>
+          }
+        >
+          <FixedByNoc items={overview.fixed} />
+        </Section>
+        <Section heading="Working on it now" description="Nothing to do for you yet.">
+          <InProgress />
+        </Section>
       </div>
-      <MoreDetails metrics={metrics} metricsFailed={metricsFailed} replay={replay} />
+      <MoreDetails activity={overview.activity} metrics={metrics} metricsFailed={metricsFailed} replay={replay} />
     </>
   );
 }
 
-function MoreDetails({ metrics, metricsFailed, replay }: { metrics: Metrics | undefined; metricsFailed: boolean; replay: boolean }) {
+function MoreDetails({
+  activity,
+  metrics,
+  metricsFailed,
+  replay,
+}: {
+  activity: ActivityItem[];
+  metrics: Metrics | undefined;
+  metricsFailed: boolean;
+  replay: boolean;
+}) {
   return (
-    <Disclosure summary="More details" hint="Trends, causes and the NOC's own health">
+    <Disclosure summary="More details" hint="Recent activity, trends, causes and the NOC's own health">
       <div className="grid gap-6">
+        <Section
+          heading="Recent activity"
+          actions={
+            <ButtonLink to="/activity" size="sm" variant="ghost">
+              Full log
+            </ButtonLink>
+          }
+        >
+          <LiveActivity items={activity} />
+        </Section>
         {replay && (
           <p className="m-0 text-sm text-muted">The AI is replaying recorded answers, so these numbers come from a demo run.</p>
         )}

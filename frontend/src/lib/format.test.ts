@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import { absoluteTime, asSentence, errorMessage, percentFromFraction, percentFromHundred, relativeTime, withoutTitle } from "./format";
+import { absoluteTime, asSentence, errorMessage, formatBytes, formatRate, formatUptime, percentFromFraction, percentFromHundred, relativeTime, withoutTitle } from "./format";
 
 const NOW = new Date("2026-10-13T12:00:00Z");
 
@@ -94,3 +94,22 @@ describe("withoutTitle", () => {
     expect(withoutTitle("Disk full", "something else")).toBe("Something else.");
   });
 });
+
+describe("formatBytes", () => {
+  it("picks a unit and keeps one decimal only for small values", () => {
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(52_428_800)).toBe("50 MB");
+    expect(formatRate(2048)).toBe("2.0 KB/s");
+  });
+});
+
+describe("formatUptime", () => {
+  it("says days and hours, hours and minutes, or minutes", () => {
+    expect(formatUptime(90_000)).toBe("1 day 1 h");
+    expect(formatUptime(3 * 86_400)).toBe("3 days 0 h");
+    expect(formatUptime(3_900)).toBe("1 h 5 min");
+    expect(formatUptime(120)).toBe("2 min");
+  });
+});
+

@@ -67,3 +67,38 @@ export function withoutTitle(title: string, text: string): string {
   }
   return asSentence(text);
 }
+
+const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+
+export function formatBytes(bytes: number): string {
+  let value = Math.max(0, bytes);
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = value >= 10 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
+}
+
+export function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+export function formatUptime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) {
+    return `${days} ${days === 1 ? "day" : "days"} ${hours % 24} h`;
+  }
+  if (hours > 0) {
+    return `${hours} h ${minutes % 60} min`;
+  }
+  return `${minutes} min`;
+}
+
+export function clockTime(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+

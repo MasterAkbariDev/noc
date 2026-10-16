@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
-import { getLlmStatus, getMetrics, getOverview, getSystemHealth, listIncidents } from "../api/client";
-import type { LlmStatus, Role } from "../api/types";
+import { getFleetLive, getLlmStatus, getMetrics, getOverview, getSystemHealth, listIncidents } from "../api/client";
+import type { FleetLive, LlmStatus, Role } from "../api/types";
 import { fixedItem, metricsFixture, overviewFixture, serverSummary, systemHealthFixture } from "../features/overview/testData";
 import { OverviewPage } from "./OverviewPage";
 
@@ -16,6 +16,7 @@ vi.mock("../api/client", async (importOriginal) => ({
   getMetrics: vi.fn(),
   getSystemHealth: vi.fn(),
   listIncidents: vi.fn(),
+  getFleetLive: vi.fn(),
 }));
 
 function llmStatus(mode: LlmStatus["mode"]): LlmStatus {
@@ -53,7 +54,28 @@ beforeEach(() => {
   vi.mocked(getSystemHealth).mockResolvedValue(systemHealthFixture());
   vi.mocked(listIncidents).mockReset();
   vi.mocked(listIncidents).mockResolvedValue([]);
+  vi.mocked(getFleetLive).mockReset();
+  vi.mocked(getFleetLive).mockResolvedValue(fleetLive());
 });
+
+function fleetLive(overrides: Partial<FleetLive> = {}): FleetLive {
+  return {
+    range: "1h",
+    step_seconds: 30,
+    available: true,
+    servers: [
+      {
+        name: "web-1",
+        cpu: [[1000, 20], [1030, 42]],
+        memory: [[1000, 95]],
+        disk: [],
+        net_in: [[1000, 2048]],
+        net_out: [[1000, 1024]],
+      },
+    ],
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -126,7 +148,7 @@ describe("OverviewPage", () => {
     expect(await screen.findByRole("heading", { name: "Incidents, last 14 days" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Top root causes" })).toBeTruthy();
     expect(getMetrics).toHaveBeenCalledWith(14);
-    expect(screen.getByText("Busiest: memory 95 %")).toBeTruthy();
+    expect(screen.getByText("Recent activity")).toBeTruthy();
     expect(await screen.findByText("The worker has never reported")).toBeTruthy();
   });
 
@@ -197,5 +219,44 @@ describe("OverviewPage", () => {
 
     expect(await screen.findByText(/Fixed after your approval on demo-1/)).toBeTruthy();
     expect(screen.getByText(/Went away on its own on demo-1/)).toBeTruthy();
+  });
+
+  it("shows each server as a live card with CPU, memory, disk and internet", async () => {
+    vi.mocked(getOverview).mockResolvedValue(
+      overviewFixture({ servers: [serverSummary({ id: "a", name: "web-1", open_incidents: 0 })] }),
+    );
+    renderPage();
+
+    const card = await screen.findByRole("article", { name: "web-1" });
+    expect(await within(card).findByText("42 %")).toBeTruthy();
+    expect(within(card).getByText("95 %").className).toContain("text-critical");
+    expect(within(card).getByText("2.0 KB/s")).toBeTruthy();
+    expect(within(card).getByText("No open incidents")).toBeTruthy();
+    expect(getFleetLive).toHaveBeenCalledWith("1h");
+  });
+
+  it("asks for another time range when the dropdown changes", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
+    renderPage();
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Time range" }), { target: { value: "15m" } });
+
+    await waitFor(() => expect(getFleetLive).toHaveBeenCalledWith("15m"));
+  });
+
+  it("says when live readings cannot be read", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture());
+    vi.mocked(getFleetLive).mockResolvedValue(fleetLive({ available: false }));
+    renderPage();
+
+    expect(await screen.findByText(/Live readings are not available right now/)).toBeTruthy();
+  });
+
+  it("shows one short line instead of empty tiles for a server without readings", async () => {
+    vi.mocked(getOverview).mockResolvedValue(overviewFixture({ servers: [serverSummary({ id: "b", name: "db-1" })] }));
+    renderPage();
+
+    const card = await screen.findByRole("article", { name: "db-1" });
+    expect(await within(card).findByText("No live readings from this server.")).toBeTruthy();
   });
 });

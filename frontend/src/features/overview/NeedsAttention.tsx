@@ -69,22 +69,18 @@ function AttentionRow({ item, canResolve, onResolve }: { item: AttentionItem; ca
   const waitingForApproval = item.status === "AWAITING_APPROVAL";
   const prefetch = usePrefetchIncident();
   return (
-    <article className="lift grid gap-3 rounded-card border border-border bg-surface p-5 shadow-card">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-        <SeverityBadge severity={item.severity} />
-        <span>
-          {item.target}, {waitingForApproval ? "waiting for approval since" : "waiting for you since"} <RelativeTime iso={item.since} />
-        </span>
+    <article className="lift grid gap-3 rounded-card border border-border border-l-4 border-l-warning bg-surface p-4 shadow-card sm:flex sm:items-center sm:justify-between">
+      <div className="grid min-w-0 gap-1">
+        <h3 className="m-0 text-base leading-snug font-semibold break-words">{item.title}</h3>
+        <p className="m-0 text-sm text-muted break-words">{withoutTitle(item.title, item.summary)}</p>
+        <p className="m-0 flex flex-wrap items-center gap-x-2 text-sm text-muted">
+          <SeverityBadge severity={item.severity} />
+          <span>
+            {item.target}, {waitingForApproval ? "waiting for approval since" : "waiting since"} <RelativeTime iso={item.since} />
+          </span>
+        </p>
       </div>
-      <div className="grid gap-1">
-        <h3 className="m-0 text-lg leading-snug font-semibold break-words">{item.title}</h3>
-        <p className="m-0 text-muted break-words">{withoutTitle(item.title, item.summary)}</p>
-      </div>
-      <p className="m-0 border-l-2 border-accent pl-3 break-words">
-        <span className="font-semibold">What to do: </span>
-        {item.advice}
-      </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex shrink-0 flex-wrap gap-2">
         <ButtonLink
           to={`/incidents/${encodeURIComponent(item.incident_id)}`}
           variant="primary"

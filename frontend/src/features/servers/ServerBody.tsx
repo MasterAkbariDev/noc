@@ -1,7 +1,10 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Server } from "lucide-react";
-import type { IncidentSummary, ServerDetail, TargetResource } from "../../api/types";
+import type { IncidentSummary, ServerDetail, ServiceLive, TargetResource } from "../../api/types";
+import { formatBytes } from "../../lib/format";
 import { Badge } from "../../ui/Badge";
+import { Sparkline } from "../../ui/charts";
+import { Disclosure } from "../../ui/Disclosure";
 import { type Column, DataTable } from "../../ui/DataTable";
 import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
@@ -11,6 +14,8 @@ import { RelativeTime } from "../../ui/RelativeTime";
 import { Section } from "../../ui/Section";
 import { SeverityBadge } from "../../ui/SeverityBadge";
 import { Skeleton } from "../../ui/Skeleton";
+import { lastValue } from "../live/range";
+import { LivePanel, useServiceMemory } from "./LivePanel";
 import { MetricBars } from "./MetricBar";
 import { errorText, isNotFound, NOT_FOUND_MESSAGE, serviceView } from "./serverView";
 import { IncidentLink } from "../incident/IncidentLink";
@@ -30,18 +35,37 @@ function ServerFacts({ server }: { server: ServerDetail }) {
   );
 }
 
+function memoryText(service: ServiceLive | undefined): string | null {
+  const used = service === undefined ? null : lastValue(service.memory_bytes);
+  if (used === null) {
+    return null;
+  }
+  const limit = service?.memory_limit_bytes ?? null;
+  return limit === null ? `uses ${formatBytes(used)} of memory` : `uses ${formatBytes(used)} of its ${formatBytes(limit)} memory limit`;
+}
+
 function ServiceList({ server }: { server: ServerDetail }) {
+  const live = useServiceMemory(server.id);
   if (server.services.length === 0) {
     return <p className="m-0 text-sm text-muted">No services are inventoried on this server.</p>;
   }
   return (
-    <List gap="sm">
+    <List variant="divided">
       {server.services.map((service) => {
         const view = serviceView(service.up);
+        const memory = live.get(service.resource_id);
+        const usage = memoryText(memory);
+        const points = memory?.memory_bytes ?? [];
         return (
-          <ListItem key={service.resource_id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 break-words">{service.name}</span>
-            <Badge tone={view.tone}>{view.label}</Badge>
+          <ListItem key={service.resource_id} className="flex flex-wrap items-center justify-between gap-3">
+            <span className="grid min-w-0 gap-0.5">
+              <span className="font-medium break-words">{service.name}</span>
+              {usage !== null && <span className="text-sm text-muted">{usage}</span>}
+            </span>
+            <span className="flex items-center gap-3">
+              {points.length > 1 && <Sparkline values={points.map(([, value]) => value)} color="var(--ui-accent)" />}
+              <Badge tone={view.tone}>{view.label}</Badge>
+            </span>
           </ListItem>
         );
       })}
@@ -82,18 +106,13 @@ const INCIDENT_COLUMNS: Column<IncidentSummary>[] = [
 
 function ServerContent({ server }: { server: ServerDetail }) {
   return (
-    <div className="grid gap-8">
-      <Section heading="Status">
-        <ServerFacts server={server} />
-      </Section>
-      <Section heading="Metrics">
+    <div className="grid gap-2">
+      <Section heading="Right now">
         <MetricBars metrics={server.metrics} />
       </Section>
+      <LivePanel serverId={server.id} />
       <Section heading="Services">
         <ServiceList server={server} />
-      </Section>
-      <Section heading="Resources">
-        <ResourceList resources={server.resources} />
       </Section>
       <Section heading="Recent incidents">
         <DataTable
@@ -104,6 +123,12 @@ function ServerContent({ server }: { server: ServerDetail }) {
           empty="No incidents have been recorded for this server."
         />
       </Section>
+      <Disclosure summary="Technical details" hint="Scrape and inventory times, managed resources">
+        <div className="grid gap-6">
+          <ServerFacts server={server} />
+          <ResourceList resources={server.resources} />
+        </div>
+      </Disclosure>
     </div>
   );
 }

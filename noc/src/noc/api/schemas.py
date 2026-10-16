@@ -575,3 +575,49 @@ class SetRoleRequest(BaseModel):
 
 class SetUserPasswordRequest(BaseModel):
     new_password: str = Field(max_length=MAX_LOGIN_FIELD_LENGTH)
+
+
+LiveRange = Literal["15m", "1h", "24h"]
+LivePoint = tuple[float, float]
+
+
+class FleetServerLive(BaseModel):
+    name: str
+    cpu: list[LivePoint]
+    memory: list[LivePoint]
+    disk: list[LivePoint]
+    net_in: list[LivePoint]
+    net_out: list[LivePoint]
+
+
+class FleetLive(BaseModel):
+    range: LiveRange
+    step_seconds: int
+    available: bool
+    servers: list[FleetServerLive]
+
+
+class ServiceLive(BaseModel):
+    resource_id: str
+    name: str
+    up: bool | None
+    memory_bytes: list[LivePoint]
+    memory_limit_bytes: float | None
+
+
+class ServerLive(BaseModel):
+    range: LiveRange
+    step_seconds: int
+    available: bool
+    cpu: list[LivePoint]
+    memory: list[LivePoint]
+    disk: list[LivePoint]
+    load: list[LivePoint]
+    net_in: list[LivePoint]
+    net_out: list[LivePoint]
+    net_errors: list[LivePoint]
+    disk_read: list[LivePoint]
+    disk_write: list[LivePoint]
+    uptime_seconds: float | None
+    cpu_count: int | None
+    services: list[ServiceLive]

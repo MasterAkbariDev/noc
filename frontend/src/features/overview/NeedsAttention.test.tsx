@@ -27,13 +27,13 @@ describe("NeedsAttention", () => {
     expect(screen.getByRole("list", { name: "Incidents that need you" }).children).toHaveLength(0);
   });
 
-  it("shows the incident with its target, reason, advice and a See the steps link", () => {
+  it("shows the incident with its target and reason, and leaves the steps to the incident page", () => {
     renderList([attentionItem()], false);
 
     expect(screen.getByText("Disk almost full on demo-1")).toBeTruthy();
-    expect(screen.getByText(/demo-1, waiting for you since/)).toBeTruthy();
+    expect(screen.getByText(/demo-1, waiting since/)).toBeTruthy();
     expect(screen.getByText("Logs are filling the root disk.")).toBeTruthy();
-    expect(screen.getByText("Review the logs and free space.")).toBeTruthy();
+    expect(screen.queryByText("Review the logs and free space.")).toBeNull();
     expect(screen.getByRole("link", { name: "See the steps" }).getAttribute("href")).toBe(
       "/incidents/11111111-1111-1111-1111-111111111111",
     );

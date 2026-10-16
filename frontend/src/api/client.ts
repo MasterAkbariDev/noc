@@ -1,5 +1,8 @@
 import type {
   ActivityPage,
+  FleetLive,
+  LiveRange,
+  ServerLive,
   ActivityVerify,
   AddLlmKeyBody,
   ApprovalDecisionBody,
@@ -351,4 +354,12 @@ export function decideOnAction(
     `/api/incidents/${encodedId(incidentId)}/actions/${encodedId(actionId)}/decision`,
     body,
   );
+}
+
+export function getFleetLive(range: LiveRange): Promise<FleetLive> {
+  return apiGet<FleetLive>(`/api/live/servers?range=${encodeURIComponent(range)}`);
+}
+
+export function getServerLive(id: string, range: LiveRange): Promise<ServerLive> {
+  return apiGet<ServerLive>(`/api/live/servers/${encodedId(id)}?range=${encodeURIComponent(range)}`);
 }

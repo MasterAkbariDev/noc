@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import Literal
 
@@ -58,6 +59,36 @@ class Sample(BaseModel):
     value: float
 
 
+class RangeSeries(BaseModel):
+    metric: dict[str, str]
+    values: list[tuple[float, str]]
+
+
+class MatrixData(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    result_type: str = Field(alias="resultType")
+    result: list[RangeSeries]
+
+
+class MatrixResponse(BaseModel):
+    status: Literal["success"]
+    data: MatrixData
+
+
+Point = tuple[float, float]
+
+
+class Series(BaseModel):
+    labels: dict[str, str]
+    points: list[Point]
+
+
+def finite_points(values: list[tuple[float, str]]) -> list[Point]:
+    points = [(stamp, float(text)) for stamp, text in values]
+    return [(stamp, value) for stamp, value in points if math.isfinite(value)]
+
+
 class PrometheusReader:
     def __init__(self, http: httpx.AsyncClient, base_url: str) -> None:
         self._http = http
@@ -71,6 +102,14 @@ class PrometheusReader:
         parsed = await self._fetch("/api/v1/query", {"query": promql}, VectorResponse)
         return [
             Sample(labels=item.metric, value=float(item.value[1])) for item in parsed.data.result
+        ]
+
+    async def matrix(self, promql: str, start: float, end: float, step: int) -> list[Series]:
+        params = {"query": promql, "start": str(start), "end": str(end), "step": str(step)}
+        parsed = await self._fetch("/api/v1/query_range", params, MatrixResponse)
+        return [
+            Series(labels=item.metric, points=finite_points(item.values))
+            for item in parsed.data.result
         ]
 
     async def _fetch[ModelT: BaseModel](

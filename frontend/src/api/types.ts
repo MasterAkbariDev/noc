@@ -589,3 +589,50 @@ export type Metrics = {
   actions: CategoryCount[];
   variants: VariantRow[];
 };
+
+export type LiveRange = "15m" | "1h" | "24h";
+
+export type LivePoint = [number, number];
+
+export type FleetServerLive = {
+  name: string;
+  cpu: LivePoint[];
+  memory: LivePoint[];
+  disk: LivePoint[];
+  net_in: LivePoint[];
+  net_out: LivePoint[];
+};
+
+export type FleetLive = {
+  range: LiveRange;
+  step_seconds: number;
+  available: boolean;
+  servers: FleetServerLive[];
+};
+
+export type ServiceLive = {
+  resource_id: string;
+  name: string;
+  up: boolean | null;
+  memory_bytes: LivePoint[];
+  memory_limit_bytes: number | null;
+};
+
+export type ServerLive = {
+  range: LiveRange;
+  step_seconds: number;
+  available: boolean;
+  cpu: LivePoint[];
+  memory: LivePoint[];
+  disk: LivePoint[];
+  load: LivePoint[];
+  net_in: LivePoint[];
+  net_out: LivePoint[];
+  net_errors: LivePoint[];
+  disk_read: LivePoint[];
+  disk_write: LivePoint[];
+  uptime_seconds: number | null;
+  cpu_count: number | null;
+  services: ServiceLive[];
+};
+

@@ -32,7 +32,7 @@ function FixedRow({ item }: { item: FixedItem }) {
   const view = KIND_VIEWS[item.kind];
   const Icon = view.icon;
   return (
-    <article className="flex gap-4 rounded-card px-1 py-3">
+    <article className="flex gap-3 py-2">
       <span aria-hidden="true" className="mt-0.5 inline-grid size-8 shrink-0 place-items-center rounded-full bg-ok-soft text-ok">
         <Icon size={16} strokeWidth={2.25} />
       </span>
@@ -40,7 +40,7 @@ function FixedRow({ item }: { item: FixedItem }) {
         <IncidentLink id={item.incident_id} className="font-semibold break-words hover:text-accent hover:underline">
           {item.title}
         </IncidentLink>
-        <p className="m-0 text-[15px] break-words">{item.sentence}</p>
+        <p className="m-0 line-clamp-2 text-sm break-words">{item.sentence}</p>
         <p className="m-0 text-sm text-muted">
           {view.label} on {item.target}, <RelativeTime iso={item.resolved_at} />
         </p>

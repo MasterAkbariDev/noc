@@ -5,3 +5,4 @@ export { HBarChart, type BarItem } from "./HBarChart";
 export { LineChart } from "./LineChart";
 export { Sparkline, sparkPath } from "./Sparkline";
 export { compactNumber, fullNumber, niceScale } from "./scale";
+export { TimeChart, nearestIndex, timePath, type TimePoint, type TimeSeries } from "./TimeChart";
