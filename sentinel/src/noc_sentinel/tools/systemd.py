@@ -1,3 +1,4 @@
+import re
 import subprocess
 from typing import Protocol
 
@@ -13,6 +14,9 @@ STATUS_PROPERTIES = (
     "MemoryCurrent",
 )
 SYSTEMCTL_TIMEOUT_SECONDS = 5
+TIMEOUT_PROPERTIES = ("TimeoutStartUSec", "TimeoutStopUSec")
+TIMESPAN_PART = re.compile(r"(\d+(?:\.\d+)?)\s*(us|ms|s|min|h|d)\b")
+TIMESPAN_UNIT_SECONDS = {"us": 1e-6, "ms": 1e-3, "s": 1.0, "min": 60.0, "h": 3600.0, "d": 86400.0}
 
 
 class SystemctlRunner(Protocol):
@@ -41,6 +45,18 @@ def optional_int(value: str | None) -> int | None:
     if value is None or not value.strip().lstrip("-").isdigit():
         return None
     return int(value)
+
+
+def timespan_seconds(value: str | None) -> float | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if text == "infinity":
+        return float("inf")
+    parts = TIMESPAN_PART.findall(text)
+    if not parts or TIMESPAN_PART.sub("", text).strip():
+        return None
+    return sum(float(amount) * TIMESPAN_UNIT_SECONDS[unit] for amount, unit in parts)
 
 
 def read_service_status(resource: ManagedResource, runner: SystemctlRunner) -> ServiceStatus:

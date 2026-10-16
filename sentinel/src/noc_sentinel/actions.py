@@ -21,7 +21,12 @@ from noc_sentinel.host_actions import (
     is_host_action,
 )
 from noc_sentinel.security import RequestVerifier
-from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
+from noc_sentinel.tools.systemd import (
+    TIMEOUT_PROPERTIES,
+    SystemctlRunner,
+    read_service_status,
+    timespan_seconds,
+)
 from noc_shared.actions import (
     ActionRequest,
     ActionResult,
@@ -35,6 +40,8 @@ from noc_shared.tools import ServiceStatus
 
 SYSTEMCTL_PATH = "/usr/bin/systemctl"
 ACTION_TIMEOUT_SECONDS = 30
+MAX_SERVICE_ACTION_SECONDS = 300
+SERVICE_TIMEOUT_MARGIN_SECONDS = 15
 WAIT_FOR_ACTIVE_SECONDS = 10
 POLL_INTERVAL_SECONDS = 1
 RATE_WINDOW = timedelta(hours=1)
@@ -110,6 +117,18 @@ def action_timeout(action_type: ActionType) -> int:
     return (
         host_action_timeout(action_type) if is_host_action(action_type) else ACTION_TIMEOUT_SECONDS
     )
+
+
+def service_action_timeout(action_type: ServiceActionType, unit_timeouts: dict[str, str]) -> int:
+    phases = ["TimeoutStartUSec"] + (
+        ["TimeoutStopUSec"] if action_type == "restart_service" else []
+    )
+    known = [timespan_seconds(unit_timeouts.get(phase)) for phase in phases]
+    seconds = [value for value in known if value is not None]
+    if not seconds:
+        return ACTION_TIMEOUT_SECONDS
+    needed = sum(seconds) + SERVICE_TIMEOUT_MARGIN_SECONDS
+    return int(min(MAX_SERVICE_ACTION_SECONDS, max(ACTION_TIMEOUT_SECONDS, needed)))
 
 
 def allowed_kinds(action_type: ActionType) -> frozenset[ResourceKind]:
@@ -265,7 +284,7 @@ class ActionExecutor:
         failure = (
             ("INTERNAL", "no command for this action")
             if argv is None
-            else self._mutate(argv, action_timeout(action_type))
+            else self._mutate(argv, self._timeout_for(action_type, resource))
         )
         after, failure = self._check_after(action_type, resource, failure)
         result = ActionResult(
@@ -296,6 +315,15 @@ class ActionExecutor:
         self._store.finish(result)
         log_execution(result, request)
         return ActionOutcome(200, result)
+
+    def _timeout_for(self, action_type: ActionType, resource: ManagedResource) -> int:
+        if not is_service_action(action_type):
+            return action_timeout(action_type)
+        try:
+            unit_timeouts = self._systemctl.show(resource.name, TIMEOUT_PROPERTIES)
+        except (subprocess.SubprocessError, OSError):
+            return ACTION_TIMEOUT_SECONDS
+        return service_action_timeout(action_type, unit_timeouts)
 
     def _unit_status(self, resource: ManagedResource) -> ServiceStatus | None:
         if resource.kind not in UNIT_KINDS:
