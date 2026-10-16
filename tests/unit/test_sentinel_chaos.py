@@ -224,6 +224,7 @@ def test_start_runs_exactly_the_fixed_argv_lists(tmp_path: Path) -> None:
         (
             "/usr/bin/systemd-run",
             "--unit=noc-chaos-restore-demo-shop-service",
+            "--collect",
             "--on-active=300",
             "/usr/bin/systemctl",
             "start",
@@ -355,6 +356,7 @@ def test_cpu_burn_start_runs_the_fixed_argv_with_a_restore_timer(tmp_path: Path)
         (
             "/usr/bin/systemd-run",
             "--unit=noc-chaos-restore-cpu-burn",
+            "--collect",
             "--on-active=120",
             "/usr/bin/systemctl",
             "stop",
@@ -460,6 +462,7 @@ def test_disk_fill_start_allocates_up_to_the_target(
         (
             "/usr/bin/systemd-run",
             "--unit=noc-chaos-restore-disk-fill",
+            "--collect",
             "--on-active=300",
             "/usr/bin/rm",
             "-f",
@@ -602,6 +605,7 @@ def test_app_fault_start_runs_the_fixed_curl_argv_with_a_restore_timer(tmp_path:
         (
             "/usr/bin/systemd-run",
             f"--unit={APP_RESTORE_UNIT}",
+            "--collect",
             "--on-active=600",
             *APP_RESET,
         ),

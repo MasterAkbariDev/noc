@@ -148,7 +148,13 @@ def start_unit_argv(unit: str) -> tuple[str, ...]:
 def schedule_restore_argv(
     restore_unit: str, command: tuple[str, ...], ttl_seconds: int
 ) -> tuple[str, ...]:
-    return (SYSTEMD_RUN_PATH, f"--unit={restore_unit}", f"--on-active={ttl_seconds}", *command)
+    return (
+        SYSTEMD_RUN_PATH,
+        f"--unit={restore_unit}",
+        "--collect",
+        f"--on-active={ttl_seconds}",
+        *command,
+    )
 
 
 def stop_restore_timer_argv(restore_unit: str) -> tuple[str, ...]:
