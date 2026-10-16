@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+source /usr/local/lib/noc-actions/noc-action-lib.sh
+MIN_AGE_MINUTES=+1440
+dir=$(allow_value clean-temp-dir "${1:-}")
+plain_directory "$dir"
+find "$dir" -xdev -mindepth 1 -type f -mmin "$MIN_AGE_MINUTES" -print -delete
+find "$dir" -xdev -mindepth 1 -type d -empty -mmin "$MIN_AGE_MINUTES" -print -delete

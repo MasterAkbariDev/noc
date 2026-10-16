@@ -298,7 +298,7 @@ def fix_kind(incident: Incident, succeeded: list[ActionRow]) -> FixKind:
 
 def fixed_action_phrase(succeeded: list[ActionRow]) -> str:
     return ", ".join(
-        f"{words.humanize(action.action_type).lower()} on {resource_name(action.resource_id)}"
+        f"{words.action_label(action.action_type)} on {resource_name(action.resource_id)}"
         for action in succeeded
     )
 

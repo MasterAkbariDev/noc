@@ -410,7 +410,7 @@ async def test_cpu_burn_runs_end_to_end_and_stops_the_burn(
     [run] = await load_runs(sessions)
     assert run.scenario == "high-cpu"
     assert run.resource_id == "host:demo-1"
-    assert run.ground_truth["resource_id"] is None
+    assert run.ground_truth["resource_id"] == "job:report-gen"
 
 
 async def test_disk_fill_failure_stops_the_fill(

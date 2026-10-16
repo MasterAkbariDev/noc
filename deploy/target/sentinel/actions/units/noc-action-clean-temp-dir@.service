@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: delete old temp files in %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/clean-temp-dir %i
+TimeoutStartSec=300

@@ -59,13 +59,15 @@ def test_cpu_and_disk_scenario_files_match_the_plan() -> None:
     assert isinstance(high_cpu.injection, CpuBurnInjection)
     assert (high_cpu.injection.workers, high_cpu.injection.ttl_seconds) == (2, 900)
     assert high_cpu.ground_truth.root_cause_code == "cpu_runaway_process"
-    assert high_cpu.ground_truth.acceptable_actions == ["kill_process"]
+    assert high_cpu.ground_truth.acceptable_actions == ["throttle_cpu", "stop_service"]
+    assert high_cpu.ground_truth.resource_id == "job:report-gen"
     assert isinstance(disk.injection, DiskFillInjection)
     assert (disk.injection.target_percent, disk.injection.ttl_seconds) == (92, 900)
     assert disk.ground_truth.root_cause_code == "disk_full_logs"
-    assert disk.ground_truth.acceptable_actions == ["vacuum_journal"]
-    assert high_cpu.ground_truth.expected_outcome == "escalated"
-    assert disk.ground_truth.expected_outcome == "escalated"
+    assert disk.ground_truth.acceptable_actions == ["rotate_logs", "vacuum_journal"]
+    assert disk.ground_truth.resource_id == "dir:demo-data"
+    assert high_cpu.ground_truth.expected_outcome == "resolved"
+    assert disk.ground_truth.expected_outcome == "resolved"
 
 
 def test_defaults_apply_when_timeouts_are_omitted() -> None:

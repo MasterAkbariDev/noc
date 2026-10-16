@@ -51,7 +51,7 @@ def test_the_automatic_sentence_names_the_action_and_the_resource() -> None:
     assert item.target == "demo-1"
     assert item.resolved_at == RESOLVED_AT
     assert item.sentence == (
-        "The NOC chose to start service on demo-shop and did it on its own. "
+        "The NOC chose to start the service on demo-shop and did it on its own. "
         "The check afterwards passed."
     )
 

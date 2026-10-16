@@ -12,6 +12,7 @@ from noc.orchestration.nodes import (
     route_after_begin,
     route_after_decide,
     route_after_execute,
+    route_after_verify,
 )
 from noc.orchestration.remediation_nodes import RemediationNodes
 from noc.orchestration.runbook_nodes import RunbookNodes
@@ -103,7 +104,9 @@ def add_remediation(
     graph.add_conditional_edges(
         "execute", route_after_execute, {"verify": "verify", "report": "report"}
     )
-    graph.add_edge("verify", "report")
+    graph.add_conditional_edges(
+        "verify", route_after_verify, {"execute": "execute", "wait": END, "report": "report"}
+    )
     graph.add_edge("report", END)
 
 
@@ -119,7 +122,9 @@ def build_remediation_graph(
     graph.add_conditional_edges(
         "execute", route_after_execute, {"verify": "verify", "report": "report"}
     )
-    graph.add_edge("verify", "report")
+    graph.add_conditional_edges(
+        "verify", route_after_verify, {"execute": "execute", "wait": END, "report": "report"}
+    )
     graph.add_edge("report", END)
     return graph.compile(checkpointer=checkpointer)
 

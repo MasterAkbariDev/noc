@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+source /usr/local/lib/noc-actions/noc-action-lib.sh
+unit="${1:-}"
+allow_value stop-service "$unit" >/dev/null
+service_unit "$unit"
+systemctl stop -- "$unit"

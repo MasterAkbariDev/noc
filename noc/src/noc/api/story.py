@@ -436,7 +436,8 @@ def story_action(action: ActionRow, now: datetime) -> StoryAction:
     verdict = action_verdict(action, now)
     return StoryAction(
         action=action.action_type,
-        action_label=f"{words.humanize(action.action_type)} on {resource_name(action.resource_id)}",
+        action_label=words.action_title(action.action_type)
+        + f" on {resource_name(action.resource_id)}",
         verdict=verdict,
         verdict_label=words.text_for(words.VERDICT_LABELS, verdict),
         reasons=[words.text_for(words.GATE_TEXT, gate) for gate in action.gate_failures],

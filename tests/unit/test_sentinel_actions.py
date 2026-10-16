@@ -45,7 +45,7 @@ class FakeActionRunner:
         self.error = error
         self.calls: list[tuple[str, ...]] = []
 
-    def run(self, argv: tuple[str, ...]) -> int:
+    def run(self, argv: tuple[str, ...], timeout_seconds: int) -> int:
         self.calls.append(argv)
         if self.error is not None:
             raise self.error

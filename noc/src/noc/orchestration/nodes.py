@@ -203,5 +203,9 @@ def route_after_decide(state: IncidentState) -> str:
     return "report"
 
 
+def route_after_verify(state: IncidentState) -> str:
+    return route_after_decide(state)
+
+
 def route_after_execute(state: IncidentState) -> str:
     return "verify" if state.get("outcome") == "verify" else "report"

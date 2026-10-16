@@ -9,12 +9,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
-from noc.db.models import ActionRow, DiagnosisRow, Incident, Target
+from noc.db.models import ActionRow, DiagnosisRow, Incident, ManagedResourceRow, Target
 from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
-from noc.orchestration.nodes import Update, incident_id_of
+from noc.orchestration.action_checks import (
+    CHECK_TOOLS,
+    CheckReading,
+    check_arguments,
+    reading_from,
+)
+from noc.orchestration.nodes import POLICY, Update, incident_id_of
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
+from noc.policy.models import ActionCheck
 from noc.store.briefs import all_alerts_resolved, target_ref
 from noc.store.decisions import reevaluate_action
 from noc.store.incidents import add_event, lock_incident, transition
@@ -27,7 +34,11 @@ from noc.store.remediation import (
     REFUSED,
     SUCCEEDED,
     action_summary,
+    actions_taken,
+    apply_decision,
     current_action,
+    plan_remediation,
+    remaining_candidates,
 )
 from noc.tools.catalog import EXECUTOR
 from noc.tools.sentinel_client import ActionReply, SentinelClient
@@ -35,17 +46,18 @@ from noc.tools.spec import TargetRef, ToolContext
 from noc_shared.actions import ActionRequest
 
 VERIFIER = "verifier"
-SNAPSHOT_TOOL = "get_service_status"
 APPROVAL_PREFIX = "approval:"
+SETTLE_POLLS = 72
+SETTLE_POLL_SECONDS = 5.0
 
 Sleep = Callable[[float], Awaitable[None]]
 
 
 @dataclass(frozen=True)
-class Snapshot:
-    ok: bool
-    active_state: str | None
-    error: str | None
+class CheckTarget:
+    check: ActionCheck
+    resource_id: str
+    resource_name: str
 
 
 @dataclass(frozen=True)
@@ -76,13 +88,28 @@ def action_request(action: ActionRow, incident_id: uuid.UUID) -> ActionRequest:
     )
 
 
+def still_executing(reply: ActionReply) -> bool:
+    return (
+        reply.kind == "result" and reply.result is not None and reply.result.status == "executing"
+    )
+
+
 async def settle_action(
-    client: SentinelClient, action_type: str, request: ActionRequest
+    client: SentinelClient,
+    action_type: str,
+    request: ActionRequest,
+    sleep: Sleep | None = None,
+    polls: int = 0,
 ) -> ActionReply:
     reply = await client.run_action(action_type, request)
-    if reply.kind != "unknown" and not (reply.result and reply.result.status == "executing"):
+    if reply.kind != "unknown" and not still_executing(reply):
         return reply
     lookup = await client.get_action(request.action_id)
+    for _ in range(polls if sleep is not None else 0):
+        if not still_executing(lookup) or sleep is None:
+            break
+        await sleep(SETTLE_POLL_SECONDS)
+        lookup = await client.get_action(request.action_id)
     if lookup.kind == "result" and lookup.result and lookup.result.status != "executing":
         return lookup
     if lookup.kind == "not_found":
@@ -121,9 +148,9 @@ class RemediationNodes:
             needs_snapshot = action.status == AUTHORIZED
             target = target_ref(await session.get_one(Target, incident.target_id))
             trace_id = incident.trace_id
-            resource_id = action.resource_id
+            check_target = await self._check_target(session, incident, action)
         if needs_snapshot:
-            snapshot = await self._snapshot(incident_id, target, trace_id, resource_id)
+            snapshot = await self._probe(incident_id, target, trace_id, check_target)
             outcome = await self._authorize_dispatch(incident_id, snapshot)
             if outcome is not None:
                 return outcome
@@ -131,23 +158,37 @@ class RemediationNodes:
         if dispatch is None:
             return {}
         client = self._runtime.sentinels.client_for(dispatch.target)
-        reply = await settle_action(client, dispatch.action_type, dispatch.request)
+        reply = await settle_action(
+            client, dispatch.action_type, dispatch.request, self._sleep, SETTLE_POLLS
+        )
         return await self._record_reply(incident_id, dispatch.action_id, reply)
 
-    async def _snapshot(
-        self, incident_id: uuid.UUID, target: TargetRef, trace_id: str, resource_id: str
-    ) -> Snapshot:
+    async def _check_target(
+        self, session: AsyncSession, incident: Incident, action: ActionRow
+    ) -> CheckTarget:
+        definition = self._runtime.policy.actions.get(action.action_type)
+        check = definition.check if definition is not None else ActionCheck.SERVICE_ACTIVE
+        resource = await session.get(ManagedResourceRow, (incident.target_id, action.resource_id))
+        name = resource.name if resource is not None else ""
+        return CheckTarget(check=check, resource_id=action.resource_id, resource_name=name)
+
+    async def _probe(
+        self, incident_id: uuid.UUID, target: TargetRef, trace_id: str, check_target: CheckTarget
+    ) -> CheckReading:
+        tool = CHECK_TOOLS.get(check_target.check)
+        if tool is None:
+            return CheckReading(ok=True, passed=True)
         context = ToolContext(
             incident_id=incident_id, agent=EXECUTOR, target=target, trace_id=trace_id
         )
-        arguments = json.dumps({"resource_id": resource_id})
-        result = await self._runtime.registry.execute(SNAPSHOT_TOOL, arguments, context)
+        arguments = json.dumps(check_arguments(check_target.check, check_target.resource_id))
+        result = await self._runtime.registry.execute(tool, arguments, context)
         if not result.ok or result.data is None:
-            return Snapshot(ok=False, active_state=None, error=result.content[:300])
-        return Snapshot(ok=True, active_state=str(result.data.get("active_state")), error=None)
+            return CheckReading(ok=False, passed=False, error=result.content[:300])
+        return reading_from(check_target.check, result.data, check_target.resource_name)
 
     async def _authorize_dispatch(
-        self, incident_id: uuid.UUID, snapshot: Snapshot
+        self, incident_id: uuid.UUID, snapshot: CheckReading
     ) -> Update | None:
         settings = self._runtime.settings
         policy = self._runtime.policy
@@ -271,26 +312,32 @@ class RemediationNodes:
             started = action.finished_at or utc_now()
             target = target_ref(await session.get_one(Target, incident.target_id))
             trace_id = incident.trace_id
-            resource_id = action.resource_id
+            check_target = await self._check_target(session, incident, action)
+            timeout = self._verify_timeout(action.action_type)
         settle_until = started + timedelta(seconds=settings.verify_settle_seconds)
-        deadline = started + timedelta(seconds=settings.verify_timeout_seconds)
+        deadline = started + timedelta(seconds=timeout)
         while True:
             now = utc_now()
             if now < settle_until:
                 await self._sleep((settle_until - now).total_seconds())
                 continue
-            snapshot = await self._snapshot(incident_id, target, trace_id, resource_id)
+            reading = await self._probe(incident_id, target, trace_id, check_target)
             async with transaction(self._sessions) as session:
                 alerts_clear = await all_alerts_resolved(session, incident_id)
-            checks = {
-                "service_active": snapshot.ok and snapshot.active_state == "active",
-                "alerts_resolved": alerts_clear,
-            }
+            checks = {"alerts_resolved": alerts_clear}
+            if check_target.check is not ActionCheck.NONE:
+                checks = {check_target.check.value: reading.ok and reading.passed, **checks}
             if all(checks.values()):
                 return await self._finish_verification(incident_id, checks, passed=True)
             if utc_now() >= deadline:
                 return await self._finish_verification(incident_id, checks, passed=False)
             await self._sleep(settings.verify_poll_seconds)
+
+    def _verify_timeout(self, action_type: str) -> float:
+        definition = self._runtime.policy.actions.get(action_type)
+        if definition is not None and definition.verify_timeout_seconds is not None:
+            return float(definition.verify_timeout_seconds)
+        return self._runtime.settings.verify_timeout_seconds
 
     async def _finish_verification(
         self, incident_id: uuid.UUID, checks: dict[str, bool], passed: bool
@@ -304,8 +351,48 @@ class RemediationNodes:
                 await transition(session, incident, IncidentStatus.RESOLVED, VERIFIER)
                 return {"outcome": "resolved"}
             await add_event(session, incident_id, "verification_failed", VERIFIER, checks)
+            planned = await self._plan_next_rung(session, incident)
+            if planned is not None:
+                return {"outcome": planned}
             await self._escalate(session, incident, EscalationReason.NOT_RECOVERED)
         return {"outcome": "escalated"}
+
+    async def _plan_next_rung(self, session: AsyncSession, incident: Incident) -> str | None:
+        policy = self._runtime.policy
+        settings = self._runtime.settings
+        if await actions_taken(session, incident.id) >= policy.max_actions_per_incident:
+            return None
+        diagnosis = await latest_diagnosis(session, incident.id)
+        previous = await current_action(session, incident.id)
+        if diagnosis is None or previous is None:
+            return None
+        chosen: ActionRow | None = None
+        for candidate in await remaining_candidates(session, incident.id):
+            decision = await reevaluate_action(
+                session,
+                incident,
+                diagnosis,
+                candidate,
+                policy,
+                settings.execution_enabled,
+                settings.automation_paused,
+            )
+            apply_decision(candidate, decision)
+            if decision.eligible:
+                chosen = candidate
+                break
+        if chosen is None:
+            return None
+        payload = {
+            **action_summary(chosen),
+            "previous_action_type": previous.action_type,
+            "previous_resource_id": previous.resource_id,
+        }
+        await add_event(session, incident.id, "next_action_planned", POLICY, payload)
+        await transition(session, incident, IncidentStatus.DIAGNOSED, VERIFIER)
+        await transition(session, incident, IncidentStatus.PLANNED, POLICY)
+        planned = await plan_remediation(session, incident, settings.approval_ttl_seconds)
+        return None if planned == "none" else planned
 
     async def _cancel(
         self, session: AsyncSession, incident: Incident, action: ActionRow, reason: str

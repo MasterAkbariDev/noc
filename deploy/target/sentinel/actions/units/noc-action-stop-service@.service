@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: stop %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/stop-service %i
+TimeoutStartSec=60

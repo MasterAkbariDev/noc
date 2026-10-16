@@ -463,6 +463,6 @@ async def test_fixed_lists_the_last_day_newest_first_and_counts_automatic_fixes(
         ("Short CPU spike", "by_itself"),
     ]
     assert body["fixed"][0]["target"] == "alpha-1"
-    assert "start service on demo-shop" in body["fixed"][0]["sentence"]
+    assert "start the service on demo-shop" in body["fixed"][0]["sentence"]
     assert body["kpis"]["fixed_today"] == 3
     assert body["kpis"]["fixed_automatically_today"] == 1

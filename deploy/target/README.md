@@ -7,6 +7,7 @@
 - node_exporter 1.9.1 from the GitHub release, checked against that release's `sha256sums.txt`, into `/usr/local/bin/node_exporter`. Runs as user `node_exporter`, TLS with client certificates required, collectors trimmed, `MemoryMax=64M`. Config in `/etc/node_exporter/`, unit `node_exporter.service`.
 - With `--with-sentinel`: user `noc-sentinel`, a venv in `/opt/noc-sentinel` built from the two wheels, config `/etc/noc-sentinel/config.yaml` (root:noc-sentinel, 0640), TLS files and the HMAC key in `/etc/noc-sentinel/`, unit `noc-sentinel.service` (the unit in `sentinel/noc-sentinel.service`). The venv may get `python3-venv` from apt, and nothing else from apt.
 - With `--with-sentinel` and at least one registered unit that allows `start_service` or `restart_service`: the polkit rule `/etc/polkit-1/rules.d/50-noc-sentinel.rules` (root:root, 0644). It lets user `noc-sentinel` start or restart exactly those units. When no registered unit allows it, the file is removed. See "Polkit rule" below.
+- With `--with-sentinel`: the host-action scripts in `/usr/local/lib/noc-actions/`, their oneshot units `noc-action-*.service` in `/etc/systemd/system/`, an empty folder `/etc/noc-sentinel/actions/` for the allow files, and the polkit rule `/etc/polkit-1/rules.d/50-noc-actions.rules`. No host action is allowed until you write its allow file. See "Host actions" below.
 - ufw rules only when ufw is already active: `allow from <noc-ip>` to the two ports, tagged `noc-node-exporter` and `noc-sentinel`.
 - It never runs `ufw enable`, never changes ufw default policies, never edits sshd, never restarts nginx, Docker or any other service, and never runs `apt upgrade`.
 
@@ -116,6 +117,46 @@ Manual check on the target, after a real run with at least one `--register-unit`
 
 - [ ] The file is `root:root` with mode `0644`: `stat -c '%U:%G %a' /etc/polkit-1/rules.d/50-noc-sentinel.rules`.
 
+## Host actions
+
+Fixes that need root (stop a batch job, throttle its CPU, cap its memory, shrink the journal, rotate big logs, delete old temp files, prune dangling Docker images) never run inside the sentinel. Each one is a fixed script started by its own root oneshot unit. The sentinel may only *start* units named `noc-action-*`, which is all the polkit rule `50-noc-actions.rules` grants it.
+
+| NOC action | Unit the sentinel starts | Allow file | Line in the allow file |
+|---|---|---|---|
+| `stop_service` | `noc-action-stop-service@<unit>.service` | `stop-service.allow` | `<unit>` |
+| `throttle_cpu` | `noc-action-throttle-cpu@<unit>.service` | `throttle-cpu.allow` | `<unit> [quota, default 50%]` |
+| `limit_memory` | `noc-action-limit-memory@<unit>.service` | `limit-memory.allow` | `<unit> <MemoryHigh, e.g. 300M>` |
+| `vacuum_journal` | `noc-action-vacuum-journal.service` | `vacuum-journal.allow` | `journal [size, default 200M]` |
+| `rotate_logs` | `noc-action-rotate-logs@<key>.service` | `rotate-logs.allow` | `<key> <absolute directory>` |
+| `clean_temp_dir` | `noc-action-clean-temp-dir@<key>.service` | `clean-temp-dir.allow` | `<key> <absolute directory>` |
+| `docker_prune_dangling` | `noc-action-docker-prune-dangling.service` | `docker-prune-dangling.allow` | `docker` |
+
+Two keys must both agree before anything runs:
+
+1. The sentinel config lists the resource and the action in its `allowed_actions`. For a directory the resource is `dir:<key>` with `kind: directory` and `name: <the same directory>`; for the journal it is `log:journal`, `kind: log_source`, `name: /var/log/journal`; for Docker it is `docker:engine`, `kind: docker_engine`.
+2. The script finds the argument in `/etc/noc-sentinel/actions/<script>.allow`. The file must be a regular file owned by root and not writable by group or others. The script refuses (exit 3) otherwise.
+
+So a compromised sentinel process can start a `noc-action-*` unit, but the script still does nothing the root-owned allow file does not list. The scripts never take a path from the sentinel: a directory is looked up by its key in the allow file.
+
+What each script does and does not do:
+
+- `rotate-logs` compresses `*.log` files over 50 MB (at most two levels deep, same filesystem, no symlinks) to `<file>.<UTC time>.gz` and then empties the original. Nothing is deleted. If compression fails, the original is left untouched.
+- `clean-temp-dir` deletes regular files (and then empty folders) older than 24 hours, on the same filesystem. Symlinks are never followed.
+- `docker-prune-dangling` runs `docker image prune --force` and `docker builder prune --force`: untagged images and build cache only, never volumes, never tagged images.
+- `throttle-cpu` and `limit-memory` use `systemctl set-property --runtime`, so the limit goes away when the unit restarts or the host reboots.
+
+Example for the lab (104):
+
+```bash
+echo 'noc-chaos-cpu-burn.service' | sudo tee /etc/noc-sentinel/actions/stop-service.allow
+echo 'noc-chaos-cpu-burn.service 50%' | sudo tee /etc/noc-sentinel/actions/throttle-cpu.allow
+echo 'demo-data /srv/demo-data' | sudo tee /etc/noc-sentinel/actions/rotate-logs.allow
+echo 'journal 200M' | sudo tee /etc/noc-sentinel/actions/vacuum-journal.allow
+sudo chmod 0644 /etc/noc-sentinel/actions/*.allow
+```
+
+Manual check: `sudo -u noc-sentinel systemctl start noc-action-stop-service@not-listed.service` must start the unit and then fail with `refused: not-listed is not listed in ...` in `journalctl -u 'noc-action-stop-service@not-listed.service'`. `sudo -u noc-sentinel systemctl stop demo-shop.service` must still be refused by polkit.
+
 ## Firewall
 
 The installer adds rules only when ufw is active. If ufw is inactive or missing, it prints a warning and adds nothing. In that case the ports are reachable from anywhere unless your provider firewall restricts them. Restrict TCP 9100 and 9444 to the NOC IP in the provider's firewall.
@@ -126,7 +167,7 @@ The installer adds rules only when ufw is active. If ufw is inactive or missing,
 sudo deploy/target/install.sh --uninstall --noc-ip 203.0.113.10
 ```
 
-Pass the same `--node-port` and `--sentinel-port` if you changed them from the defaults. Uninstall stops and disables our two units, removes them, removes the polkit rule, removes `/usr/local/bin/node_exporter`, `/etc/node_exporter`, `/etc/noc-sentinel` and `/opt/noc-sentinel`, removes the two users, and deletes the ufw rules for this NOC IP and these ports. It keeps `/var/lib/noc-sentinel` (the action store and nonce database) and the `python3-venv` package. Delete the state folder by hand when you no longer need it. Dry-run works for uninstall too.
+Pass the same `--node-port` and `--sentinel-port` if you changed them from the defaults. Uninstall stops and disables our two units, removes them, removes the polkit rules, the `noc-action-*` units and `/usr/local/lib/noc-actions`, removes `/usr/local/bin/node_exporter`, `/etc/node_exporter`, `/etc/noc-sentinel` and `/opt/noc-sentinel`, removes the two users, and deletes the ufw rules for this NOC IP and these ports. It keeps `/var/lib/noc-sentinel` (the action store and nonce database) and the `python3-venv` package. Delete the state folder by hand when you no longer need it. Dry-run works for uninstall too.
 
 ## Known gaps
 

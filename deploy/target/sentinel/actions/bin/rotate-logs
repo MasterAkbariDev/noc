@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+source /usr/local/lib/noc-actions/noc-action-lib.sh
+MIN_SIZE=+50M
+dir=$(allow_value rotate-logs "${1:-}")
+plain_directory "$dir"
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+rotated=0
+while IFS= read -r -d '' file; do
+    archive="$file.$stamp.gz"
+    if ! gzip -1 -c -- "$file" >"$archive"; then
+        rm -f -- "$archive"
+        printf 'could not compress %s, left it untouched\n' "$file" >&2
+        exit 1
+    fi
+    chown --reference="$file" -- "$archive"
+    chmod --reference="$file" -- "$archive"
+    truncate -s 0 -- "$file"
+    rotated=$((rotated + 1))
+    printf 'rotated %s -> %s\n' "$file" "$archive"
+done < <(find "$dir" -xdev -maxdepth 2 -type f -name '*.log' -size "$MIN_SIZE" -print0)
+printf 'rotated %d log file(s) in %s\n' "$rotated" "$dir"

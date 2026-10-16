@@ -52,7 +52,7 @@ class RecordingRunner:
         self.systemctl = systemctl
         self.calls: list[tuple[str, ...]] = []
 
-    def run(self, argv: tuple[str, ...]) -> int:
+    def run(self, argv: tuple[str, ...], timeout_seconds: int) -> int:
         self.calls.append(argv)
         self.systemctl.active_state = "active"
         return 0
@@ -226,7 +226,7 @@ def test_an_unknown_action_type_is_a_404_even_when_signed(
     client, runner, _ = harness
     before = len(runner.calls)
     response = signed_post(
-        client, "/v1/actions/stop_service", json.dumps(action_request(DEMO_SHOP)).encode()
+        client, "/v1/actions/reboot_host", json.dumps(action_request(DEMO_SHOP)).encode()
     )
     assert response.status_code == 404
     assert len(runner.calls) == before

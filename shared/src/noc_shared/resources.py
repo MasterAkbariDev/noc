@@ -10,6 +10,9 @@ ResourceId = Annotated[str, StringConstraints(pattern=RESOURCE_ID_PATTERN)]
 
 class ResourceKind(StrEnum):
     SYSTEMD_UNIT = "systemd_unit"
+    BATCH_UNIT = "batch_unit"
+    DIRECTORY = "directory"
+    DOCKER_ENGINE = "docker_engine"
     CONTAINER = "container"
     LOG_SOURCE = "log_source"
     PG_INSTANCE = "pg_instance"

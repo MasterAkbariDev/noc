@@ -26,9 +26,24 @@ disk_breakdown_roots:
   - /tmp
   - /srv/demo-data
 state_dir: /var/lib/noc-sentinel
+actions:
+  enabled: true
+  max_per_resource_per_hour: 3
 halt_file: /etc/noc-sentinel/HALT
 resources:
   - id: svc:demo-shop
     kind: systemd_unit
     name: demo-shop.service
     allowed_actions: [restart_service, start_service, chaos_service_down]
+  - id: job:report-gen
+    kind: batch_unit
+    name: noc-chaos-cpu-burn.service
+    allowed_actions: [throttle_cpu, stop_service]
+  - id: dir:demo-data
+    kind: directory
+    name: /srv/demo-data
+    allowed_actions: [rotate_logs, clean_temp_dir]
+  - id: log:journal
+    kind: log_source
+    name: /var/log/journal
+    allowed_actions: [vacuum_journal]

@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: limit the memory of %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/limit-memory %i
+TimeoutStartSec=30

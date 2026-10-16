@@ -19,7 +19,8 @@ INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "tool_invocation": re.compile(
         r"(?i)\b(call|run|execute|invoke|use)\b.{0,30}"
         r"\b(restart_service|restart_container|kill_process|block_ip|rollback_release|reboot_host"
-        r"|start_service|tool|function)\b"
+        r"|start_service|stop_service|throttle_cpu|limit_memory|vacuum_journal|rotate_logs"
+        r"|clean_temp_dir|docker_prune_dangling|tool|function)\b"
     ),
     "tag_escape": re.compile(rf"(?i)<\s*/?\s*({PROMPT_TAGS})"),
     "approval_claim": re.compile(

@@ -1,14 +1,15 @@
 name: high-cpu
-description: Start two busy report-gen processes on the lab host; the NOC should find the runaway process and escalate, because kill_process needs approval and is not executable yet.
+description: Start two busy report-gen processes in the lab batch unit noc-chaos-cpu-burn.service; the NOC should name the runaway job, throttle its CPU (or stop it on the second rung) and verify the CPU is calm again.
 injection:
   type: cpu_burn
   workers: 2
   ttl_seconds: 900
 detection_timeout_seconds: 420
-outcome_timeout_seconds: 600
+outcome_timeout_seconds: 900
 ground_truth:
   root_cause_code: cpu_runaway_process
-  resource_id: null
+  resource_id: job:report-gen
   acceptable_actions:
-    - kill_process
-  expected_outcome: escalated
+    - throttle_cpu
+    - stop_service
+  expected_outcome: resolved

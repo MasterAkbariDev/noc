@@ -1,21 +1,25 @@
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal
+from typing import Literal, get_args
 
-from sqlalchemy import select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
 from noc.db.models import ActionRow, Approval, Incident
 from noc.domain.incident_status import EscalationReason, IncidentStatus
 from noc.jobs.queue import enqueue
+from noc.policy.models import Decision
 from noc.store.incidents import add_event, lock_incident, transition
+from noc_shared.actions import HostActionType, ServiceActionType
+from noc_shared.permissions import PermissionClass
 
 REMEDIATE_JOB = "remediate"
-EXECUTABLE_ACTIONS = frozenset({"start_service", "restart_service"})
+EXECUTABLE_ACTIONS = frozenset((*get_args(ServiceActionType), *get_args(HostActionType)))
 
 PROPOSED = "proposed"
+INELIGIBLE = "ineligible"
 PENDING_APPROVAL = "pending_approval"
 AUTHORIZED = "authorized"
 DISPATCHED = "dispatched"
@@ -38,6 +42,9 @@ CURRENT_STATUSES = (
     REJECTED,
     EXPIRED,
 )
+
+OPEN_STATUSES = (PENDING_APPROVAL, AUTHORIZED, DISPATCHED)
+TAKEN_STATUSES = (DISPATCHED, SUCCEEDED, FAILED, REFUSED, OUTCOME_UNKNOWN)
 
 PLANNER = "planner"
 SWEEPER = "approval-sweeper"
@@ -72,8 +79,8 @@ async def enqueue_remediation(
     )
 
 
-async def best_candidate(session: AsyncSession, incident_id: uuid.UUID) -> ActionRow | None:
-    return await session.scalar(
+def proposed_candidates(incident_id: uuid.UUID) -> Select[ActionRow]:
+    return (
         select(ActionRow)
         .where(
             ActionRow.incident_id == incident_id,
@@ -82,16 +89,46 @@ async def best_candidate(session: AsyncSession, incident_id: uuid.UUID) -> Actio
             ActionRow.action_type.in_(EXECUTABLE_ACTIONS),
         )
         .order_by(ActionRow.rung, ActionRow.impact_score, ActionRow.action_type)
-        .limit(1)
     )
+
+
+async def best_candidate(session: AsyncSession, incident_id: uuid.UUID) -> ActionRow | None:
+    return await session.scalar(proposed_candidates(incident_id).limit(1))
+
+
+async def remaining_candidates(session: AsyncSession, incident_id: uuid.UUID) -> list[ActionRow]:
+    return list(await session.scalars(proposed_candidates(incident_id)))
 
 
 async def current_action(session: AsyncSession, incident_id: uuid.UUID) -> ActionRow | None:
+    still_open = case((ActionRow.status.in_(OPEN_STATUSES), 0), else_=1)
     return await session.scalar(
         select(ActionRow)
         .where(ActionRow.incident_id == incident_id, ActionRow.status.in_(CURRENT_STATUSES))
+        .order_by(still_open, ActionRow.finished_at.desc().nulls_last(), ActionRow.rung.desc())
         .limit(1)
     )
+
+
+async def actions_taken(session: AsyncSession, incident_id: uuid.UUID) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(ActionRow)
+        .where(ActionRow.incident_id == incident_id, ActionRow.status.in_(TAKEN_STATUSES))
+    )
+    return count or 0
+
+
+def apply_decision(action: ActionRow, decision: Decision) -> None:
+    action.status = PROPOSED if decision.eligible else INELIGIBLE
+    action.permission_class = PermissionClass(decision.permission_class).name
+    action.eligible = decision.eligible
+    action.auto_executable = decision.auto_executable
+    action.gate_failures = [gate.value for gate in decision.gate_failures]
+    action.reasons = decision.reasons
+    action.impact_score = decision.impact.score
+    action.high_impact = decision.high_impact
+    action.policy_version = decision.policy_version
 
 
 async def plan_remediation(

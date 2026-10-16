@@ -99,7 +99,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "steal and iowait percent, load averages (1, 5, 15 minutes). One 0.5 s sample."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
+            agents=frozenset({INVESTIGATOR, METRICS, EXECUTOR, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -109,7 +109,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "bytes, swap total and used bytes."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
+            agents=frozenset({INVESTIGATOR, METRICS, EXECUTOR, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(
@@ -119,7 +119,7 @@ def build_read_tools(sentinels: SentinelDirectory) -> list[ToolSpec]:
                 "percent full and inode counts."
             ),
             args_model=NoArgs,
-            agents=frozenset({INVESTIGATOR, METRICS, RUNBOOK}),
+            agents=frozenset({INVESTIGATOR, METRICS, EXECUTOR, RUNBOOK}),
             sentinels=sentinels,
         ),
         sentinel_read_tool(

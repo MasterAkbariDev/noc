@@ -22,7 +22,8 @@ def resource_name(resource_id: object) -> str:
 
 
 def action_phrase(payload: Payload) -> str:
-    action = words.humanize(str(payload.get("action_type") or "an action"))
+    action_type = payload.get("action_type")
+    action = words.action_title(str(action_type)) if action_type else "An action"
     resource = resource_name(payload.get("resource_id"))
     return f"{action} on {resource}" if resource else action
 
@@ -79,6 +80,10 @@ def approval_decided(actor: str, payload: Payload) -> str:
 def verification(actor: str, payload: Payload) -> str:
     checks = {
         "service_active": ("the service is running", "the service is not running"),
+        "service_inactive": ("the service has stopped", "the service is still running"),
+        "disk_free": ("the disk has free space again", "the disk is still too full"),
+        "cpu_relieved": ("the CPU is calm again", "the CPU is still busy"),
+        "memory_relieved": ("memory is free again", "memory is still short"),
         "alerts_resolved": ("the alert has stopped", "the alert is still firing"),
     }
     parts = [good if payload[key] else bad for key, (good, bad) in checks.items() if key in payload]
@@ -108,6 +113,9 @@ WRITERS: dict[str, Callable[[str, Payload], str]] = {
     "verification_passed": verification,
     "verification_failed": verification,
     "report_generated": lambda actor, payload: "Wrote the incident report",
+    "next_action_planned": lambda actor, payload: (
+        f"The first fix did not clear the problem, so the NOC moves on to: {action_phrase(payload)}"
+    ),
 }
 
 

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+source /usr/local/lib/noc-actions/noc-action-lib.sh
+unit="${1:-}"
+quota=$(allow_value throttle-cpu "$unit")
+service_unit "$unit"
+[[ "$quota" == - ]] && quota=50%
+[[ "$quota" =~ ^[1-9][0-9]{0,2}%$ ]] || refuse "CPU quota must look like 50%"
+systemctl set-property --runtime -- "$unit" CPUWeight=10 CPUQuota="$quota"

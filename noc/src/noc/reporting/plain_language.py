@@ -247,6 +247,24 @@ VERDICT_LABELS: dict[str, str] = {
 
 STATE_CHANGED_EVENT = "state_changed"
 
+ACTION_LABELS: dict[str, str] = {
+    "wait_and_watch": "wait and watch",
+    "start_service": "start the service",
+    "restart_service": "restart the service",
+    "restart_container": "restart the container",
+    "stop_service": "stop the service",
+    "throttle_cpu": "limit the CPU use",
+    "limit_memory": "limit the memory use",
+    "vacuum_journal": "shrink the system log",
+    "rotate_logs": "compress the big log files",
+    "clean_temp_dir": "delete old temporary files",
+    "docker_prune_dangling": "remove unused Docker images",
+    "kill_process": "kill the process",
+    "block_ip": "block the address",
+    "rollback_release": "go back to the previous version",
+    "reboot_host": "restart the whole server",
+}
+
 EVENT_SENTENCES: dict[str, str] = {
     "incident_opened": "{title} was opened",
     "alert_attached": "An alert was added to {title}",
@@ -267,6 +285,7 @@ EVENT_SENTENCES: dict[str, str] = {
     "action_cancelled": "An action for {title} was cancelled",
     "verification_passed": "The check after the fix for {title} passed",
     "verification_failed": "The check after the fix for {title} failed",
+    "next_action_planned": "The first fix for {title} was not enough, so the NOC tries another",
 }
 
 AUDIT_ACTION_LABELS: dict[str, str] = {
@@ -292,6 +311,15 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
 def humanize(code: str) -> str:
     sentence = code.replace("_", " ").strip()
     return sentence[:1].upper() + sentence[1:]
+
+
+def action_label(action_type: str) -> str:
+    return ACTION_LABELS.get(action_type) or action_type.replace("_", " ").strip()
+
+
+def action_title(action_type: str) -> str:
+    label = action_label(action_type)
+    return label[:1].upper() + label[1:]
 
 
 def lookup[K: str, T](table: Mapping[K, T], value: str) -> T | None:

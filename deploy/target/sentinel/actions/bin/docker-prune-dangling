@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+source /usr/local/lib/noc-actions/noc-action-lib.sh
+allow_value docker-prune-dangling docker >/dev/null
+docker image prune --force
+docker builder prune --force

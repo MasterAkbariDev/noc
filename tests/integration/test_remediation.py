@@ -8,11 +8,11 @@ import httpx
 import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from noc.api.app import create_app as create_api
 from noc.config import Settings
-from noc.db.models import ActionRow, Approval, Incident, IncidentEvent, Job, Report
+from noc.db.models import ActionRow, Approval, Incident, IncidentEvent, Job, Report, Target
 from noc.db.session import SessionFactory, transaction
 from noc.detection.correlator import INVESTIGATE_JOB
 from noc.detection.ingest import AlertIngestor
@@ -40,6 +40,7 @@ pytestmark = pytest.mark.integration
 API_TOKEN = "test-token"
 API_AUTH = {"Authorization": f"Bearer {API_TOKEN}"}
 START_ARGV = ("/usr/bin/systemctl", "start", "demo-shop.service")
+RESTART_ARGV = ("/usr/bin/systemctl", "restart", "demo-shop.service")
 
 
 class FakeActionRunner:
@@ -48,7 +49,7 @@ class FakeActionRunner:
         self.returncode = returncode
         self.calls: list[tuple[str, ...]] = []
 
-    def run(self, argv: tuple[str, ...]) -> int:
+    def run(self, argv: tuple[str, ...], timeout_seconds: int) -> int:
         self.calls.append(argv)
         if self.returncode == 0:
             self.systemctl.active_state = "active"
@@ -344,15 +345,50 @@ async def test_a_failed_action_escalates_without_a_retry(failing_lab: Lab) -> No
     assert action.result_code == "EXIT_1"
 
 
-async def test_alerts_that_keep_firing_fail_verification(stubborn_lab: Lab) -> None:
+async def test_alerts_that_keep_firing_try_the_next_rung_once_then_escalate(
+    stubborn_lab: Lab,
+) -> None:
     incident_id = await stubborn_lab.open_incident()
     await stubborn_lab.investigate(incident_id)
 
     incident = await stubborn_lab.incident(incident_id)
     assert incident.status == "ESCALATED"
     assert incident.escalation_reason == "not_recovered"
-    assert "verification_failed" in await stubborn_lab.event_types(incident_id)
+    events = await stubborn_lab.event_types(incident_id)
+    assert events.count("verification_failed") == 2
+    assert events.count("next_action_planned") == 1
+    assert stubborn_lab.runner.calls == [START_ARGV, RESTART_ARGV]
+    async with stubborn_lab.sessions() as session:
+        taken = list(
+            await session.scalars(
+                select(ActionRow.action_type)
+                .where(ActionRow.incident_id == incident_id, ActionRow.status == "succeeded")
+                .order_by(ActionRow.finished_at)
+            )
+        )
+    assert taken == ["start_service", "restart_service"]
+
+
+async def test_the_next_rung_waits_for_a_person_when_it_is_not_automatic(
+    stubborn_lab: Lab,
+) -> None:
+    async with transaction(stubborn_lab.sessions) as session:
+        await session.execute(
+            update(Target).where(Target.name == "demo-1").values(auto_actions=["start_service"])
+        )
+    incident_id = await stubborn_lab.open_incident()
+    await stubborn_lab.investigate(incident_id)
+
+    assert await stubborn_lab.status(incident_id) == "AWAITING_APPROVAL"
     assert stubborn_lab.runner.calls == [START_ARGV]
+    async with stubborn_lab.sessions() as session:
+        pending = await session.scalar(
+            select(ActionRow).where(
+                ActionRow.incident_id == incident_id, ActionRow.status == "pending_approval"
+            )
+        )
+    assert pending is not None
+    assert pending.action_type == "restart_service"
 
 
 @pytest.fixture

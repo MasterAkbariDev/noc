@@ -112,6 +112,7 @@ class ProcessInfo(BaseModel):
     rss_bytes: int
     started_at: str
     cmdline: str
+    unit: str | None = None
 
 
 class TopProcesses(BaseModel):

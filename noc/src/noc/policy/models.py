@@ -28,6 +28,15 @@ class Criticality(StrEnum):
     CRITICAL = "critical"
 
 
+class ActionCheck(StrEnum):
+    NONE = "none"
+    SERVICE_ACTIVE = "service_active"
+    SERVICE_INACTIVE = "service_inactive"
+    DISK_FREE = "disk_free"
+    CPU_RELIEVED = "cpu_relieved"
+    MEMORY_RELIEVED = "memory_relieved"
+
+
 class Gate(StrEnum):
     KILL_SWITCH = "kill_switch"
     EXECUTION_DISABLED = "execution_disabled"
@@ -65,6 +74,8 @@ class ActionDefinition(BaseModel):
     restart_class: bool = False
     containment: bool = False
     needs_recovery_asset: bool = False
+    check: ActionCheck = ActionCheck.NONE
+    verify_timeout_seconds: int | None = Field(None, ge=30, le=1800)
     impact: ImpactDefaults
 
     @field_validator("base_class", mode="before")

@@ -34,7 +34,7 @@ from noc.reporting.event_text import event_text
             "approval_requested",
             "planner",
             {"action_type": "start_service", "resource_id": "svc:demo-shop"},
-            "Asked a person to approve: Start service on demo-shop",
+            "Asked a person to approve: Start the service on demo-shop",
         ),
         (
             "approval_decided",
@@ -45,13 +45,13 @@ from noc.reporting.event_text import event_text
                 "resource_id": "svc:demo-shop",
                 "comment": "Chaos test approval",
             },
-            "lab-test approved: Start service on demo-shop (Chaos test approval)",
+            "lab-test approved: Start the service on demo-shop (Chaos test approval)",
         ),
         (
             "action_succeeded",
             "executor",
             {"action_type": "start_service", "resource_id": "svc:demo-shop"},
-            "Start service on demo-shop: done, it worked",
+            "Start the service on demo-shop: done, it worked",
         ),
         (
             "verification_passed",

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from noc_shared.resources import ManagedResource, ResourceKind
 
-SENTINEL_VERSION = "0.1.0"
+SENTINEL_VERSION = "0.2.0"
 CHAOS_TTL_CEILING_SECONDS = 900
 GIB_BYTES = 1024**3
 DEFAULT_DISK_BREAKDOWN_ROOTS = (

@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -19,6 +20,8 @@ from noc_shared.tools import (
 CPU_SAMPLE_SECONDS = 0.5
 CMDLINE_MAX_CHARS = 200
 IGNORED_FILESYSTEMS = frozenset({"tmpfs", "devtmpfs", "overlay", "squashfs"})
+PROC_ROOT = "/proc"
+CGROUP_UNIT = re.compile(r"/([A-Za-z0-9@._-]{1,128}\.service)(?:/|$)")
 
 
 class HostReader(Protocol):
@@ -117,8 +120,22 @@ def read_process(handle: psutil.Process) -> ProcessInfo | None:
                 rss_bytes=handle.memory_info().rss,
                 started_at=datetime.fromtimestamp(handle.create_time(), UTC).isoformat(),
                 cmdline=" ".join(handle.cmdline())[:CMDLINE_MAX_CHARS],
+                unit=process_unit(handle.pid),
             )
     except psutil.Error:
+        return None
+
+
+def unit_from_cgroup(cgroup_text: str) -> str | None:
+    units = CGROUP_UNIT.findall(cgroup_text)
+    return units[-1] if units else None
+
+
+def process_unit(pid: int, proc_root: str = PROC_ROOT) -> str | None:
+    try:
+        with open(f"{proc_root}/{pid}/cgroup", encoding="utf-8") as handle:
+            return unit_from_cgroup(handle.read(4096))
+    except OSError:
         return None
 
 

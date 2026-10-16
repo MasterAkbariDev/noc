@@ -1,4 +1,4 @@
-version: "2026-10-skeleton-1"
+version: "2026-10-host-actions-1"
 
 weights:
   blast_radius: 5
@@ -7,6 +7,8 @@ weights:
   uncertainty: 3
   safe_max: 12
   approval_max: 30
+
+max_actions_per_incident: 2
 
 protected_resources:
   - "svc:ssh.service"
@@ -24,20 +26,61 @@ actions:
     base_class: SAFE_ACTION
     rung: 3
     restart_class: true
+    check: service_active
     impact: { blast_radius: 2, irreversibility: 0, downtime: 0 }
   restart_service:
     base_class: SAFE_ACTION
     rung: 3
     restart_class: true
+    check: service_active
     impact: { blast_radius: 2, irreversibility: 1, downtime: 2 }
   restart_container:
     base_class: SAFE_ACTION
     rung: 3
     restart_class: true
     impact: { blast_radius: 2, irreversibility: 1, downtime: 2 }
+  throttle_cpu:
+    base_class: SAFE_ACTION
+    rung: 1
+    check: cpu_relieved
+    verify_timeout_seconds: 420
+    impact: { blast_radius: 1, irreversibility: 0, downtime: 0 }
+  limit_memory:
+    base_class: SAFE_ACTION
+    rung: 1
+    check: memory_relieved
+    verify_timeout_seconds: 420
+    impact: { blast_radius: 1, irreversibility: 0, downtime: 0 }
+  stop_service:
+    base_class: SAFE_ACTION
+    rung: 2
+    restart_class: true
+    check: service_inactive
+    verify_timeout_seconds: 420
+    impact: { blast_radius: 1, irreversibility: 1, downtime: 1 }
+  rotate_logs:
+    base_class: SAFE_ACTION
+    rung: 1
+    check: disk_free
+    verify_timeout_seconds: 600
+    impact: { blast_radius: 0, irreversibility: 0, downtime: 0 }
   vacuum_journal:
     base_class: SAFE_ACTION
     rung: 1
+    check: disk_free
+    verify_timeout_seconds: 600
+    impact: { blast_radius: 0, irreversibility: 1, downtime: 0 }
+  clean_temp_dir:
+    base_class: SAFE_ACTION
+    rung: 1
+    check: disk_free
+    verify_timeout_seconds: 600
+    impact: { blast_radius: 0, irreversibility: 1, downtime: 0 }
+  docker_prune_dangling:
+    base_class: SAFE_ACTION
+    rung: 2
+    check: disk_free
+    verify_timeout_seconds: 600
     impact: { blast_radius: 0, irreversibility: 1, downtime: 0 }
   kill_process:
     base_class: REQUIRES_APPROVAL
@@ -61,10 +104,11 @@ actions:
 
 root_cause_actions:
   service_crashed: [start_service, restart_service]
-  memory_leak: [restart_service, restart_container]
+  memory_leak: [limit_memory, restart_service, restart_container, stop_service]
   oom_kill_loop: [restart_service]
-  cpu_runaway_process: [kill_process, restart_service]
-  disk_full_logs: [vacuum_journal]
+  cpu_runaway_process: [throttle_cpu, stop_service, restart_service, kill_process]
+  disk_full_logs: [rotate_logs, vacuum_journal, clean_temp_dir]
+  disk_full_data: [clean_temp_dir, docker_prune_dangling]
   brute_force_ssh: [block_ip]
   bad_deploy: [rollback_release]
   transient_spike: [wait_and_watch]

@@ -10,6 +10,7 @@ class PolicyDocument(BaseModel):
     version: str
     weights: ScoreWeights
     protected_resources: frozenset[str] = frozenset()
+    max_actions_per_incident: int = Field(2, ge=1, le=3)
     actions: dict[str, ActionDefinition]
     root_cause_actions: dict[str, list[str]] = Field(default_factory=dict)
 

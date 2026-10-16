@@ -17,6 +17,10 @@ SENTINEL_UNIT_NAME=noc-sentinel.service
 SENTINEL_UNIT=/etc/systemd/system/noc-sentinel.service
 SENTINEL_USER=noc-sentinel
 POLKIT_RULE=/etc/polkit-1/rules.d/50-noc-sentinel.rules
+ACTIONS_POLKIT_RULE=/etc/polkit-1/rules.d/50-noc-actions.rules
+ACTIONS_LIB=/usr/local/lib/noc-actions
+ACTIONS_ALLOW_DIR=/etc/noc-sentinel/actions
+SYSTEMD_DIR=/etc/systemd/system
 POLKIT_UNIT_RE='^[A-Za-z0-9@._-]{1,128}\.service$'
 UFW_NODE_COMMENT=noc-node-exporter
 UFW_SENTINEL_COMMENT=noc-sentinel
@@ -545,6 +549,33 @@ install_polkit_rule() {
     install_file "$rule" "$POLKIT_RULE" 0644 root:root
 }
 
+install_host_actions() {
+    local file name
+    ensure_dir "$ACTIONS_LIB" 0755 root:root
+    for file in "$SCRIPT_DIR"/sentinel/actions/bin/*; do
+        install_file "$file" "$ACTIONS_LIB/$(basename "$file")" 0755 root:root
+    done
+    for file in "$SCRIPT_DIR"/sentinel/actions/units/*.service; do
+        name=$(basename "$file")
+        install_file "$file" "$SYSTEMD_DIR/$name" 0644 root:root
+    done
+    ensure_dir "$ACTIONS_ALLOW_DIR" 0755 root:root
+    install_file "$SCRIPT_DIR/sentinel/50-noc-actions.rules" "$ACTIONS_POLKIT_RULE" 0644 root:root
+    if ((CHANGED)); then
+        run systemctl daemon-reload
+    fi
+    printf 'host actions installed; none is allowed until you list resources in %s/<action>.allow\n' "$ACTIONS_ALLOW_DIR"
+}
+
+remove_host_actions() {
+    local file
+    for file in "$SCRIPT_DIR"/sentinel/actions/units/*.service; do
+        run rm -f "$SYSTEMD_DIR/$(basename "$file")"
+    done
+    run rm -rf "$ACTIONS_LIB"
+    run rm -f "$ACTIONS_POLKIT_RULE"
+}
+
 install_sentinel() {
     CHANGED=0
     ensure_user "$SENTINEL_USER" "$SENTINEL_STATE"
@@ -562,6 +593,7 @@ install_sentinel() {
     install_file "$SCRIPT_DIR/sentinel/noc-sentinel.service" "$SENTINEL_UNIT" 0644 root:root
     activate_unit "$SENTINEL_UNIT_NAME"
     install_polkit_rule
+    install_host_actions
 }
 
 listen_host() {
@@ -651,6 +683,7 @@ uninstall_all() {
     remove_unit "$NODE_EXPORTER_UNIT_NAME" "$NODE_EXPORTER_UNIT"
     remove_unit "$SENTINEL_UNIT_NAME" "$SENTINEL_UNIT"
     remove_polkit_rule
+    remove_host_actions
     run systemctl daemon-reload
     run rm -f "$NODE_EXPORTER_BIN"
     run rm -rf "$NODE_EXPORTER_CONF" "$SENTINEL_CONF" "$SENTINEL_VENV"

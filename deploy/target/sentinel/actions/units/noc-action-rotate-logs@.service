@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: rotate large logs in %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/rotate-logs %i
+TimeoutStartSec=300

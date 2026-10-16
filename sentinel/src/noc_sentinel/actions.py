@@ -13,9 +13,22 @@ from fastapi.responses import JSONResponse
 from noc_sentinel.action_store import ActionStore, StoredAction
 from noc_sentinel.config import SentinelConfig
 from noc_sentinel.halt import is_halted
+from noc_sentinel.host_actions import (
+    HOST_ACTIONS,
+    UNIT_KINDS,
+    host_action_timeout,
+    host_action_unit,
+    is_host_action,
+)
 from noc_sentinel.security import RequestVerifier
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
-from noc_shared.actions import ActionRequest, ActionResult, ActionType, compute_action_hash
+from noc_shared.actions import (
+    ActionRequest,
+    ActionResult,
+    ActionType,
+    ServiceActionType,
+    compute_action_hash,
+)
 from noc_shared.resources import ManagedResource, ResourceKind
 from noc_shared.signing import VerifiedRequest
 from noc_shared.tools import ServiceStatus
@@ -25,7 +38,11 @@ ACTION_TIMEOUT_SECONDS = 30
 WAIT_FOR_ACTIVE_SECONDS = 10
 POLL_INTERVAL_SECONDS = 1
 RATE_WINDOW = timedelta(hours=1)
-ACTION_VERBS: dict[ActionType, str] = {"start_service": "start", "restart_service": "restart"}
+ACTION_VERBS: dict[ServiceActionType, str] = {
+    "start_service": "start",
+    "restart_service": "restart",
+}
+STOPPED_STATES = frozenset({"inactive", "failed"})
 PROTECTED_UNITS = frozenset(
     {
         "ssh.service",
@@ -43,16 +60,16 @@ AUDIT_LOGGER = logging.getLogger("noc-sentinel-audit")
 
 
 class ActionRunner(Protocol):
-    def run(self, argv: tuple[str, ...]) -> int: ...
+    def run(self, argv: tuple[str, ...], timeout_seconds: int) -> int: ...
 
 
 class SubprocessActionRunner:
-    def run(self, argv: tuple[str, ...]) -> int:
+    def run(self, argv: tuple[str, ...], timeout_seconds: int) -> int:
         completed = subprocess.run(
             argv,
             capture_output=True,
             text=True,
-            timeout=ACTION_TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             check=False,
         )
         return completed.returncode
@@ -72,12 +89,33 @@ class ActionOutcome:
     result: ActionResult
 
 
-def is_action_type(value: str) -> TypeGuard[ActionType]:
+def is_service_action(value: str) -> TypeGuard[ServiceActionType]:
     return value in ACTION_VERBS
 
 
-def mutation_argv(action_type: ActionType, unit: str) -> tuple[str, ...]:
-    return (SYSTEMCTL_PATH, ACTION_VERBS[action_type], unit)
+def is_action_type(value: str) -> TypeGuard[ActionType]:
+    return is_service_action(value) or is_host_action(value)
+
+
+def mutation_argv(action_type: ActionType, resource: ManagedResource) -> tuple[str, ...] | None:
+    if is_service_action(action_type):
+        return (SYSTEMCTL_PATH, ACTION_VERBS[action_type], resource.name)
+    if is_host_action(action_type):
+        unit = host_action_unit(action_type, resource)
+        return None if unit is None else (SYSTEMCTL_PATH, "start", unit)
+    return None
+
+
+def action_timeout(action_type: ActionType) -> int:
+    return (
+        host_action_timeout(action_type) if is_host_action(action_type) else ACTION_TIMEOUT_SECONDS
+    )
+
+
+def allowed_kinds(action_type: ActionType) -> frozenset[ResourceKind]:
+    if is_host_action(action_type):
+        return HOST_ACTIONS[action_type].kinds
+    return frozenset({ResourceKind.SYSTEMD_UNIT})
 
 
 def refused_result(
@@ -152,7 +190,8 @@ class ActionExecutor:
         if stored is not None:
             return self._deduplicate(stored, request)
         resource = self._authorized_resource(action_type, request.resource_id)
-        self._check_not_protected(resource.name)
+        if resource.kind in UNIT_KINDS:
+            self._check_not_protected(resource.name)
         self._check_rate(resource, started_at)
         return self._run_action(action_type, request, resource, started_at)
 
@@ -181,10 +220,12 @@ class ActionExecutor:
         resource = self._config.resource(resource_id)
         if (
             resource is None
-            or resource.kind != ResourceKind.SYSTEMD_UNIT
+            or resource.kind not in allowed_kinds(action_type)
             or action_type not in resource.allowed_actions
         ):
             raise ActionRefused(403, "NOT_ALLOWED", "action is not allowed on this resource")
+        if mutation_argv(action_type, resource) is None:
+            raise ActionRefused(403, "BAD_RESOURCE_NAME", "resource name cannot be passed safely")
         return resource
 
     def _check_not_protected(self, unit: str) -> None:
@@ -217,26 +258,23 @@ class ActionExecutor:
         )
         self._store.insert_executing(request.action_hash, executing)
         try:
-            before = read_service_status(resource, self._systemctl)
+            before = self._unit_status(resource)
         except (subprocess.SubprocessError, OSError):
             return self._finish_unreadable(executing, request)
-        failure = self._mutate(mutation_argv(action_type, resource.name))
-        if failure is None:
-            after = self._wait_until_active(resource)
-            if after.active_state != "active":
-                failure = (
-                    "NOT_ACTIVE",
-                    f"unit did not reach active within {WAIT_FOR_ACTIVE_SECONDS} s",
-                )
-        else:
-            after = read_service_status(resource, self._systemctl)
+        argv = mutation_argv(action_type, resource)
+        failure = (
+            ("INTERNAL", "no command for this action")
+            if argv is None
+            else self._mutate(argv, action_timeout(action_type))
+        )
+        after, failure = self._check_after(action_type, resource, failure)
         result = ActionResult(
             action_id=request.action_id,
             action_type=action_type,
             resource_id=resource.id,
             status="failed" if failure is not None else "succeeded",
             code=None if failure is None else failure[0],
-            message="unit is active" if failure is None else failure[1],
+            message=success_message(action_type) if failure is None else failure[1],
             started_at=started_at,
             finished_at=self._clock(),
             before=before,
@@ -259,11 +297,40 @@ class ActionExecutor:
         log_execution(result, request)
         return ActionOutcome(200, result)
 
-    def _mutate(self, argv: tuple[str, ...]) -> tuple[str, str] | None:
+    def _unit_status(self, resource: ManagedResource) -> ServiceStatus | None:
+        if resource.kind not in UNIT_KINDS:
+            return None
+        return read_service_status(resource, self._systemctl)
+
+    def _check_after(
+        self,
+        action_type: ActionType,
+        resource: ManagedResource,
+        failure: tuple[str, str] | None,
+    ) -> tuple[ServiceStatus | None, tuple[str, str] | None]:
+        if failure is None and is_service_action(action_type):
+            active = self._wait_until_active(resource)
+            if active.active_state != "active":
+                failure = (
+                    "NOT_ACTIVE",
+                    f"unit did not reach active within {WAIT_FOR_ACTIVE_SECONDS} s",
+                )
+            return active, failure
+        after = self._unit_status(resource)
+        if (
+            failure is None
+            and action_type == "stop_service"
+            and after is not None
+            and after.active_state not in STOPPED_STATES
+        ):
+            failure = ("STILL_RUNNING", f"unit is {after.active_state} after the stop")
+        return after, failure
+
+    def _mutate(self, argv: tuple[str, ...], timeout_seconds: int) -> tuple[str, str] | None:
         try:
-            returncode = self._runner.run(argv)
+            returncode = self._runner.run(argv, timeout_seconds)
         except subprocess.TimeoutExpired:
-            return ("TIMEOUT", f"systemctl did not finish within {ACTION_TIMEOUT_SECONDS} s")
+            return ("TIMEOUT", f"systemctl did not finish within {timeout_seconds} s")
         except OSError:
             return ("INTERNAL", "systemctl could not be executed")
         if returncode != 0:
@@ -278,6 +345,14 @@ class ActionExecutor:
             self._sleep(POLL_INTERVAL_SECONDS)
             status = read_service_status(resource, self._systemctl)
         return status
+
+
+def success_message(action_type: ActionType) -> str:
+    if is_service_action(action_type):
+        return "unit is active"
+    if action_type == "stop_service":
+        return "unit is stopped"
+    return "host action finished"
 
 
 def build_actions_router(executor: ActionExecutor, verifier: RequestVerifier) -> APIRouter:

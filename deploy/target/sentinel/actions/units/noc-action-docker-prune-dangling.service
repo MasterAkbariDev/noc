@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: remove dangling Docker images and build cache
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/docker-prune-dangling
+TimeoutStartSec=300

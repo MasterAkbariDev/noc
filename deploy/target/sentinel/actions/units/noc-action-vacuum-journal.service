@@ -1,0 +1,7 @@
+[Unit]
+Description=NOC action: shrink the systemd journal
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/noc-actions/vacuum-journal
+TimeoutStartSec=120

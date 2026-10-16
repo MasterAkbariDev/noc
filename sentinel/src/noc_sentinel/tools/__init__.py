@@ -7,6 +7,7 @@ import psutil
 from pydantic import BaseModel, ValidationError
 
 from noc_sentinel.config import SENTINEL_VERSION, SentinelConfig
+from noc_sentinel.host_actions import UNIT_KINDS
 from noc_sentinel.tools.auth import (
     AUTH_LINES_MAX,
     AuthLogReader,
@@ -19,7 +20,7 @@ from noc_sentinel.tools.host import HostReader
 from noc_sentinel.tools.journal import JournalReader
 from noc_sentinel.tools.network import NetworkReader
 from noc_sentinel.tools.systemd import SystemctlRunner, read_service_status
-from noc_shared.resources import ManagedResource, ResourceKind
+from noc_shared.resources import ManagedResource
 from noc_shared.tools import (
     GetAuthEventsArgs,
     GetServiceLogsArgs,
@@ -110,22 +111,24 @@ class Toolbox:
         except (subprocess.CalledProcessError, OSError, psutil.Error) as exc:
             raise ToolFailure(ToolErrorCode.INTERNAL, type(exc).__name__) from exc
 
-    def _registered(self, resource_id: str, kind: ResourceKind) -> ManagedResource:
+    def _registered_unit(self, resource_id: str) -> ManagedResource:
         resource = self._config.resource(resource_id)
         if resource is None:
             raise ToolFailure(ToolErrorCode.NOT_FOUND, f"resource {resource_id} is not registered")
-        if resource.kind != kind:
-            raise ToolFailure(ToolErrorCode.NOT_ALLOWED, f"resource {resource_id} is not a {kind}")
+        if resource.kind not in UNIT_KINDS:
+            raise ToolFailure(
+                ToolErrorCode.NOT_ALLOWED, f"resource {resource_id} is not a systemd unit"
+            )
         return resource
 
     def _get_service_status(self, raw_args: RawArgs) -> dict[str, Any]:
         args = parse_args(GetServiceStatusArgs, raw_args)
-        resource = self._registered(args.resource_id, ResourceKind.SYSTEMD_UNIT)
+        resource = self._registered_unit(args.resource_id)
         return read_service_status(resource, self._systemctl).model_dump()
 
     def _get_service_logs(self, raw_args: RawArgs) -> dict[str, Any]:
         args = parse_args(GetServiceLogsArgs, raw_args)
-        resource = self._registered(args.resource_id, ResourceKind.SYSTEMD_UNIT)
+        resource = self._registered_unit(args.resource_id)
         lines = self._journal.read(
             resource.name, args.since_minutes, args.max_lines, args.min_priority
         )

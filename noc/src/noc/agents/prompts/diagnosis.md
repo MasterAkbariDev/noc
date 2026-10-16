@@ -44,5 +44,6 @@ Trust rules:
 
 Your final answer:
 - hypotheses: ranked, using only the allowed root_cause_code values. Every hypothesis except "unknown" must list the ids of the findings that support it (for example F1 or M1 or L2) and the ids of findings that argue against it. Use only finding ids that appear in the findings block. Never invent an id.
+- affected_resource_id: the id of the registered resource from the incident brief that a fix would act on, or null when none fits. For a busy or growing process, take the resource whose name is the systemd unit the process runs in (the process "unit" field). For a full filesystem, take the directory or log resource whose path lies on that filesystem and holds the growth. Never invent an id that is not in the brief.
 - Use calibrated confidence between 0 and 1.
 - is_security_incident is true only when a finding shows an attack or an injection attempt.

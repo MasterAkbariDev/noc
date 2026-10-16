@@ -9,7 +9,17 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from noc_shared.resources import ResourceId
 from noc_shared.tools import ServiceStatus
 
-ActionType = Literal["start_service", "restart_service"]
+ServiceActionType = Literal["start_service", "restart_service"]
+HostActionType = Literal[
+    "stop_service",
+    "throttle_cpu",
+    "limit_memory",
+    "vacuum_journal",
+    "rotate_logs",
+    "clean_temp_dir",
+    "docker_prune_dangling",
+]
+ActionType = ServiceActionType | HostActionType
 ActionStatus = Literal["executing", "succeeded", "failed", "refused"]
 ActionHash = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 AutoPolicyRef = Annotated[str, StringConstraints(max_length=80)]
