@@ -161,7 +161,7 @@ def status_text(settings: TelegramSettings, admin: BotAdmin) -> str:
     linked = sum(1 for item in settings.admins if item.ready_since is not None)
     return "\n".join(
         [
-            "NOC notifications",
+            "⚙️ Telegram notifications",
             f"Messages: {'paused for everyone' if settings.paused else 'on'}",
             f"Sent when: {', '.join(chosen) if chosen else 'nothing is chosen'}",
             f"You: {'muted' if admin.muted else 'getting messages'}",
@@ -171,13 +171,15 @@ def status_text(settings: TelegramSettings, admin: BotAdmin) -> str:
 
 
 def settings_keyboard(settings: TelegramSettings, admin: BotAdmin) -> Keyboard:
-    pause = "Resume messages" if settings.paused else "Pause messages for everyone"
+    pause = "▶️ Resume for everyone" if settings.paused else "⏸ Pause for everyone"
     rows: Keyboard = [[Button(text=pause, callback_data="pause")]]
+    rows.append([Button(text="— Send me these —", callback_data="noop")])
     for key, label in EVENT_LABELS.items():
-        mark = "[x]" if getattr(settings.events, key) else "[ ]"
+        mark = "✅" if getattr(settings.events, key) else "⬜"
         rows.append([Button(text=f"{mark} {label}", callback_data=f"ev:{key}")])
-    mute = "Unmute me" if admin.muted else "Mute me"
-    rows.append([Button(text=mute, callback_data="mute")])
+    rows.append(
+        [Button(text="🔔 Unmute me" if admin.muted else "🔕 Mute me", callback_data="mute")]
+    )
     rows.append([Button(text="⬅️ Menu", callback_data="m:home")])
     return rows
 
@@ -308,6 +310,8 @@ def handle_callback(
     settings: TelegramSettings, admin: BotAdmin, query: CallbackQuery, now: datetime
 ) -> Outcome:
     actor = actor_of(query.sender)
+    if query.data == "noop":
+        return Outcome([Answer(query.id, "")])
     if query.data == "pause":
         updated = set_paused(settings, not settings.paused, now)
         action = "telegram_paused" if updated.paused else "telegram_resumed"

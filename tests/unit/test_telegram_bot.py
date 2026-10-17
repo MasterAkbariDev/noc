@@ -152,6 +152,7 @@ def test_settings_shows_buttons_and_a_button_toggles_an_event() -> None:
     callbacks = [row[0].callback_data for row in reply.keyboard]
     assert callbacks == [
         "pause",
+        "noop",
         "ev:approval",
         "ev:escalated",
         "ev:resolved",
