@@ -17,7 +17,7 @@ def test_a_signature_checks_out_for_the_same_request() -> None:
 
 
 @pytest.mark.parametrize(
-    "method, path, body, secret, timestamp",
+    ("method", "path", "body", "secret", "timestamp"),
     [
         ("POST", "/api/peer/status", b"", SECRET, str(NOW)),
         ("GET", "/api/peer/hello", b"", SECRET, str(NOW)),

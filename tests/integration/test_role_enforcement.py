@@ -183,7 +183,7 @@ def unguarded_api_routes(app: FastAPI) -> set[tuple[str, str]]:
     return unguarded
 
 
-def test_only_login_logout_the_stream_and_signed_peer_routes_skip_the_principal(app: FastAPI) -> None:
+def test_only_login_logout_stream_and_peer_routes_skip_the_principal(app: FastAPI) -> None:
     assert unguarded_api_routes(app) == PUBLIC_API_ROUTES
 
 
