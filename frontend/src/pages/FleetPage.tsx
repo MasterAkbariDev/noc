@@ -12,6 +12,7 @@ import {
   type SshKey,
 } from "../api/fleet";
 import { useSession } from "../auth/session";
+import { NodesSection } from "../features/nodes/NodesAdmin";
 import { AddHostDialog, emptyDraft, type HostDraft } from "../features/fleet/AddHostDialog";
 import { ConfirmCodeDialog, type CodeAction } from "../features/fleet/ConfirmCodeDialog";
 import { GenerateKeyDialog } from "../features/fleet/GenerateKeyDialog";
@@ -26,16 +27,19 @@ import { Alert, Button, Disclosure, ErrorState, PageHeader, Section, Skeleton } 
 const REFRESH_MS = 30_000;
 
 export function FleetPage() {
-  useDocumentTitle("Fleet & keys");
+  useDocumentTitle("Nodes");
   const { me } = useSession();
   return (
     <>
       <PageHeader
-        title="Fleet & keys"
-        status="The servers the NOC looks after and the SSH keys it holds. The panel only shows commands: you run them on the server yourself."
+        title="Nodes"
+        status="Every server the NOC looks after, reached by SSH or paired with another NOC. The panel only shows commands: you run them on the server yourself."
       />
       {me.role === "admin" ? (
-        <FleetContent />
+        <>
+          <NodesSection />
+          <FleetContent />
+        </>
       ) : (
         <Alert tone="info" title="Only admins manage the fleet">
           Ask an admin to add servers or keys.

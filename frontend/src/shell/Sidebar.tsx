@@ -37,7 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/stats", label: "Metrics", icon: ChartColumn, end: false, group: "Insights" },
   { to: "/activity", label: "Activity", icon: ScrollText, end: false, group: "Insights" },
   { to: "/system", label: "System", icon: HeartPulse, end: false, group: "Administration" },
-  { to: "/fleet", label: "Fleet & keys", icon: KeyRound, end: false, group: "Administration" },
+  { to: "/nodes", label: "Nodes", icon: KeyRound, end: false, group: "Administration" },
   { to: "/settings", label: "Settings", icon: Settings, end: false, group: "Administration" },
 ];
 

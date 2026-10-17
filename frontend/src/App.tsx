@@ -63,7 +63,8 @@ export function App() {
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:id" element={<ServerPage />} />
           <Route path="/system" element={<SystemPage />} />
-          <Route path="/fleet" element={<FleetPage />} />
+          <Route path="/nodes" element={<FleetPage />} />
+          <Route path="/fleet" element={<Navigate to="/nodes" replace />} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/stats" element={<MetricsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

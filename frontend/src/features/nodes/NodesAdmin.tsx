@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { createJoinCode, joinPeer, refreshPeer, removePeer } from "../../api/client";
 import type { PeerView } from "../../api/types";
-import { useSession } from "../../auth/session";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { Field, Form, FormActions, FormMessage, TextArea, TextInput } from "../../ui/Form";
@@ -14,15 +13,7 @@ import { settingsErrorText } from "../settings/accountView";
 import { PEERS_KEY, usePeersQuery } from "./queries";
 import { directionLabel, peerStatusText } from "./view";
 
-export function NodesAdmin() {
-  const { me } = useSession();
-  if (me.role !== "admin") {
-    return null;
-  }
-  return <NodesSection />;
-}
-
-function NodesSection() {
+export function NodesSection() {
   const query = usePeersQuery();
   return (
     <Section heading="Other NOC nodes">
