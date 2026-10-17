@@ -1,0 +1,34 @@
+#!/bin/bash
+# Undo one lab chaos injection after its TTL.
+# Installed as /usr/local/lib/noc-chaos/restore (root-owned, mode 0755).
+# Called by noc-chaos-restore@<kind>-<ttl>.service. The sentinel stops that unit when it undoes a
+# fault early, which kills the sleep below, so the undo does not run twice.
+set -euo pipefail
+
+instance="${1:?usage: restore <kind>-<ttl-seconds>}"
+ttl="${instance##*-}"
+kind="${instance%-*}"
+if ! [[ "$ttl" =~ ^[0-9]+$ ]]; then
+    echo "bad ttl in $instance" >&2
+    exit 2
+fi
+
+sleep "$ttl"
+case "$kind" in
+    service-down)
+        /usr/bin/systemctl start demo-shop.service
+        ;;
+    cpu-burn)
+        /usr/bin/systemctl stop noc-chaos-cpu-burn.service
+        ;;
+    disk-fill)
+        /usr/bin/rm -f /srv/demo-data/noc-chaos-fill.log
+        ;;
+    app-fault)
+        /usr/bin/curl -fsS --max-time 5 -X POST http://127.0.0.1:8099/chaos/reset
+        ;;
+    *)
+        echo "unknown chaos kind $kind" >&2
+        exit 2
+        ;;
+esac

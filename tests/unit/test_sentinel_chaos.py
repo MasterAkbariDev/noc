@@ -24,18 +24,18 @@ START = "/v1/chaos/service-down/start"
 STOP = "/v1/chaos/service-down/stop"
 STATUS = "/v1/chaos/status"
 UNIT = "demo-shop.service"
-RESTORE_TIMER = "noc-chaos-restore-demo-shop-service.timer"
+RESTORE_TIMER = "noc-chaos-restore@service-down-300.service"
 START_PAYLOAD = {"resource_id": DEMO_SHOP, "ttl_seconds": 300}
 CPU_START = "/v1/chaos/cpu-burn/start"
 CPU_STOP = "/v1/chaos/cpu-burn/stop"
 CPU_UNIT = "noc-chaos-cpu-burn"
-CPU_RESTORE_TIMER = "noc-chaos-restore-cpu-burn.timer"
+CPU_RESTORE_TIMER = "noc-chaos-restore@cpu-burn-60.service"
 DISK_START = "/v1/chaos/disk-fill/start"
 DISK_STOP = "/v1/chaos/disk-fill/stop"
 APP_START = "/v1/chaos/app-fault/start"
 APP_STOP = "/v1/chaos/app-fault/stop"
 APP_PORT = 8099
-APP_RESTORE_UNIT = "noc-chaos-restore-app-svc-demo-shop"
+APP_RESTORE_UNIT = "noc-chaos-restore@app-fault-300.service"
 APP_RESET = (
     "/usr/bin/curl",
     "-fsS",
@@ -221,15 +221,7 @@ def test_start_runs_exactly_the_fixed_argv_lists(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["active"] is True
     assert harness.runner.calls == [
-        (
-            "/usr/bin/systemd-run",
-            "--unit=noc-chaos-restore-demo-shop-service",
-            "--collect",
-            "--on-active=300",
-            "/usr/bin/systemctl",
-            "start",
-            UNIT,
-        ),
+        ("/usr/bin/systemctl", "start", RESTORE_TIMER),
         ("/usr/bin/systemctl", "stop", UNIT),
     ]
 
@@ -353,24 +345,8 @@ def test_cpu_burn_start_runs_the_fixed_argv_with_a_restore_timer(tmp_path: Path)
     assert response.json()["scenario"] == "cpu-burn"
     assert response.json()["unit"] == CPU_UNIT
     assert harness.runner.calls == [
-        (
-            "/usr/bin/systemd-run",
-            "--unit=noc-chaos-restore-cpu-burn",
-            "--collect",
-            "--on-active=120",
-            "/usr/bin/systemctl",
-            "stop",
-            CPU_UNIT,
-        ),
-        (
-            "/usr/bin/systemd-run",
-            "--unit=noc-chaos-cpu-burn",
-            "--property=RuntimeMaxSec=120",
-            "--property=Nice=0",
-            "/bin/bash",
-            "-c",
-            "for i in $(seq 2); do (exec -a report-gen /usr/bin/yes > /dev/null) & done; wait",
-        ),
+        ("/usr/bin/systemctl", "start", "noc-chaos-restore@cpu-burn-120.service"),
+        ("/usr/bin/systemctl", "start", CPU_UNIT),
     ]
 
 
@@ -459,15 +435,7 @@ def test_disk_fill_start_allocates_up_to_the_target(
     assert response.status_code == 200
     assert response.json()["scenario"] == "disk-fill"
     assert harness.runner.calls == [
-        (
-            "/usr/bin/systemd-run",
-            "--unit=noc-chaos-restore-disk-fill",
-            "--collect",
-            "--on-active=300",
-            "/usr/bin/rm",
-            "-f",
-            fill_path,
-        ),
+        ("/usr/bin/systemctl", "start", "noc-chaos-restore@disk-fill-300.service"),
         ("/usr/bin/fallocate", "-l", "4000000000", fill_path),
     ]
 
@@ -506,7 +474,7 @@ def test_disk_fill_stop_removes_the_file_and_the_timer(
     assert response.json()["active"] is False
     assert harness.runner.calls[2:] == [
         ("/usr/bin/rm", "-f", fill_path),
-        ("/usr/bin/systemctl", "stop", "noc-chaos-restore-disk-fill.timer"),
+        ("/usr/bin/systemctl", "stop", "noc-chaos-restore@disk-fill-300.service"),
     ]
 
 
@@ -524,7 +492,7 @@ def test_disk_fill_failed_allocation_is_rolled_back(
     assert send(harness, "GET", STATUS).json()["active"] is False
     assert harness.runner.calls[-2:] == [
         ("/usr/bin/rm", "-f", fill_path),
-        ("/usr/bin/systemctl", "stop", "noc-chaos-restore-disk-fill.timer"),
+        ("/usr/bin/systemctl", "stop", "noc-chaos-restore@disk-fill-300.service"),
     ]
 
 
@@ -602,13 +570,7 @@ def test_app_fault_start_runs_the_fixed_curl_argv_with_a_restore_timer(tmp_path:
     assert response.json()["scenario"] == "app-fault"
     assert response.json()["fault"] == "memory_leak"
     assert harness.runner.calls == [
-        (
-            "/usr/bin/systemd-run",
-            f"--unit={APP_RESTORE_UNIT}",
-            "--collect",
-            "--on-active=600",
-            *APP_RESET,
-        ),
+        ("/usr/bin/systemctl", "start", "noc-chaos-restore@app-fault-600.service"),
         set_fault_argv('{"memory_leak": true}'),
     ]
 
@@ -658,7 +620,7 @@ def test_app_fault_stop_resets_the_app_and_removes_the_timer(tmp_path: Path) -> 
     assert response.json()["active"] is False
     assert harness.runner.calls[2:] == [
         APP_RESET,
-        ("/usr/bin/systemctl", "stop", f"{APP_RESTORE_UNIT}.timer"),
+        ("/usr/bin/systemctl", "stop", APP_RESTORE_UNIT),
     ]
 
 
@@ -669,7 +631,7 @@ def test_failed_app_fault_start_is_rolled_back(tmp_path: Path) -> None:
     assert response.status_code == 500
     assert harness.runner.calls[2:] == [
         APP_RESET,
-        ("/usr/bin/systemctl", "stop", f"{APP_RESTORE_UNIT}.timer"),
+        ("/usr/bin/systemctl", "stop", APP_RESTORE_UNIT),
     ]
     assert send(harness, "GET", STATUS).json()["active"] is False
 

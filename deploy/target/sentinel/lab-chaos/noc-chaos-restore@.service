@@ -1,0 +1,9 @@
+[Unit]
+Description=NOC lab chaos restore for %i (undoes the injected fault after its TTL)
+Documentation=file:///usr/local/lib/noc-chaos/restore
+
+[Service]
+# Instance name is <kind>-<ttl seconds>, e.g. noc-chaos-restore@service-down-300.service.
+# The sentinel starts it when a fault is injected and stops it when the fault is undone early.
+Type=simple
+ExecStart=/usr/local/lib/noc-chaos/restore %i

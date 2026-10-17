@@ -1,5 +1,4 @@
 import json
-import re
 import shutil
 import subprocess
 import threading
@@ -19,7 +18,6 @@ from noc_shared.resources import ManagedResource, ResourceId, ResourceKind
 from noc_shared.signing import VerifiedRequest
 
 SYSTEMCTL_PATH = "/usr/bin/systemctl"
-SYSTEMD_RUN_PATH = "/usr/bin/systemd-run"
 FALLOCATE_PATH = "/usr/bin/fallocate"
 RM_PATH = "/usr/bin/rm"
 YES_PATH = "/usr/bin/yes"
@@ -27,12 +25,9 @@ BASH_PATH = "/bin/bash"
 CURL_PATH = "/usr/bin/curl"
 APP_CHAOS_HOST = "127.0.0.1"
 APP_FAULT = "app-fault"
-RESTORE_UNIT_PREFIX = "noc-chaos-restore-"
 CPU_BURN_UNIT = "noc-chaos-cpu-burn"
-CPU_BURN_RESTORE_UNIT = "noc-chaos-restore-cpu-burn"
 CPU_BURN_PROCESS_NAME = "report-gen"
 DISK_FILL_FILE_NAME = "noc-chaos-fill.log"
-DISK_FILL_RESTORE_UNIT = "noc-chaos-restore-disk-fill"
 SERVICE_DOWN = "service-down"
 CPU_BURN = "cpu-burn"
 DISK_FILL = "disk-fill"
@@ -133,8 +128,9 @@ class ActiveChaos:
     fault: str | None = None
 
 
-def restore_unit_name(unit: str) -> str:
-    return RESTORE_UNIT_PREFIX + re.sub(r"[^A-Za-z0-9-]", "-", unit)
+def restore_service_name(kind: str, ttl_seconds: int) -> str:
+    # The TTL rides in the instance name, so polkit can match the unit by name alone.
+    return f"noc-chaos-restore@{kind}-{ttl_seconds}.service"
 
 
 def stop_unit_argv(unit: str) -> tuple[str, ...]:
@@ -145,36 +141,18 @@ def start_unit_argv(unit: str) -> tuple[str, ...]:
     return (SYSTEMCTL_PATH, "start", unit)
 
 
-def schedule_restore_argv(
-    restore_unit: str, command: tuple[str, ...], ttl_seconds: int
-) -> tuple[str, ...]:
-    return (
-        SYSTEMD_RUN_PATH,
-        f"--unit={restore_unit}",
-        "--collect",
-        f"--on-active={ttl_seconds}",
-        *command,
-    )
+def schedule_restore_argv(restore_service: str) -> tuple[str, ...]:
+    # Starts the pre-installed restore unit, which waits out the TTL and then undoes the fault.
+    return start_unit_argv(restore_service)
 
 
-def stop_restore_timer_argv(restore_unit: str) -> tuple[str, ...]:
-    return (SYSTEMCTL_PATH, "stop", f"{restore_unit}.timer")
+def stop_restore_argv(restore_service: str) -> tuple[str, ...]:
+    return stop_unit_argv(restore_service)
 
 
-def cpu_burn_start_argv(workers: int, ttl_seconds: int) -> tuple[str, ...]:
-    script = (
-        f"for i in $(seq {workers}); do "
-        f"(exec -a {CPU_BURN_PROCESS_NAME} {YES_PATH} > /dev/null) & done; wait"
-    )
-    return (
-        SYSTEMD_RUN_PATH,
-        f"--unit={CPU_BURN_UNIT}",
-        f"--property=RuntimeMaxSec={ttl_seconds}",
-        "--property=Nice=0",
-        BASH_PATH,
-        "-c",
-        script,
-    )
+def cpu_burn_start_argv() -> tuple[str, ...]:
+    # The burn runs as the pre-installed noc-chaos-cpu-burn.service; its worker count is set there.
+    return start_unit_argv(CPU_BURN_UNIT)
 
 
 def stop_cpu_burn_argv() -> tuple[str, ...]:
@@ -255,7 +233,7 @@ class ChaosController:
             now = self._clock()
             self._claim_slot(now)
             unit = resource.name
-            restore_unit = restore_unit_name(unit)
+            restore_unit = restore_service_name(SERVICE_DOWN, ttl_seconds)
             active = ActiveChaos(
                 scenario=SERVICE_DOWN,
                 restore_unit=restore_unit,
@@ -267,7 +245,7 @@ class ChaosController:
             )
             return self._launch(
                 active,
-                schedule_restore_argv(restore_unit, start_unit_argv(unit), ttl_seconds),
+                schedule_restore_argv(restore_unit),
                 stop_unit_argv(unit),
                 None,
             )
@@ -280,9 +258,10 @@ class ChaosController:
         with self._lock:
             now = self._clock()
             self._claim_slot(now)
+            restore_unit = restore_service_name(CPU_BURN, ttl_seconds)
             active = ActiveChaos(
                 scenario=CPU_BURN,
-                restore_unit=CPU_BURN_RESTORE_UNIT,
+                restore_unit=restore_unit,
                 undo_argv=stop_cpu_burn_argv(),
                 started_at=now,
                 expires_at=now + timedelta(seconds=ttl_seconds),
@@ -290,8 +269,8 @@ class ChaosController:
             )
             return self._launch(
                 active,
-                schedule_restore_argv(CPU_BURN_RESTORE_UNIT, stop_cpu_burn_argv(), ttl_seconds),
-                cpu_burn_start_argv(workers, ttl_seconds),
+                schedule_restore_argv(restore_unit),
+                cpu_burn_start_argv(),
                 stop_cpu_burn_argv(),
             )
 
@@ -306,16 +285,17 @@ class ChaosController:
             directory = self._fill_directory()
             size = self._fill_size(directory, target_percent)
             path = fill_file_path(directory)
+            restore_unit = restore_service_name(DISK_FILL, ttl_seconds)
             active = ActiveChaos(
                 scenario=DISK_FILL,
-                restore_unit=DISK_FILL_RESTORE_UNIT,
+                restore_unit=restore_unit,
                 undo_argv=remove_fill_argv(path),
                 started_at=now,
                 expires_at=now + timedelta(seconds=ttl_seconds),
             )
             return self._launch(
                 active,
-                schedule_restore_argv(DISK_FILL_RESTORE_UNIT, remove_fill_argv(path), ttl_seconds),
+                schedule_restore_argv(restore_unit),
                 fallocate_argv(path, size),
                 remove_fill_argv(path),
             )
@@ -329,7 +309,7 @@ class ChaosController:
         with self._lock:
             now = self._clock()
             self._claim_slot(now)
-            restore_unit = restore_unit_name(f"app-{resource_id}")
+            restore_unit = restore_service_name(APP_FAULT, ttl_seconds)
             reset = reset_app_fault_argv(port)
             active = ActiveChaos(
                 scenario=APP_FAULT,
@@ -343,7 +323,7 @@ class ChaosController:
             body = app_fault_body(fault, self._config.chaos.upstream_delay_ms)
             return self._launch(
                 active,
-                schedule_restore_argv(restore_unit, reset, ttl_seconds),
+                schedule_restore_argv(restore_unit),
                 set_app_fault_argv(port, body),
                 reset,
             )
@@ -383,7 +363,7 @@ class ChaosController:
         except ChaosFailure:
             if rollback_argv is not None:
                 self._best_effort(rollback_argv)
-            self._best_effort(stop_restore_timer_argv(active.restore_unit))
+            self._best_effort(stop_restore_argv(active.restore_unit))
             raise
         self._active = active
         return status_of(active)
@@ -395,7 +375,7 @@ class ChaosController:
             if active is None or active.scenario != scenario or active.resource_id != resource_id:
                 raise ChaosFailure(409, "NOT_ACTIVE")
             self._execute(active.undo_argv)
-            self._best_effort(stop_restore_timer_argv(active.restore_unit))
+            self._best_effort(stop_restore_argv(active.restore_unit))
             self._active = None
             return status_of(None)
 

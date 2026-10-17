@@ -1,0 +1,9 @@
+[Unit]
+Description=NOC lab chaos CPU burn (lab only; the restore unit stops it after the TTL)
+
+[Service]
+# Two busy workers named report-gen, so the NOC sees a runaway job. The sentinel starts and
+# stops this unit by name; the worker count is fixed here, not taken from the request.
+Type=simple
+ExecStart=/bin/bash -c 'for i in $(seq 2); do (exec -a report-gen /usr/bin/yes > /dev/null) & done; wait'
+Nice=0

@@ -1,0 +1,21 @@
+// Let the NOC sentinel start and stop its own lab chaos units only, by name.
+// Units: noc-chaos-restore@<kind>-<ttl>.service and noc-chaos-cpu-burn.service.
+// Verbs: start and stop. Transient units (systemd-run) are not granted: polkit does not pass
+// unit details for them, so they cannot be matched by name.
+polkit.addRule(function (action, subject) {
+    if (action.id != "org.freedesktop.systemd1.manage-units" || subject.user != "noc-sentinel") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit") || "";
+    var verb = action.lookup("verb") || "";
+    if (verb != "start" && verb != "stop") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (/^noc-chaos-restore@(service-down|cpu-burn|disk-fill|app-fault)-[0-9]+\.service$/.test(unit)) {
+        return polkit.Result.YES;
+    }
+    if (unit == "noc-chaos-cpu-burn.service" || unit == "noc-chaos-cpu-burn") {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});
