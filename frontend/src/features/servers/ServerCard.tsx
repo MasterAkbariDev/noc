@@ -21,11 +21,14 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         <EnvironmentBadge environment={server.environment} />
         {server.halted && <HaltedBadge />}
       </div>
-      <h2 className="m-0 text-lg font-semibold break-words">
-        <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:text-accent hover:underline">
-          {server.name}
-        </Link>
-      </h2>
+      <div className="grid gap-0.5">
+        <h2 className="m-0 text-lg font-semibold break-words">
+          <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:text-accent hover:underline">
+            {server.label ?? server.name}
+          </Link>
+        </h2>
+        {server.label && <p className="m-0 text-xs text-muted break-all">{server.name}</p>}
+      </div>
       {headline !== "" && <p className="m-0 text-sm">{headline}</p>}
       <MetricBars metrics={server.metrics} />
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">

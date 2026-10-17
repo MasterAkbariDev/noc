@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://noc:noc@localhost:5432/noc"
     prometheus_url: str = "http://localhost:9090"
     api_token: SecretStr | None = None
+    node_name: str = ""
+    public_url: str = ""
     frontend_dist: Path | None = None
     version: str = "dev"
     git_sha: str = "unknown"

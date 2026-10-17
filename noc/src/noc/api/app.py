@@ -17,6 +17,7 @@ from noc.api.llm_admin import router as llm_admin_router
 from noc.api.metrics import router as metrics_router
 from noc.api.notifications import router as notifications_router
 from noc.api.overview import router as overview_router
+from noc.api.peers import peer_router, peers_router
 from noc.api.prometheus import PrometheusReader
 from noc.api.servers import router as servers_router
 from noc.api.spa import SinglePageApp
@@ -70,6 +71,8 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(users_router)
     app.include_router(llm_admin_router)
     app.include_router(fleet_router)
+    app.include_router(peers_router)
+    app.include_router(peer_router)
     app.include_router(notifications_router)
     app.include_router(metrics_router)
     app.include_router(live_router)

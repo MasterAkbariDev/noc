@@ -271,6 +271,7 @@ export type ServerMetrics = {
 export type ServerSummary = {
   id: string;
   name: string;
+  label?: string | null;
   environment: string;
   automation_level: string;
   automation_label: string;

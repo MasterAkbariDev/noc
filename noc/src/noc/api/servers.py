@@ -8,10 +8,11 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from noc.api.deps import get_session, require_role
+from noc.api.deps import Principal, get_session, require_role
 from noc.api.incidents import summarize
 from noc.api.prometheus import PrometheusReader, Sample, ScrapeTarget
 from noc.api.schemas import (
@@ -23,6 +24,7 @@ from noc.api.schemas import (
     ServiceState,
     TargetResourceView,
 )
+from noc.audit.chain import append_audit
 from noc.auth.roles import Role
 from noc.db.models import Incident, ManagedResourceRow, Target
 from noc.detection.alerts import PrometheusUnavailable
@@ -160,6 +162,7 @@ def server_summary(
     return ServerSummary(
         id=target.id,
         name=target.name,
+        label=target.label,
         environment=target.environment,
         automation_level=target.automation_level,
         automation_label=words.text_for(words.AUTOMATION_LABELS, target.automation_level),
@@ -278,3 +281,28 @@ async def get_server(server_id: uuid.UUID, request: Request, session: Session) -
         services=service_states(resources, readings.services, target.name),
         recent_incidents=recent,
     )
+
+
+class SetLabelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, max_length=64)
+
+
+@router.put("/{name}/label")
+async def set_label(
+    name: str,
+    body: SetLabelRequest,
+    admin: Annotated[Principal, Depends(require_role(Role.ADMIN))],
+    session: Session,
+) -> dict[str, str | None]:
+    target = await session.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(404, "server not found")
+    cleaned = body.label.strip() if body.label else None
+    target.label = cleaned or None
+    await append_audit(
+        session, admin.username, "server_label_set", f"target:{name}", {"label": target.label}
+    )
+    await session.commit()
+    return {"name": name, "label": target.label}

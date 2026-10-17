@@ -44,6 +44,9 @@ PUBLIC_API_ROUTES = {
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("GET", "/api/events/stream"),
+    # Node-to-node routes: no session, each request is checked by its peer signature instead.
+    ("POST", "/api/peer/hello"),
+    ("GET", "/api/peer/status"),
 }
 READ_PATHS = [
     "/api/incidents",
@@ -180,7 +183,7 @@ def unguarded_api_routes(app: FastAPI) -> set[tuple[str, str]]:
     return unguarded
 
 
-def test_only_login_logout_and_the_stream_skip_the_principal(app: FastAPI) -> None:
+def test_only_login_logout_the_stream_and_signed_peer_routes_skip_the_principal(app: FastAPI) -> None:
     assert unguarded_api_routes(app) == PUBLIC_API_ROUTES
 
 

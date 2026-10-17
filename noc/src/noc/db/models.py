@@ -42,6 +42,7 @@ class Target(CreatedAt, Base):
     last_inventory_at: Mapped[datetime | None]
     variant_override: Mapped[str | None] = mapped_column(String(16))
     sentinel_version: Mapped[str | None] = mapped_column(String(32))
+    label: Mapped[str | None] = mapped_column(String(64))
 
     resources: Mapped[list["ManagedResourceRow"]] = relationship(
         back_populates="target", cascade="all, delete-orphan"
@@ -425,6 +426,28 @@ class NocSetting(Base):
     value: Mapped[Json] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_by: Mapped[str] = mapped_column(String(64))
+
+
+class Peer(Base):
+    """Another NOC node.
+
+    direction "serves": we share our data with it. "follows": we read its data.
+    """
+
+    __tablename__ = "peers"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(String(255), default="")
+    direction: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16))
+    expires_at: Mapped[datetime | None]
+    paired_at: Mapped[datetime | None]
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    last_seen_at: Mapped[datetime | None]
+    last_status: Mapped[Json | None] = mapped_column(JSONB)
+    last_error: Mapped[str | None] = mapped_column(String(255))
 
 
 class Notification(Base):
