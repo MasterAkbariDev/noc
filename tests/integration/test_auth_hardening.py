@@ -152,7 +152,11 @@ async def test_two_admins_disabling_each_other_leave_one_admin(
             alice.post(f"/api/users/{bob_id}/disable", headers=csrf_headers(alice)),
             bob.post(f"/api/users/{alice_id}/disable", headers=csrf_headers(bob)),
         )
-    assert sorted(response.status_code for response in results) == [200, 409]
+    # One disable wins. The other either finds the last-admin lock (409) or its session was
+    # already revoked by the winner (401). Both are correct; the invariant is one admin left.
+    codes = sorted(response.status_code for response in results)
+    assert codes[0] == 200
+    assert codes[1] in (401, 409)
     async with sessions() as session:
         active = await session.scalar(
             select(func.count())
