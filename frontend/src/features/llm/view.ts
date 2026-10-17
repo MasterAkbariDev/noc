@@ -43,6 +43,15 @@ export function checkSummary(check: LlmCheck): string {
   return check.ok ? `Works${timing}${model}: ${check.detail}` : `Failed${timing}${model}: ${check.detail}`;
 }
 
+const CHAIN_HEADINGS: Record<string, string> = {
+  small: "Small tier: specialist agents",
+  strong: "Strong tier: diagnosis and investigation",
+};
+
+export function chainHeading(tier: string): string {
+  return CHAIN_HEADINGS[tier] ?? `${tier} tier`;
+}
+
 export function parseTier(value: string): LlmKeyTier {
   return value === "paid" ? "paid" : "free";
 }

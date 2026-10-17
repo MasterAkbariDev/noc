@@ -393,11 +393,28 @@ export type LlmManagedKey = {
   created_by: string | null;
 };
 
+export type LlmChainOption = {
+  entry: string;
+  provider: string;
+  model_tier: string;
+  model: string;
+};
+
+export type LlmChainEntry = LlmChainOption & { degraded: boolean };
+
+export type LlmChain = {
+  tier: string;
+  entries: LlmChainEntry[];
+  customized: boolean;
+};
+
 export type LlmConfig = {
   mode: LlmMode;
   secrets_persistent: boolean;
   providers: LlmProvider[];
   keys: LlmManagedKey[];
+  chains: LlmChain[];
+  chain_options: LlmChainOption[];
 };
 
 export type LlmCheck = {
@@ -406,6 +423,8 @@ export type LlmCheck = {
   model: string | null;
   detail: string;
 };
+
+export type LlmProxyCheck = LlmCheck & { provider: string };
 
 export type AddLlmKeyBody = {
   provider: string;

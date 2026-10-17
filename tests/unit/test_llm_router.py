@@ -1,24 +1,33 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
+import httpx
 import openai as openai_module
 import pytest
 
 from noc.config import Settings
 from noc.db.session import SessionFactory
+from noc.llm.chains import ChainRefused, default_chains, effective_chains, validate_chain
 from noc.llm.client import (
     LLMUnavailable,
     ProviderBadGeneration,
     ProviderKeyRejected,
+    ProviderModelUnavailable,
     ProviderRateLimited,
     ProviderUnavailable,
 )
 from noc.llm.factory import build_routed_llm, openai_client
 from noc.llm.fake import answer
 from noc.llm.key_status import KeyStatusSink, RecordedState
-from noc.llm.openai_compat import retry_after_seconds
-from noc.llm.providers import ChainEntry, ProviderConfig, key_label, parse_chain_entry
+from noc.llm.openai_compat import OpenAICompatProvider, retry_after_seconds
+from noc.llm.providers import (
+    ChainEntry,
+    ProviderConfig,
+    key_label,
+    load_providers,
+    parse_chain_entry,
+)
 from noc.llm.ratelimit import MemoryQuotaStore, RequestBudget
 from noc.llm.router import Route, RoutedLLM
 from noc.llm.types import CallContext, ChatMessage, LLMRequest, LLMResponse, Role
@@ -502,3 +511,94 @@ def test_retry_after_is_read_from_the_provider_headers() -> None:
     assert retry_after_seconds({"retry-after": "2"}) == 2.0
     assert retry_after_seconds({"retry-after": "soon"}) is None
     assert retry_after_seconds({}) is None
+
+
+async def test_an_outage_is_cached_so_the_next_call_skips_the_model() -> None:
+    time = FakeTime()
+    gemini = StubProvider("gemini", [ProviderUnavailable("503")])
+    groq = StubProvider("groq")
+    llm = routed([route(gemini, "g#1"), route(groq, "q#1")], time=time)
+    await llm.complete(REQUEST)
+    await llm.complete(REQUEST)
+    assert gemini.calls == 1
+    assert groq.calls == 2
+    time.now += 61
+    response = await llm.complete(REQUEST)
+    assert response.provider == "gemini"
+    assert gemini.calls == 2
+
+
+async def test_a_model_that_recovers_within_the_backoff_is_not_cached() -> None:
+    time = FakeTime()
+    flaky = StubProvider("gemini", [ProviderUnavailable("503")])
+    llm = routed([route(flaky, "g#1")], time=time)
+    await llm.complete(REQUEST)
+    await llm.complete(REQUEST)
+    assert flaky.calls == 3
+    assert time.slept == [5.0]
+
+
+async def test_a_retired_model_is_skipped_for_an_hour() -> None:
+    time = FakeTime()
+    retired = StubProvider("gemini", [ProviderModelUnavailable("model is gone")])
+    groq = StubProvider("groq")
+    llm = routed([route(retired, "g#1"), route(groq, "q#1")], time=time)
+    assert (await llm.complete(REQUEST)).provider == "groq"
+    time.now += 3000
+    await llm.complete(REQUEST)
+    assert retired.calls == 1
+    time.now += 700
+    assert (await llm.complete(REQUEST)).provider == "gemini"
+    assert retired.calls == 2
+
+
+def test_the_chain_order_is_checked_against_the_providers_file() -> None:
+    document = load_providers(Settings(_env_file=None).llm_providers_file)
+    assert default_chains(document) == {
+        "small": ["groq:small", "gemini:small", "gemini:strong"],
+        "strong": ["groq:strong", "gemini:strong", "gemini:small"],
+    }
+    assert validate_chain(document, ["groq:strong", "gemini:small"]) == [
+        "groq:strong",
+        "gemini:small",
+    ]
+    assert effective_chains(document, {"small": ["gemini:strong"]})["small"] == ["gemini:strong"]
+    with pytest.raises(ChainRefused, match="not a model"):
+        validate_chain(document, ["openai:small"])
+    with pytest.raises(ChainRefused, match="more than once"):
+        validate_chain(document, ["groq:small", "groq:small"])
+    with pytest.raises(ChainRefused, match="at least one"):
+        validate_chain(document, [])
+
+
+def test_a_panel_chain_order_sets_the_route_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key-1234")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-key-1234")
+    settings = Settings(_env_file=None)
+    llm = build_routed_llm(
+        settings,
+        cast(SessionFactory, None),
+        chain_names={"small": ["gemini:small", "groq:small"], "strong": ["groq:strong"]},
+    )
+    labels = [route.label.split("#")[0] for route in llm.routes_for("small")]
+    assert labels == ["gemini", "groq"]
+    assert [route.label.split("#")[0] for route in llm.routes_for("strong")] == ["groq"]
+
+
+async def test_a_retired_model_is_reported_as_unavailable_not_as_a_bad_request() -> None:
+    response = httpx.Response(404, request=httpx.Request("POST", "https://x/chat/completions"))
+    error = openai_module.NotFoundError("model is gone", response=response, body=None)
+
+    class FakeCompletions:
+        async def create(self, **arguments: object) -> object:
+            raise error
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    provider = OpenAICompatProvider("gemini", cast(Any, FakeClient()))
+    with pytest.raises(ProviderModelUnavailable):
+        await provider.complete(REQUEST, "gemini-retired")

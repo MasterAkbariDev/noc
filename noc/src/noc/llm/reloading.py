@@ -6,15 +6,16 @@ import structlog
 
 from noc.config import Settings
 from noc.db.session import SessionFactory
+from noc.llm.chains import chain_overrides, effective_chains
 from noc.llm.client import LLMClient
 from noc.llm.keys import KeyEntry, all_keys, config_version, proxy_settings
 from noc.llm.providers import load_providers
-from noc.llm.types import LLMRequest, LLMResponse
+from noc.llm.types import LLMRequest, LLMResponse, Tier
 from noc.secret_store import SecretStore
 
 logger = structlog.get_logger(__name__)
 
-Builder = Callable[[list[KeyEntry], dict[str, str | None]], LLMClient]
+Builder = Callable[[list[KeyEntry], dict[str, str | None], dict[Tier, list[str]]], LLMClient]
 
 
 class ReloadingLLM:
@@ -61,7 +62,10 @@ class ReloadingLLM:
                 return
             keys = await all_keys(session, self._store, document)
             proxies = await proxy_settings(session, self._store, document)
-        self._client = self._build(keys, {name: proxy.url for name, proxy in proxies.items()})
+            chains = effective_chains(document, await chain_overrides(session, document))
+        self._client = self._build(
+            keys, {name: proxy.url for name, proxy in proxies.items()}, chains
+        )
         self._version = version
         self._checked_at = self._clock()
         logger.info("llm_config_loaded", keys=len(keys), version=version)

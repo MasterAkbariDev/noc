@@ -40,12 +40,14 @@ def build_routed_llm(
     sessions: SessionFactory,
     keys: list[KeyEntry] | None = None,
     proxies: dict[str, str | None] | None = None,
+    chain_names: dict[Tier, list[str]] | None = None,
 ) -> RoutedLLM:
     document = load_providers(settings.llm_providers_file)
     entries = keys if keys is not None else env_keys(document)
+    order = chain_names if chain_names is not None else document.chains
     quota_store = PostgresQuotaStore(sessions)
     chains: dict[Tier, list[Route]] = {}
-    for tier, provider_names in document.chains.items():
+    for tier, provider_names in order.items():
         routes: list[Route] = []
         for entry in (parse_chain_entry(name, tier) for name in provider_names):
             name = entry.provider
@@ -75,8 +77,10 @@ def build_routed_llm(
 
 
 def reloading_llm(settings: Settings, sessions: SessionFactory) -> ReloadingLLM:
-    def build(keys: list[KeyEntry], proxies: dict[str, str | None]) -> LLMClient:
-        return build_routed_llm(settings, sessions, keys, proxies)
+    def build(
+        keys: list[KeyEntry], proxies: dict[str, str | None], chains: dict[Tier, list[str]]
+    ) -> LLMClient:
+        return build_routed_llm(settings, sessions, keys, proxies, chains)
 
     return ReloadingLLM(settings, sessions, SecretStore(settings.secrets_dir), build)
 

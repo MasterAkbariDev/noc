@@ -12,6 +12,7 @@ from noc.llm.client import (
     LLMUnavailable,
     ProviderBadGeneration,
     ProviderKeyRejected,
+    ProviderModelUnavailable,
     ProviderRateLimited,
     ProviderUnavailable,
     QuotaExhausted,
@@ -25,6 +26,7 @@ logger = structlog.get_logger(__name__)
 RECOVERABLE = (
     ProviderRateLimited,
     ProviderUnavailable,
+    ProviderModelUnavailable,
     QuotaExhausted,
     ProviderKeyRejected,
     TimeoutError,
@@ -33,10 +35,26 @@ TRANSIENT = (ProviderUnavailable, TimeoutError)
 OVERLOAD_BACKOFF_SECONDS = (5.0, 15.0)
 PRIMARY_RETRY_MAX_SECONDS = 10.0
 SHORT_COOLDOWN_MAX_SECONDS = 30.0
+# A model that stayed overloaded through the backoff is skipped for this long, then tried again.
+MODEL_OUTAGE_COOLDOWN_SECONDS = 60.0
+# A model the provider no longer serves is not worth retrying until someone changes the order.
+MODEL_GONE_COOLDOWN_SECONDS = 3600.0
 
 
 def is_overload(error: Exception) -> bool:
     return isinstance(error, TRANSIENT) and not isinstance(error, ProviderBadGeneration)
+
+
+def model_cooldown_for(error: Exception) -> float | None:
+    if isinstance(error, ProviderModelUnavailable):
+        return MODEL_GONE_COOLDOWN_SECONDS
+    if isinstance(error, ProviderUnavailable) and not isinstance(error, ProviderBadGeneration):
+        return MODEL_OUTAGE_COOLDOWN_SECONDS
+    return None
+
+
+def model_key(route: "Route") -> str:
+    return f"{route.provider.name}:{route.budget.model}"
 
 
 COOLDOWN_SECONDS: dict[type[Exception], float] = {
@@ -92,9 +110,6 @@ class KeyCooldowns:
     def remaining(self, label: str) -> float:
         return max(0.0, self._until.get(label, 0.0) - self._clock())
 
-    def is_cooling(self, label: str) -> bool:
-        return self.remaining(label) > 0
-
 
 class RoutedLLM:
     def __init__(
@@ -110,6 +125,7 @@ class RoutedLLM:
         self._fallback_enabled = fallback_enabled
         self._deadline = wait_deadline_seconds
         self._cooldowns = KeyCooldowns(clock)
+        self._models = KeyCooldowns(clock)
         self._sleep = sleep
         self._key_status: KeyStatusSink = key_status if key_status is not None else NullKeyStatus()
 
@@ -120,14 +136,27 @@ class RoutedLLM:
         primary = chain[0].provider.name
         return [route for route in chain if route.provider.name == primary and not route.degraded]
 
+    def _remaining(self, route: Route) -> float:
+        return max(self._cooldowns.remaining(route.label), self._models.remaining(model_key(route)))
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        outages: dict[str, float] = {}
+        try:
+            return await self._complete(request, outages)
+        finally:
+            # Cache models that were down during this call, so later calls skip them
+            # until the cooldown ends instead of retrying them on every request.
+            for key, seconds in outages.items():
+                self._models.cool(key, seconds)
+
+    async def _complete(self, request: LLMRequest, outages: dict[str, float]) -> LLMResponse:
         chain = self.routes_for(request.tier)
         if not chain:
             raise LLMUnavailable(f"no route for tier {request.tier}")
-        ready = [route for route in chain if not self._cooldowns.is_cooling(route.label)]
+        ready = [route for route in chain if self._remaining(route) <= 0]
         if not ready:
-            soonest = min(chain, key=lambda route: self._cooldowns.remaining(route.label))
-            wait = self._cooldowns.remaining(soonest.label)
+            soonest = min(chain, key=self._remaining)
+            wait = self._remaining(soonest)
             if wait > self._deadline:
                 raise LLMUnavailable(f"every key for tier {request.tier} is cooling down")
             await self._sleep(wait)
@@ -137,7 +166,7 @@ class RoutedLLM:
         backoffs = iter(OVERLOAD_BACKOFF_SECONDS)
         cooldown_waited = False
         while True:
-            response, only_transient = await self._try(request, ready, primary)
+            response, only_transient = await self._try(request, ready, primary, outages)
             if response is not None:
                 return response
             if only_transient:
@@ -153,18 +182,22 @@ class RoutedLLM:
                 logger.info("llm_waiting_for_cooldown", tier=request.tier, seconds=pause)
             await self._sleep(pause)
             waited += pause
-            ready = [route for route in chain if not self._cooldowns.is_cooling(route.label)]
+            ready = [route for route in chain if self._remaining(route) <= 0]
         raise LLMUnavailable(f"all routes failed for tier {request.tier}")
 
     def _short_cooldown(self, chain: list[Route]) -> float | None:
-        cooling = [self._cooldowns.remaining(route.label) for route in chain]
+        cooling = [self._remaining(route) for route in chain]
         soonest = min((seconds for seconds in cooling if seconds > 0), default=None)
         if soonest is None or soonest > SHORT_COOLDOWN_MAX_SECONDS:
             return None
         return soonest
 
     async def _try(
-        self, request: LLMRequest, routes: list[Route], primary: str
+        self,
+        request: LLMRequest,
+        routes: list[Route],
+        primary: str,
+        outages: dict[str, float],
     ) -> tuple[LLMResponse | None, bool]:
         only_transient = bool(routes)
         overloaded: set[tuple[str, str]] = set()
@@ -180,7 +213,12 @@ class RoutedLLM:
                 only_transient = only_transient and isinstance(exc, TRANSIENT)
                 if is_overload(exc):
                     overloaded.add(model)
+                cooldown = model_cooldown_for(exc)
+                if cooldown is not None:
+                    key = model_key(route)
+                    outages[key] = max(outages.get(key, 0.0), cooldown)
                 continue
+            outages.pop(model_key(route), None)
             response.wait_ms = wait_ms
             response.fallback = route.provider.name != primary or route.degraded
             await self._notify_key_status(

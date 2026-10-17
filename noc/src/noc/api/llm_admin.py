@@ -9,19 +9,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from noc.api.deps import Principal, get_session, get_settings_dep, require_role
 from noc.api.schemas import (
     AddLlmKeyRequest,
+    LlmChainEntryView,
+    LlmChainOptionView,
+    LlmChainView,
     LlmCheckRequest,
     LlmCheckView,
     LlmConfigView,
     LlmManagedKeyView,
     LlmModelLimitView,
     LlmProviderView,
+    LlmProxyCheckView,
     LlmProxyView,
+    SetChainRequest,
     SetProxyRequest,
 )
 from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.models import LlmKey
 from noc.db.session import SessionFactory
+from noc.llm.chains import (
+    ChainRefused,
+    chain_options,
+    chain_overrides,
+    effective_chains,
+    reset_chain,
+    set_chain,
+)
 from noc.llm.factory import openai_client
 from noc.llm.key_check import CheckResult, check_key, check_proxy
 from noc.llm.key_status import PostgresKeyStatus
@@ -104,6 +117,35 @@ def key_view(entry: KeyEntry, rows: dict[uuid.UUID, LlmKey]) -> LlmManagedKeyVie
     )
 
 
+def chain_views(
+    document: ProvidersDocument, overrides: dict[Tier, list[str]]
+) -> tuple[list[LlmChainView], list[LlmChainOptionView]]:
+    options = {option.entry: option for option in chain_options(document)}
+    views: list[LlmChainView] = []
+    for tier, entries in effective_chains(document, overrides).items():
+        rows = [
+            LlmChainEntryView(
+                entry=entry,
+                provider=options[entry].provider,
+                model_tier=options[entry].model_tier,
+                model=options[entry].model,
+                degraded=options[entry].model_tier != tier,
+            )
+            for entry in entries
+        ]
+        views.append(LlmChainView(tier=tier, entries=rows, customized=tier in overrides))
+    choices = [
+        LlmChainOptionView(
+            entry=option.entry,
+            provider=option.provider,
+            model_tier=option.model_tier,
+            model=option.model,
+        )
+        for option in options.values()
+    ]
+    return views, choices
+
+
 async def config_view(
     session: AsyncSession, store: SecretStore, settings: Settings
 ) -> LlmConfigView:
@@ -111,6 +153,7 @@ async def config_view(
     proxies = await proxy_settings(session, store, document)
     rows = {row.id: row for row in await active_key_rows(session)}
     keys = await all_keys(session, store, document)
+    chains, choices = chain_views(document, await chain_overrides(session, document))
     return LlmConfigView(
         mode=settings.llm_mode,
         secrets_persistent=await asyncio.to_thread(store.is_persistent),
@@ -119,6 +162,8 @@ async def config_view(
             for name, config in document.providers.items()
         ],
         keys=[key_view(entry, rows) for entry in keys],
+        chains=chains,
+        chain_options=choices,
     )
 
 
@@ -253,3 +298,57 @@ async def check_provider_proxy(
     if proxy is None:
         raise HTTPException(status.HTTP_409_CONFLICT, NO_PROXY)
     return check_view(await check_proxy(config.base_url, proxy))
+
+
+@router.post("/proxies/check")
+async def check_all_proxies(
+    admin: AdminPrincipal, session: Session, store: Store, settings: AppSettings
+) -> list[LlmProxyCheckView]:
+    document = load_providers(settings.llm_providers_file)
+    proxies = await proxy_settings(session, store, document)
+    targets = [
+        (name, config.base_url, url)
+        for name, config in document.providers.items()
+        if (url := proxies[name].url)
+    ]
+    results = await asyncio.gather(*(check_proxy(base_url, url) for _, base_url, url in targets))
+    return [
+        LlmProxyCheckView(
+            provider=name,
+            ok=result.ok,
+            latency_ms=result.latency_ms,
+            model=result.model,
+            detail=result.detail,
+        )
+        for (name, _, _), result in zip(targets, results, strict=True)
+    ]
+
+
+@router.put("/chains/{tier}")
+async def put_chain(
+    tier: str,
+    body: SetChainRequest,
+    admin: AdminPrincipal,
+    session: Session,
+    store: Store,
+    settings: AppSettings,
+) -> LlmConfigView:
+    document = load_providers(settings.llm_providers_file)
+    try:
+        await set_chain(session, document, tier, body.entries, admin.username)
+    except ChainRefused as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    await session.commit()
+    return await config_view(session, store, settings)
+
+
+@router.delete("/chains/{tier}")
+async def delete_chain(
+    tier: str, admin: AdminPrincipal, session: Session, store: Store, settings: AppSettings
+) -> LlmConfigView:
+    try:
+        await reset_chain(session, tier, admin.username)
+    except ChainRefused as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    await session.commit()
+    return await config_view(session, store, settings)

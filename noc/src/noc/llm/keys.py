@@ -20,6 +20,7 @@ KEY_PATTERN: Final = re.compile(r"^[A-Za-z0-9_\-.:]{8,256}$")
 NAME_MAX_LENGTH: Final = 64
 PROXY_SCHEMES: Final = frozenset({"http", "https"})
 PROXY_SETTING_PREFIX: Final = "llm.proxy."
+LLM_SETTING_PREFIX: Final = "llm."
 TIER_ORDER: Final[dict[str, int]] = {"paid": 0, "free": 1}
 
 
@@ -126,7 +127,7 @@ async def config_version(session: AsyncSession) -> str:
     key_count, key_time = keys.one()
     proxies = await session.execute(
         select(func.count(), func.max(NocSetting.updated_at)).where(
-            NocSetting.key.startswith(PROXY_SETTING_PREFIX)
+            NocSetting.key.startswith(LLM_SETTING_PREFIX)
         )
     )
     proxy_count, proxy_time = proxies.one()

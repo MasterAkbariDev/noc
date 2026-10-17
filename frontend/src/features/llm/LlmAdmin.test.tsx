@@ -3,13 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   addLlmKey,
+  checkAllLlmProxies,
   checkLlmKey,
   checkLlmProxy,
   getLlmConfig,
+  resetLlmChain,
   revokeLlmKey,
+  setLlmChain,
   setLlmProxy,
 } from "../../api/client";
-import type { LlmConfig, LlmManagedKey } from "../../api/types";
+import type { LlmChainOption, LlmConfig, LlmManagedKey } from "../../api/types";
 import { useSession } from "../../auth/session";
 import { sessionFor } from "../settings/fixtures";
 import { renderWithProviders } from "../settings/harness";
@@ -24,6 +27,9 @@ vi.mock("../../api/client", async (importOriginal) => ({
   setLlmProxy: vi.fn(),
   resetLlmProxy: vi.fn(),
   checkLlmProxy: vi.fn(),
+  checkAllLlmProxies: vi.fn(),
+  setLlmChain: vi.fn(),
+  resetLlmChain: vi.fn(),
 }));
 
 vi.mock("../../auth/session", async (importOriginal) => ({
@@ -55,6 +61,13 @@ const ENV_KEY: LlmManagedKey = {
   created_by: null,
 };
 
+const CHAIN_OPTIONS: LlmChainOption[] = [
+  { entry: "gemini:small", provider: "gemini", model_tier: "small", model: "gemini-3.1-flash-lite" },
+  { entry: "gemini:strong", provider: "gemini", model_tier: "strong", model: "gemini-3.6-flash" },
+  { entry: "groq:small", provider: "groq", model_tier: "small", model: "openai/gpt-oss-120b" },
+  { entry: "groq:strong", provider: "groq", model_tier: "strong", model: "openai/gpt-oss-120b" },
+];
+
 function config(changes: Partial<LlmConfig> = {}): LlmConfig {
   return {
     mode: "live",
@@ -83,6 +96,26 @@ function config(changes: Partial<LlmConfig> = {}): LlmConfig {
       },
     ],
     keys: [PANEL_KEY, ENV_KEY],
+    chains: [
+      {
+        tier: "small",
+        customized: false,
+        entries: [
+          { ...CHAIN_OPTIONS[2]!, degraded: false },
+          { ...CHAIN_OPTIONS[0]!, degraded: false },
+          { ...CHAIN_OPTIONS[1]!, degraded: true },
+        ],
+      },
+      {
+        tier: "strong",
+        customized: false,
+        entries: [
+          { ...CHAIN_OPTIONS[3]!, degraded: false },
+          { ...CHAIN_OPTIONS[1]!, degraded: false },
+        ],
+      },
+    ],
+    chain_options: CHAIN_OPTIONS,
     ...changes,
   };
 }
@@ -101,7 +134,17 @@ function renderAs(role: "viewer" | "operator" | "admin") {
 }
 
 beforeEach(() => {
-  for (const mock of [getLlmConfig, addLlmKey, revokeLlmKey, checkLlmKey, setLlmProxy, checkLlmProxy]) {
+  for (const mock of [
+    getLlmConfig,
+    addLlmKey,
+    revokeLlmKey,
+    checkLlmKey,
+    setLlmProxy,
+    checkLlmProxy,
+    checkAllLlmProxies,
+    setLlmChain,
+    resetLlmChain,
+  ]) {
     vi.mocked(mock).mockReset();
   }
   vi.mocked(useSession).mockReset();
@@ -242,5 +285,44 @@ describe("LlmAdmin", () => {
 
     fireEvent.click(nth(screen.getAllByRole("button", { name: "Check proxy" }), 0));
     expect(await screen.findByText("Failed: ConnectError: refused")).toBeTruthy();
+  });
+
+  it("checks every proxy with one button and shows each result on its provider", async () => {
+    vi.mocked(checkAllLlmProxies).mockResolvedValue([
+      { provider: "gemini", ok: true, latency_ms: 120, model: null, detail: "reached the provider, HTTP 404" },
+    ]);
+    renderAs("admin");
+    await screen.findByRole("table", { name: "API keys" });
+    fireEvent.click(screen.getByRole("button", { name: "Check all proxies" }));
+    expect(await screen.findByText("Works in 0.1 s: reached the provider, HTTP 404")).toBeTruthy();
+    expect(checkAllLlmProxies).toHaveBeenCalledTimes(1);
+  });
+
+  it("says which proxies failed when a check-all finds a broken one", async () => {
+    vi.mocked(checkAllLlmProxies).mockResolvedValue([
+      { provider: "gemini", ok: false, latency_ms: 10000, model: null, detail: "ConnectTimeout" },
+    ]);
+    renderAs("admin");
+    await screen.findByRole("table", { name: "API keys" });
+    fireEvent.click(screen.getByRole("button", { name: "Check all proxies" }));
+    expect(await screen.findByText("1 of 1 proxies failed: gemini.")).toBeTruthy();
+  });
+
+  it("moves a model up in the order and saves it", async () => {
+    vi.mocked(setLlmChain).mockResolvedValue(config());
+    renderAs("admin");
+    await screen.findByRole("table", { name: "API keys" });
+    fireEvent.click(screen.getByRole("button", { name: "Move gemini · gemini-3.1-flash-lite up in the small order" }));
+    fireEvent.click(nth(screen.getAllByRole("button", { name: "Save order" }), 0));
+    await waitFor(() =>
+      expect(setLlmChain).toHaveBeenCalledWith("small", ["gemini:small", "groq:small", "gemini:strong"]),
+    );
+  });
+
+  it("does not offer to save an order nobody changed", async () => {
+    renderAs("admin");
+    await screen.findByRole("table", { name: "API keys" });
+    expect((nth(screen.getAllByRole("button", { name: "Save order" }), 0) as HTMLButtonElement).disabled).toBe(true);
+    expect(setLlmChain).not.toHaveBeenCalled();
   });
 });

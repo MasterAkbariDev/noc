@@ -16,6 +16,7 @@ import type {
   LlmCheck,
   LlmConfig,
   LlmManagedKey,
+  LlmProxyCheck,
   Metrics,
   LlmStatus,
   MeView,
@@ -263,6 +264,18 @@ export function resetLlmProxy(provider: string): Promise<LlmConfig> {
 
 export function checkLlmProxy(provider: string): Promise<LlmCheck> {
   return apiPost<LlmCheck>(`/api/llm/providers/${encodedId(provider)}/proxy/check`, {});
+}
+
+export function checkAllLlmProxies(): Promise<LlmProxyCheck[]> {
+  return apiPost<LlmProxyCheck[]>("/api/llm/proxies/check", {});
+}
+
+export function setLlmChain(tier: string, entries: string[]): Promise<LlmConfig> {
+  return apiRequest<LlmConfig>("PUT", `/api/llm/chains/${encodedId(tier)}`, { entries });
+}
+
+export function resetLlmChain(tier: string): Promise<LlmConfig> {
+  return apiRequest<LlmConfig>("DELETE", `/api/llm/chains/${encodedId(tier)}`);
 }
 
 export function getMetrics(days: number): Promise<Metrics> {

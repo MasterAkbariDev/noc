@@ -37,6 +37,10 @@ class ProviderRequestRejected(LLMError):
     pass
 
 
+class ProviderModelUnavailable(LLMError):
+    """The provider no longer serves this model (retired, renamed or not offered to this key)."""
+
+
 class LLMUnavailable(LLMError):
     pass
 

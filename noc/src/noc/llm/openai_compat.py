@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from noc.llm.client import (
     ProviderBadGeneration,
     ProviderKeyRejected,
+    ProviderModelUnavailable,
     ProviderRateLimited,
     ProviderRequestRejected,
     ProviderUnavailable,
@@ -78,6 +79,13 @@ def retry_after_seconds(headers: Mapping[str, str]) -> float | None:
 
 INVALID_KEY_MARKERS = ("api key not valid", "invalid api key", "api_key_invalid")
 BAD_GENERATION_MARKERS = ("tool_use_failed", "failed to parse tool call")
+MODEL_GONE_MARKERS = (
+    "decommissioned",
+    "no longer available",
+    "model_not_found",
+    "does not exist",
+    "not found for api version",
+)
 
 
 def is_invalid_key_message(message: str) -> bool:
@@ -88,6 +96,11 @@ def is_invalid_key_message(message: str) -> bool:
 def is_bad_generation_message(message: str) -> bool:
     lowered = message.lower()
     return any(marker in lowered for marker in BAD_GENERATION_MARKERS)
+
+
+def is_model_gone_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in MODEL_GONE_MARKERS)
 
 
 class OpenAICompatProvider:
@@ -120,6 +133,10 @@ class OpenAICompatProvider:
             if is_bad_generation_message(str(exc)):
                 raise ProviderBadGeneration(
                     f"{self.name}: the model wrote a broken tool call"
+                ) from exc
+            if exc.status_code == 404 or is_model_gone_message(str(exc)):
+                raise ProviderModelUnavailable(
+                    f"{self.name}: model {model} is not available ({exc.status_code})"
                 ) from exc
             raise ProviderRequestRejected(
                 f"{self.name}: request rejected ({exc.status_code}): {exc.message[:300]}"

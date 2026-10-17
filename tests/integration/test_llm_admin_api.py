@@ -18,10 +18,11 @@ from noc.config import Settings
 from noc.db.models import AuditEntry, LlmKey, NocSetting
 from noc.db.session import SessionFactory, transaction
 from noc.llm.client import LLMClient
+from noc.llm.key_check import CheckResult
 from noc.llm.keys import KeyEntry, add_key, key_secret_name, revoke_key, set_proxy
 from noc.llm.providers import key_label, load_providers
 from noc.llm.reloading import ReloadingLLM
-from noc.llm.types import CallContext, ChatMessage, LLMRequest, LLMResponse
+from noc.llm.types import CallContext, ChatMessage, LLMRequest, LLMResponse, Tier
 from noc.llm.types import Role as MessageRole
 from noc.secret_store import SecretStore
 
@@ -277,7 +278,12 @@ class CountingBuilder:
     def __init__(self) -> None:
         self.builds: list[list[str]] = []
 
-    def __call__(self, keys: list[KeyEntry], proxies: dict[str, str | None]) -> LLMClient:
+    def __call__(
+        self,
+        keys: list[KeyEntry],
+        proxies: dict[str, str | None],
+        chains: dict[Tier, list[str]],
+    ) -> LLMClient:
         self.builds.append([key.label for key in keys])
         return cast(LLMClient, EchoClient())
 
@@ -335,3 +341,76 @@ async def test_the_worker_picks_up_new_and_revoked_keys_without_a_restart(
     await llm.complete(REQUEST)
     assert builder.builds[-1] == []
     assert len(builder.builds) == 3
+
+
+async def test_checking_all_proxies_checks_only_the_providers_that_have_one(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_check(base_url: str, proxy: str) -> CheckResult:
+        return CheckResult(True, 7, None, f"reached via {proxy}")
+
+    monkeypatch.setattr("noc.api.llm_admin.check_proxy", fake_check)
+    await client.put(
+        "/api/llm/providers/gemini/proxy", json={"url": "http://10.0.0.9:3128"}, headers=AUTH
+    )
+    response = await client.post("/api/llm/proxies/check", headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "provider": "gemini",
+            "ok": True,
+            "latency_ms": 7,
+            "model": None,
+            "detail": "reached via http://10.0.0.9:3128",
+        }
+    ]
+
+
+async def test_checking_all_proxies_with_none_set_checks_nothing(client: httpx.AsyncClient) -> None:
+    response = await client.post("/api/llm/proxies/check", headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_the_model_order_can_be_changed_and_reset(
+    client: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    changed = await client.put(
+        "/api/llm/chains/small",
+        json={"entries": ["gemini:strong", "groq:small"]},
+        headers=AUTH,
+    )
+    assert changed.status_code == 200
+    small = next(chain for chain in changed.json()["chains"] if chain["tier"] == "small")
+    assert [entry["entry"] for entry in small["entries"]] == ["gemini:strong", "groq:small"]
+    assert small["entries"][0]["degraded"] is True
+    assert small["entries"][1]["degraded"] is False
+    assert small["customized"] is True
+    strong = next(chain for chain in changed.json()["chains"] if chain["tier"] == "strong")
+    assert strong["customized"] is False
+
+    reset = await client.delete("/api/llm/chains/small", headers=AUTH)
+    small = next(chain for chain in reset.json()["chains"] if chain["tier"] == "small")
+    assert [entry["entry"] for entry in small["entries"]] == [
+        "groq:small",
+        "gemini:small",
+        "gemini:strong",
+    ]
+    assert small["customized"] is False
+    async with sessions() as session:
+        assert await session.get(NocSetting, "llm.chain.small") is None
+
+
+async def test_a_model_order_only_names_models_listed_once_in_the_providers_file(
+    client: httpx.AsyncClient,
+) -> None:
+    unknown = await client.put(
+        "/api/llm/chains/small", json={"entries": ["openai:small"]}, headers=AUTH
+    )
+    repeated = await client.put(
+        "/api/llm/chains/small", json={"entries": ["groq:small", "groq:small"]}, headers=AUTH
+    )
+    empty = await client.put("/api/llm/chains/small", json={"entries": []}, headers=AUTH)
+    assert unknown.status_code == 422
+    assert repeated.status_code == 422
+    assert empty.status_code == 422

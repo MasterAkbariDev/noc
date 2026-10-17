@@ -250,11 +250,30 @@ class LlmManagedKeyView(BaseModel):
     created_by: str | None
 
 
+class LlmChainOptionView(BaseModel):
+    entry: str
+    provider: str
+    model_tier: str
+    model: str
+
+
+class LlmChainEntryView(LlmChainOptionView):
+    degraded: bool
+
+
+class LlmChainView(BaseModel):
+    tier: str
+    entries: list[LlmChainEntryView]
+    customized: bool
+
+
 class LlmConfigView(BaseModel):
     mode: str
     secrets_persistent: bool
     providers: list[LlmProviderView]
     keys: list[LlmManagedKeyView]
+    chains: list[LlmChainView]
+    chain_options: list[LlmChainOptionView]
 
 
 class AddLlmKeyRequest(BaseModel):
@@ -276,11 +295,21 @@ class SetProxyRequest(BaseModel):
     url: str | None = Field(default=None, max_length=512)
 
 
+class SetChainRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[str] = Field(max_length=8)
+
+
 class LlmCheckView(BaseModel):
     ok: bool
     latency_ms: int
     model: str | None
     detail: str
+
+
+class LlmProxyCheckView(LlmCheckView):
+    provider: str
 
 
 StepState = Literal["done", "current", "pending", "skipped", "failed"]
