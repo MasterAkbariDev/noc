@@ -1,13 +1,40 @@
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Final, Protocol
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
 from noc.db.session import SessionFactory, transaction
+from noc.domain.incident_status import IncidentStatus, InvalidTransition
 from noc.llm.keys import KeyRefused
+from noc.notify.screens import (
+    ApprovalRow,
+    IncidentRow,
+    decide,
+    load_approval,
+    load_approvals,
+    load_incident,
+    load_incidents,
+    load_keys,
+    load_overview,
+    load_servers,
+    main_menu,
+    pending_action_of,
+    render_approval,
+    render_approvals,
+    render_close_confirm,
+    render_confirm,
+    render_help,
+    render_incident,
+    render_incidents,
+    render_models,
+    render_overview,
+    render_servers,
+)
 from noc.notify.settings import (
     MAX_ADMINS,
     BotAdmin,
@@ -34,6 +61,7 @@ from noc.notify.telegram import (
     TelegramUser,
 )
 from noc.secret_store import SecretStore
+from noc.store.incidents import IncidentResolution, close_incident
 
 logger = structlog.get_logger(__name__)
 
@@ -45,9 +73,11 @@ EVENT_LABELS: Final = {
     "resolved": "Resolved",
     "opened": "Every new incident",
 }
+SCREEN_PREFIXES: Final = ("m:", "i:", "a:", "y:", "do:")
 HELP_TEXT: Final = "\n".join(
     [
         "NOC bot commands:",
+        "/menu - the button menu: overview, incidents, approvals, servers, models",
         "/settings - turn messages and event types on or off",
         "/status - what is sent and to whom",
         "/admins - list the admins",
@@ -148,6 +178,7 @@ def settings_keyboard(settings: TelegramSettings, admin: BotAdmin) -> Keyboard:
         rows.append([Button(text=f"{mark} {label}", callback_data=f"ev:{key}")])
     mute = "Unmute me" if admin.muted else "Mute me"
     rows.append([Button(text=mute, callback_data="mute")])
+    rows.append([Button(text="⬅️ Menu", callback_data="m:home")])
     return rows
 
 
@@ -218,7 +249,10 @@ def handle_command(
     chat = str(message.chat.id)
     command, argument = command_of(message.text)
     actor = actor_of(user)
-    if command in ("/start", "/help"):
+    if command in ("/start", "/menu"):
+        text, keyboard = main_menu(settings.panel_url)
+        return Outcome([Send(chat, text, keyboard)])
+    if command == "/help":
         return Outcome([Send(chat, HELP_TEXT)])
     if command == "/status":
         return Outcome([Send(chat, status_text(settings, admin))])
@@ -348,6 +382,140 @@ async def deliver_replies(api: BotApi, replies: list[Reply]) -> None:
             logger.warning("telegram_reply_failed", error=str(failure))
 
 
+def is_screen_update(update: TelegramUpdate) -> bool:
+    query = update.callback_query
+    return query is not None and query.data.startswith(SCREEN_PREFIXES)
+
+
+def edited(query: CallbackQuery, text: str, keyboard: Keyboard) -> list[Reply]:
+    if query.message is None:
+        return []
+    return [Edit(str(query.message.chat.id), query.message.message_id, text, keyboard)]
+
+
+def uuid_or_none(raw: str) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        return None
+
+
+async def show_screen(
+    session: AsyncSession, settings: TelegramSettings, admin: BotAdmin, data: str
+) -> tuple[str, Keyboard, str] | None:
+    panel = settings.panel_url
+    if data == "m:home":
+        return (*main_menu(panel), "")
+    if data == "m:overview":
+        return (*render_overview(await load_overview(session), panel), "")
+    if data == "m:incidents":
+        return (*render_incidents(await load_incidents(session), panel), "")
+    if data == "m:approvals":
+        return (*render_approvals(await load_approvals(session)), "")
+    if data == "m:servers":
+        return (*render_servers(await load_servers(session)), "")
+    if data == "m:models":
+        return (*render_models(await load_keys(session)), "")
+    if data == "m:settings":
+        return (status_text(settings, admin), settings_keyboard(settings, admin), "")
+    if data == "m:help":
+        return (*render_help(), "")
+    return None
+
+
+async def screen_outcome(
+    session: AsyncSession, settings: TelegramSettings, admin: BotAdmin, query: CallbackQuery
+) -> Outcome:
+    actor = actor_of(query.sender)
+    data = query.data
+    shown = await show_screen(session, settings, admin, data)
+    if shown is not None:
+        text, keyboard, note = shown
+        return Outcome([Answer(query.id, note), *edited(query, text, keyboard)])
+    kind, _, raw = data.partition(":")
+    if kind == "do":
+        decision, _, raw = raw.partition(":")
+        action_id = uuid_or_none(raw)
+        if action_id is None:
+            return Outcome([Answer(query.id, "Unknown button")])
+        if decision == "cl":
+            # For close, the id after "do:cl:" is the incident id.
+            note = await close_from_bot(session, action_id, actor)
+            row = await load_incident(session, action_id)
+            if row is None:
+                text, keyboard = render_incidents_menu(await load_incidents(session))
+            else:
+                text, keyboard = render_incident(
+                    row, await pending_action_of(session, action_id), settings.panel_url
+                )
+            return Outcome([Answer(query.id, note), *edited(query, text, keyboard)])
+        note = await decide(
+            session, action_id, "approved" if decision == "ok" else "rejected", actor
+        )
+        text, keyboard = render_approvals(await load_approvals(session))
+        return Outcome([Answer(query.id, note), *edited(query, text, keyboard)])
+    identifier = uuid_or_none(raw)
+    if identifier is None:
+        return Outcome([Answer(query.id, "Unknown button")])
+    if kind == "cl":
+        row = await load_incident(session, identifier)
+        if row is None or row.status != IncidentStatus.ESCALATED.value:
+            return Outcome([Answer(query.id, "Only escalated incidents can be closed.")])
+        text, keyboard = render_close_confirm(row)
+        return Outcome([Answer(query.id, ""), *edited(query, text, keyboard)])
+    if kind == "i":
+        row = await load_incident(session, identifier)
+        if row is None:
+            return Outcome([Answer(query.id, "That incident is gone.")])
+        pending = await pending_action_of(session, identifier)
+        text, keyboard = render_incident(row, pending, settings.panel_url)
+        return Outcome([Answer(query.id, ""), *edited(query, text, keyboard)])
+    if kind in ("a", "y"):
+        found: ApprovalRow | None = await load_approval(session, identifier)
+        if found is None:
+            text, keyboard = render_approvals(await load_approvals(session))
+            return Outcome(
+                [Answer(query.id, "That fix is no longer waiting."), *edited(query, text, keyboard)]
+            )
+        if kind == "y":
+            text, keyboard = render_confirm(found)
+        else:
+            text, keyboard = render_approval(found, settings.panel_url)
+        return Outcome([Answer(query.id, ""), *edited(query, text, keyboard)])
+    return Outcome([Answer(query.id, "Unknown button")])
+
+
+async def close_from_bot(session: AsyncSession, incident_id: uuid.UUID, actor: str) -> str:
+    try:
+        await close_incident(
+            session,
+            incident_id,
+            IncidentResolution(resolution_note=f"Closed from Telegram by {actor}."),
+            actor,
+        )
+    except LookupError:
+        return "That incident is gone."
+    except InvalidTransition:
+        return "Only escalated incidents can be closed."
+    return "Closed."
+
+
+def render_incidents_menu(rows: list[IncidentRow]) -> tuple[str, Keyboard]:
+    return render_incidents(rows, "")
+
+
+async def handle_screen_update(
+    session: AsyncSession, settings: TelegramSettings, update: TelegramUpdate
+) -> Outcome:
+    query = update.callback_query
+    if query is None:
+        return Outcome()
+    admin = find_admin(settings, query.sender)
+    if admin is None:
+        return Outcome([Answer(query.id, "Only NOC admins can change this")])
+    return await screen_outcome(session, settings, admin, query)
+
+
 async def poll_once(
     sessions: SessionFactory,
     store: SecretStore,
@@ -363,7 +531,10 @@ async def poll_once(
     for update in await api.updates(offset):
         async with transaction(sessions) as session:
             settings = await load_settings(session)
-            outcome = handle_update(settings, update, clock())
+            if is_screen_update(update):
+                outcome = await handle_screen_update(session, settings, update)
+            else:
+                outcome = handle_update(settings, update, clock())
             if outcome.settings is not None:
                 await store_settings(session, outcome.settings, outcome.actor, outcome.action)
             await store_offset(session, update.update_id + 1)

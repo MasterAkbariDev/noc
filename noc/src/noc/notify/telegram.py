@@ -61,7 +61,8 @@ class TelegramUpdate(BaseModel):
 
 class Button(BaseModel):
     text: str
-    callback_data: str
+    callback_data: str = ""
+    url: str | None = None
 
 
 Keyboard = list[list[Button]]
@@ -83,7 +84,17 @@ def scrub(text: str, token: str) -> str:
 
 
 def keyboard_markup(keyboard: Keyboard) -> dict[str, Any]:
-    return {"inline_keyboard": [[button.model_dump() for button in row] for row in keyboard]}
+    return {
+        "inline_keyboard": [
+            [
+                button.model_dump(
+                    exclude_none=True, exclude={"callback_data"} if button.url else set()
+                )
+                for button in row
+            ]
+            for row in keyboard
+        ]
+    }
 
 
 class TelegramSender:

@@ -84,7 +84,10 @@ def test_start_links_an_admin_added_by_username() -> None:
     assert outcome.settings is not None
     [admin] = outcome.settings.admins
     assert (admin.user_id, admin.ready_since) == (ALI, NOW)
-    assert "/settings" in only_text(outcome.replies)
+    [reply] = outcome.replies
+    assert isinstance(reply, Send)
+    assert reply.keyboard is not None
+    assert "m:settings" in [button.callback_data for row in reply.keyboard for button in row]
 
 
 def test_an_already_linked_admin_is_not_rewritten() -> None:
@@ -147,7 +150,15 @@ def test_settings_shows_buttons_and_a_button_toggles_an_event() -> None:
     assert isinstance(reply, Send)
     assert reply.keyboard is not None
     callbacks = [row[0].callback_data for row in reply.keyboard]
-    assert callbacks == ["pause", "ev:approval", "ev:escalated", "ev:resolved", "ev:opened", "mute"]
+    assert callbacks == [
+        "pause",
+        "ev:approval",
+        "ev:escalated",
+        "ev:resolved",
+        "ev:opened",
+        "mute",
+        "m:home",
+    ]
 
     toggled = handle_update(two_admins(), button(ALI, "ev:opened"), NOW)
     assert toggled.settings is not None
