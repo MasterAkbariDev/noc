@@ -1,9 +1,20 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
+import { useSession } from "../../auth/session";
+import { sessionFor } from "../settings/fixtures";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { ServerCard } from "./ServerCard";
 import { HOSTILE_TEXT, SERVER_ID, summaryFixture } from "./fixtures";
+
+vi.mock("../../auth/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../auth/session")>()),
+  useSession: vi.fn(),
+}));
+
+function asViewer() {
+  vi.mocked(useSession).mockReturnValue(sessionFor({ username: "viewer", role: "viewer", via: "session" }));
+}
 
 function renderCard(overrides: Parameters<typeof summaryFixture>[0] = {}) {
   return render(
@@ -20,6 +31,8 @@ afterEach(() => {
 });
 
 describe("ServerCard", () => {
+  beforeEach(asViewer);
+
   it("shows the HALTED badge only when automation is halted", () => {
     const { unmount } = renderCard();
     expect(screen.queryByText("Halted")).toBeNull();

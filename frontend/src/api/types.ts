@@ -663,7 +663,7 @@ export type PeerStatus = "pending" | "paired";
 export type PeerSnapshot = {
   node_name: string;
   generated_at: string;
-  targets: { name: string; environment: string; automation: string; halted: boolean }[];
+  targets: { name: string; label?: string | null; environment: string; automation: string; halted: boolean }[];
   active_incidents: { id: string; title: string; status: string; target: string; opened_at: string }[];
 };
 

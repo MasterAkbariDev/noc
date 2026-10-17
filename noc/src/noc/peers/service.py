@@ -205,6 +205,7 @@ async def local_status(session: AsyncSession, settings: Settings) -> dict[str, A
         "targets": [
             {
                 "name": target.name,
+                "label": target.label,
                 "environment": target.environment,
                 "automation": target.automation_level,
                 "halted": target.halted,

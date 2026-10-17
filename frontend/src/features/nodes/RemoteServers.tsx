@@ -44,7 +44,9 @@ function RemoteNode({ peer }: { peer: PeerView }) {
             {snapshot.targets.map((target) => (
               <li key={target.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="break-all">
-                  {target.name} <span className="text-xs text-muted">({target.environment})</span>
+                  {target.label ?? target.name}
+                  {target.label && <span className="text-xs text-muted"> ({target.name})</span>}{" "}
+                  <span className="text-xs text-muted">{target.environment}</span>
                 </span>
                 <span className="text-xs text-muted">
                   {target.halted ? "Halted" : (AUTOMATION_TEXT[target.automation] ?? target.automation)}

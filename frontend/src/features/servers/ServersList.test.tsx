@@ -3,9 +3,16 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ApiError, getServers } from "../../api/client";
+import { useSession } from "../../auth/session";
+import { sessionFor } from "../settings/fixtures";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { ServersList } from "./ServersList";
 import { HOSTILE_TEXT, summaryFixture } from "./fixtures";
+
+vi.mock("../../auth/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../auth/session")>()),
+  useSession: vi.fn(),
+}));
 
 vi.mock("../../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/client")>()),
@@ -26,6 +33,7 @@ function renderList() {
 }
 
 beforeEach(() => {
+  vi.mocked(useSession).mockReturnValue(sessionFor({ username: "viewer", role: "viewer", via: "session" }));
   vi.mocked(getServers).mockReset();
 });
 

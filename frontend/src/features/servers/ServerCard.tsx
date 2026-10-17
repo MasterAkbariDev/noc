@@ -4,6 +4,7 @@ import { cx } from "../../lib/cx";
 import { Card } from "../../ui/Card";
 import { AutomationLevel, EnvironmentBadge, HaltedBadge, OpenIncidents, ServerStatusDot } from "./ServerParts";
 import { MetricBars } from "./MetricBar";
+import { ServerAdmin } from "./ServerAdmin";
 import { headlineWithoutIncidents } from "./serverView";
 
 const STATUS_BORDERS: Record<ServerStatus, string> = {
@@ -35,6 +36,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         <AutomationLevel level={server.automation_level} label={server.automation_label} />
         <OpenIncidents count={server.open_incidents} worstSeverity={server.worst_severity} />
       </div>
+      <ServerAdmin server={server} />
     </Card>
   );
 }

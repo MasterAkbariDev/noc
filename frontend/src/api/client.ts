@@ -398,3 +398,11 @@ export function refreshPeer(id: string): Promise<PeerView> {
 export function removePeer(id: string): Promise<void> {
   return apiDelete(`/api/peers/${encodedId(id)}`);
 }
+
+export function setServerAutomation(name: string, level: string): Promise<{ name: string; automation_level: string }> {
+  return apiRequest("PUT", `/api/servers/${encodedId(name)}/automation`, { level });
+}
+
+export function setServerLabel(name: string, label: string | null): Promise<{ name: string; label: string | null }> {
+  return apiRequest("PUT", `/api/servers/${encodedId(name)}/label`, { label });
+}

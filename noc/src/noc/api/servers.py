@@ -283,6 +283,40 @@ async def get_server(server_id: uuid.UUID, request: Request, session: Session) -
     )
 
 
+AUTOMATION_LEVELS = ("observe_only", "approval_required", "auto_safe")
+
+
+class SetAutomationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    level: str = Field(max_length=32)
+
+
+@router.put("/{name}/automation")
+async def set_automation(
+    name: str,
+    body: SetAutomationRequest,
+    admin: Annotated[Principal, Depends(require_role(Role.ADMIN))],
+    session: Session,
+) -> dict[str, str]:
+    if body.level not in AUTOMATION_LEVELS:
+        raise HTTPException(422, f"the mode must be one of {', '.join(AUTOMATION_LEVELS)}")
+    target = await session.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(404, "server not found")
+    previous = target.automation_level
+    target.automation_level = body.level
+    await append_audit(
+        session,
+        admin.username,
+        "server_automation_set",
+        f"target:{name}",
+        {"from": previous, "to": body.level},
+    )
+    await session.commit()
+    return {"name": name, "automation_level": body.level}
+
+
 class SetLabelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
