@@ -42,6 +42,11 @@ ensure_docker() {
 }
 
 install_cli() {
+    mkdir -p "$HOME_DIR"
+    if [ ! -f "$HOME_DIR/.env" ]; then
+        printf "%s\n" "# Settings for the noc command." "NOC_DATABASE_URL=" > "$HOME_DIR/.env"
+        chmod 600 "$HOME_DIR/.env"
+    fi
     cat > /usr/local/bin/noc <<EOF
 #!/usr/bin/env bash
 # Runs the NOC command line from the container image. Reads settings from $HOME_DIR/.env.
@@ -157,7 +162,7 @@ main() {
     choice="$(ask "Choose" "1")"
     case "$choice" in
         1) install_panel ;;
-        2) mkdir -p "$HOME_DIR"; install_cli ;;
+        2) install_cli ;;
         *) echo "Unknown choice." >&2; exit 1 ;;
     esac
 }
