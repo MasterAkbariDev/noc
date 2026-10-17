@@ -13,6 +13,7 @@ import {
 } from "../api/fleet";
 import { useSession } from "../auth/session";
 import { NodesSection } from "../features/nodes/NodesAdmin";
+import { EndpointsSection } from "../features/nodes/EndpointsSection";
 import { AddHostDialog, emptyDraft, type HostDraft } from "../features/fleet/AddHostDialog";
 import { ConfirmCodeDialog, type CodeAction } from "../features/fleet/ConfirmCodeDialog";
 import { GenerateKeyDialog } from "../features/fleet/GenerateKeyDialog";
@@ -38,6 +39,7 @@ export function FleetPage() {
       {me.role === "admin" ? (
         <>
           <NodesSection />
+          <EndpointsSection />
           <FleetContent />
         </>
       ) : (

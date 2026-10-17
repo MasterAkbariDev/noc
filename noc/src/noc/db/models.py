@@ -450,6 +450,22 @@ class Peer(Base):
     last_error: Mapped[str | None] = mapped_column(String(255))
 
 
+class Endpoint(Base):
+    """A server without NOC, checked over the network (SSH port and optional web address)."""
+
+    __tablename__ = "endpoints"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    host: Mapped[str] = mapped_column(String(255))
+    ssh_port: Mapped[int] = mapped_column(Integer)
+    url: Mapped[str | None] = mapped_column(String(512))
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    last_checked_at: Mapped[datetime | None]
+    last_result: Mapped[Json | None] = mapped_column(JSONB)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

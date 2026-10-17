@@ -112,6 +112,7 @@ async def redeem_join_code(
     code_text: str,
     actor: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    label: str | None = None,
 ) -> Peer:
     code = parse_code(code_text)
     if code.expires_at <= utc_now():
@@ -123,9 +124,10 @@ async def redeem_join_code(
         raise ValueError("this join code was already used")
     if peer is None:
         host = urlsplit(code.url).hostname or "node"
+        chosen = (label or "").strip() or host
         peer = Peer(
             id=code.peer_id,
-            name=host[:NAME_MAX_LENGTH],
+            name=chosen[:NAME_MAX_LENGTH],
             url=code.url,
             direction=FOLLOWS,
             status=PENDING,
@@ -178,7 +180,7 @@ async def refresh_status(
     peer.last_seen_at = utc_now()
     peer.last_error = None
     node = payload.get("node_name")
-    if isinstance(node, str) and node.strip():
+    if isinstance(node, str) and node.strip() and peer.name == (urlsplit(peer.url).hostname or ""):
         peer.name = node.strip()[:NAME_MAX_LENGTH]
     return peer
 

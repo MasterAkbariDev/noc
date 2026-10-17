@@ -19,6 +19,7 @@ import type {
   JoinCode,
   LlmProxyCheck,
   Metrics,
+  EndpointView,
   PeerView,
   LlmStatus,
   MeView,
@@ -387,8 +388,8 @@ export function createJoinCode(name: string): Promise<JoinCode> {
   return apiPost<JoinCode>("/api/peers/join-codes", { name });
 }
 
-export function joinPeer(code: string): Promise<PeerView> {
-  return apiPost<PeerView>("/api/peers/join", { code });
+export function joinPeer(code: string, label: string): Promise<PeerView> {
+  return apiPost<PeerView>("/api/peers/join", { code, label });
 }
 
 export function refreshPeer(id: string): Promise<PeerView> {
@@ -405,4 +406,25 @@ export function setServerAutomation(name: string, level: string): Promise<{ name
 
 export function setServerLabel(name: string, label: string | null): Promise<{ name: string; label: string | null }> {
   return apiRequest("PUT", `/api/servers/${encodedId(name)}/label`, { label });
+}
+
+export function getEndpoints(): Promise<EndpointView[]> {
+  return apiGet<EndpointView[]>("/api/endpoints");
+}
+
+export function addEndpoint(body: {
+  name: string;
+  host: string;
+  ssh_port: number;
+  url: string | null;
+}): Promise<EndpointView> {
+  return apiPost<EndpointView>("/api/endpoints", body);
+}
+
+export function checkEndpoint(id: string): Promise<EndpointView> {
+  return apiPost<EndpointView>(`/api/endpoints/${encodedId(id)}/check`, {});
+}
+
+export function removeEndpoint(id: string): Promise<void> {
+  return apiDelete(`/api/endpoints/${encodedId(id)}`);
 }

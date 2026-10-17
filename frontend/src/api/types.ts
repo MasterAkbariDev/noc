@@ -681,3 +681,17 @@ export type PeerView = {
 };
 
 export type JoinCode = { code: string; expires_at: string };
+
+export type EndpointView = {
+  id: string;
+  name: string;
+  host: string;
+  ssh_port: number;
+  url: string | null;
+  last_checked_at: string | null;
+  last_result: {
+    ssh: { open: boolean; banner?: string | null; error?: string; ms?: number | null };
+    web?: { ok: boolean; status?: number; error?: string; ms?: number | null };
+    checked_at: string;
+  } | null;
+};

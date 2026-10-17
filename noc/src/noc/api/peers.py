@@ -62,6 +62,7 @@ class JoinCodeView(BaseModel):
 class JoinRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    label: str | None = Field(default=None, max_length=64)
     code: str = Field(min_length=1, max_length=2000)
 
 
@@ -141,7 +142,7 @@ async def join(
 ) -> PeerView:
     try:
         peer = await redeem_join_code(
-            session, store, body.code, admin.username, peer_transport(request)
+            session, store, body.code, admin.username, peer_transport(request), body.label
         )
     except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error

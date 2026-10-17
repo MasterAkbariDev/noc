@@ -16,17 +16,17 @@ import { directionLabel, peerStatusText } from "./view";
 export function NodesSection() {
   const query = usePeersQuery();
   return (
-    <Section heading="Other NOC nodes">
+    <Section heading="NOC nodes">
       <p className="m-0 text-sm text-muted">
-        Pair another NOC so this panel can show its servers, or let it show yours. Each code works once and expires after
-        ten minutes. Keys stay on the node that owns them.
+        Another NOC you want to show here, or a NOC that should show this one. Each auth token works once and expires
+        after ten minutes.
       </p>
       <div className="grid gap-3 md:grid-cols-2">
-        <CreateCode />
-        <JoinWithCode />
+        <AddNode />
+        <CreateToken />
       </div>
       {query.isSuccess && query.data.length > 0 && (
-        <List label="Paired nodes" gap="sm">
+        <List label="NOC nodes" gap="sm">
           {query.data.map((peer) => (
             <ListItem key={peer.id}>
               <PeerRow peer={peer} />
@@ -38,15 +38,18 @@ export function NodesSection() {
   );
 }
 
-function CreateCode() {
+function AddNode() {
+  const queryClient = useQueryClient();
   const toast = useToast();
-  const [name, setName] = useState("");
-  const [code, setCode] = useState<string | null>(null);
+  const [label, setLabel] = useState("");
+  const [token, setToken] = useState("");
   const mutation = useMutation({
-    mutationFn: () => createJoinCode(name.trim()),
-    onSuccess: (result) => {
-      setCode(result.code);
-      toast.success("Join code created. Paste it on the other node within ten minutes.");
+    mutationFn: () => joinPeer(token.trim(), label.trim()),
+    onSuccess: (peer) => {
+      void queryClient.invalidateQueries({ queryKey: [PEERS_KEY] });
+      setLabel("");
+      setToken("");
+      toast.success(`Added ${peer.name}.`);
     },
     onError: (error) => toast.error(settingsErrorText(error)),
   });
@@ -57,36 +60,38 @@ function CreateCode() {
   }
 
   return (
-    <Card title="Let another node read this panel">
+    <Card title="Add a NOC node">
       <Form onSubmit={submit}>
-        <Field label="Name for that node">
-          <TextInput name="peer-name" maxLength={64} value={name} onChange={(event) => setName(event.target.value)} />
+        <Field label="Label">
+          <TextInput maxLength={64} value={label} onChange={(event) => setLabel(event.target.value)} />
         </Field>
+        <Field label="Auth token">
+          <TextArea rows={2} spellCheck={false} value={token} onChange={(event) => setToken(event.target.value)} />
+        </Field>
+        {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
         <FormActions align="end">
-          <Button type="submit" variant="primary" disabled={name.trim() === "" || mutation.isPending}>
-            Create join code
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={label.trim() === "" || token.trim() === "" || mutation.isPending}
+          >
+            Add node
           </Button>
         </FormActions>
       </Form>
-      {code !== null && (
-        <Field label="Join code (copy it to the other node)">
-          <TextArea readOnly rows={3} value={code} onFocus={(event) => event.currentTarget.select()} />
-        </Field>
-      )}
     </Card>
   );
 }
 
-function JoinWithCode() {
-  const queryClient = useQueryClient();
+function CreateToken() {
   const toast = useToast();
-  const [code, setCode] = useState("");
+  const [label, setLabel] = useState("");
+  const [token, setToken] = useState<string | null>(null);
   const mutation = useMutation({
-    mutationFn: () => joinPeer(code.trim()),
-    onSuccess: (peer) => {
-      void queryClient.invalidateQueries({ queryKey: [PEERS_KEY] });
-      setCode("");
-      toast.success(`Joined ${peer.name}.`);
+    mutationFn: () => createJoinCode(label.trim()),
+    onSuccess: (result) => {
+      setToken(result.code);
+      toast.success("Auth token created. Give it to the other NOC within ten minutes.");
     },
     onError: (error) => toast.error(settingsErrorText(error)),
   });
@@ -97,18 +102,22 @@ function JoinWithCode() {
   }
 
   return (
-    <Card title="Show another node's servers here">
+    <Card title="Give an auth token to another NOC">
       <Form onSubmit={submit}>
-        <Field label="Join code from the other node">
-          <TextArea rows={3} value={code} onChange={(event) => setCode(event.target.value)} spellCheck={false} />
+        <Field label="Name for that NOC">
+          <TextInput maxLength={64} value={label} onChange={(event) => setLabel(event.target.value)} />
         </Field>
-        {mutation.isError && <FormMessage>{settingsErrorText(mutation.error)}</FormMessage>}
         <FormActions align="end">
-          <Button type="submit" variant="primary" disabled={code.trim() === "" || mutation.isPending}>
-            Join
+          <Button type="submit" disabled={label.trim() === "" || mutation.isPending}>
+            Create auth token
           </Button>
         </FormActions>
       </Form>
+      {token !== null && (
+        <Field label="Auth token">
+          <TextArea readOnly rows={3} value={token} onFocus={(event) => event.currentTarget.select()} />
+        </Field>
+      )}
     </Card>
   );
 }
