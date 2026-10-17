@@ -19,6 +19,10 @@ ask_secret() {
     echo "$answer"
 }
 
+# Settings can come from the environment instead of prompts (used for unattended installs):
+# NOC_MODE (1 panel, 2 command line), NOC_DOMAIN, NOC_PORT, NOC_ADMIN, NOC_ADMIN_PASSWORD_FILE,
+# NOC_PROXY (caddy or none; none means a reverse proxy you configure yourself).
+
 random_secret() {
     openssl rand -hex 32
 }
@@ -57,11 +61,16 @@ EOF
 }
 
 install_panel() {
-    local domain port admin password
-    domain="$(ask "Domain for the panel (for example noc.example.com, empty for an IP-only install)" "")"
-    port="$(ask "Port the panel listens on inside this server" "8000")"
-    admin="$(ask "Admin username" "admin")"
-    password="$(ask_secret "Admin password (at least 12 characters)")"
+    local domain port admin password proxy
+    domain="${NOC_DOMAIN:-$(ask "Domain for the panel (for example noc.example.com, empty for an IP-only install)" "")}"
+    port="${NOC_PORT:-$(ask "Port the panel listens on inside this server" "8000")}"
+    admin="${NOC_ADMIN:-$(ask "Admin username" "admin")}"
+    proxy="${NOC_PROXY:-caddy}"
+    if [ -n "${NOC_ADMIN_PASSWORD_FILE:-}" ]; then
+        password="$(cat "$NOC_ADMIN_PASSWORD_FILE")"
+    else
+        password="$(ask_secret "Admin password (at least 12 characters)")"
+    fi
     if [ "${#password}" -lt 12 ]; then
         echo "The password must be at least 12 characters." >&2
         exit 1
@@ -79,6 +88,7 @@ NOC_LLM_MODE=live
 NOC_EXECUTION_ENABLED=false
 NOC_SECRETS_DIR=/var/lib/noc/secrets
 POSTGRES_PASSWORD=${db_password}
+NOC_PUBLIC_URL=${domain:+https://$domain}
 EOF
     chmod 600 "$HOME_DIR/.env"
 
@@ -87,6 +97,7 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    mem_limit: 384m
     environment:
       POSTGRES_USER: noc
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
@@ -106,12 +117,21 @@ services:
       postgres:
         condition: service_healthy
     command: ["noc", "all-in-one", "--host", "0.0.0.0", "--port", "${port}"]
+    mem_limit: 768m
     ports:
       - "127.0.0.1:${port}:${port}"
     volumes:
       - secrets:/var/lib/noc/secrets
       - ./pki:/etc/noc/pki:ro
 
+volumes:
+  pgdata:
+  secrets:
+  caddy_data:
+EOF
+
+    if [ "$proxy" = "caddy" ]; then
+        cat >> "$HOME_DIR/compose.yml" <<EOF
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -124,19 +144,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-
-volumes:
-  pgdata:
-  secrets:
-  caddy_data:
 EOF
-
-    local site="${domain:-:80}"
-    cat > "$HOME_DIR/Caddyfile" <<EOF
-${site} {
-    reverse_proxy noc:${port}
-}
-EOF
+        printf '%s {\n    reverse_proxy noc:%s\n}\n' "${domain:-:80}" "$port" > "$HOME_DIR/Caddyfile"
+    fi
 
     cd "$HOME_DIR"
     docker compose --env-file .env -f compose.yml pull
@@ -159,7 +169,7 @@ main() {
     echo "1) Install the web panel (recommended)"
     echo "2) Install the command line only"
     local choice
-    choice="$(ask "Choose" "1")"
+    choice="${NOC_MODE:-$(ask "Choose" "1")}"
     case "$choice" in
         1) install_panel ;;
         2) install_cli ;;
