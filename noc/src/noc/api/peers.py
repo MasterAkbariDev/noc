@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -99,8 +100,11 @@ async def load_peer(session: AsyncSession, peer_id: uuid.UUID) -> Peer:
     return peer
 
 
+ViewerPrincipal = Annotated[Principal, Depends(require_role(Role.VIEWER))]
+
+
 @peers_router.get("")
-async def list_peers(admin: AdminPrincipal, session: Session) -> list[PeerView]:
+async def list_peers(viewer: ViewerPrincipal, session: Session) -> list[PeerView]:
     rows = await session.scalars(select(Peer).order_by(Peer.created_at))
     return [peer_view(peer) for peer in rows]
 
@@ -121,15 +125,24 @@ async def make_join_code(
     return JoinCodeView(code=code, expires_at=peer.expires_at or utc_now())
 
 
+def peer_transport(request: Request) -> httpx.AsyncBaseTransport | None:
+    # Production uses the network. Tests put another app behind this hook.
+    transport: httpx.AsyncBaseTransport | None = getattr(request.app.state, "peer_transport", None)
+    return transport
+
+
 @peers_router.post("/join")
 async def join(
+    request: Request,
     body: JoinRequest,
     admin: AdminPrincipal,
     session: Session,
     store: Store,
 ) -> PeerView:
     try:
-        peer = await redeem_join_code(session, store, body.code, admin.username)
+        peer = await redeem_join_code(
+            session, store, body.code, admin.username, peer_transport(request)
+        )
     except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
     await session.commit()
@@ -138,6 +151,7 @@ async def join(
 
 @peers_router.post("/{peer_id}/refresh")
 async def refresh(
+    request: Request,
     peer_id: uuid.UUID,
     admin: AdminPrincipal,
     session: Session,
@@ -145,7 +159,7 @@ async def refresh(
 ) -> PeerView:
     peer = await load_peer(session, peer_id)
     try:
-        await refresh_status(session, store, peer, admin.username)
+        await refresh_status(session, store, peer, admin.username, peer_transport(request))
     except PeerRefused as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     await session.commit()

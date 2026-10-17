@@ -1,4 +1,5 @@
 import { LlmAdmin } from "../features/llm/LlmAdmin";
+import { NodesAdmin } from "../features/nodes/NodesAdmin";
 import { TelegramAdmin } from "../features/notify/TelegramAdmin";
 import { MyAccount } from "../features/settings/MyAccount";
 import { UsersAdmin } from "../features/settings/UsersAdmin";
@@ -16,6 +17,7 @@ export function SettingsPage() {
       </Section>
       <UsersAdmin />
       <LlmAdmin />
+      <NodesAdmin />
       <TelegramAdmin />
     </>
   );

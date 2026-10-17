@@ -16,8 +16,10 @@ import type {
   LlmCheck,
   LlmConfig,
   LlmManagedKey,
+  JoinCode,
   LlmProxyCheck,
   Metrics,
+  PeerView,
   LlmStatus,
   MeView,
   Overview,
@@ -375,4 +377,24 @@ export function getFleetLive(range: LiveRange): Promise<FleetLive> {
 
 export function getServerLive(id: string, range: LiveRange): Promise<ServerLive> {
   return apiGet<ServerLive>(`/api/live/servers/${encodedId(id)}?range=${encodeURIComponent(range)}`);
+}
+
+export function getPeers(): Promise<PeerView[]> {
+  return apiGet<PeerView[]>("/api/peers");
+}
+
+export function createJoinCode(name: string): Promise<JoinCode> {
+  return apiPost<JoinCode>("/api/peers/join-codes", { name });
+}
+
+export function joinPeer(code: string): Promise<PeerView> {
+  return apiPost<PeerView>("/api/peers/join", { code });
+}
+
+export function refreshPeer(id: string): Promise<PeerView> {
+  return apiPost<PeerView>(`/api/peers/${encodedId(id)}/refresh`, {});
+}
+
+export function removePeer(id: string): Promise<void> {
+  return apiDelete(`/api/peers/${encodedId(id)}`);
 }

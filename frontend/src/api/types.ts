@@ -656,3 +656,28 @@ export type ServerLive = {
   services: ServiceLive[];
 };
 
+
+export type PeerDirection = "serves" | "follows";
+export type PeerStatus = "pending" | "paired";
+
+export type PeerSnapshot = {
+  node_name: string;
+  generated_at: string;
+  targets: { name: string; environment: string; automation: string; halted: boolean }[];
+  active_incidents: { id: string; title: string; status: string; target: string; opened_at: string }[];
+};
+
+export type PeerView = {
+  id: string;
+  name: string;
+  url: string;
+  direction: PeerDirection;
+  status: PeerStatus;
+  paired_at: string | null;
+  expires_at: string | null;
+  last_seen_at: string | null;
+  last_error: string | null;
+  last_status: PeerSnapshot | null;
+};
+
+export type JoinCode = { code: string; expires_at: string };
