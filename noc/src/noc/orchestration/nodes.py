@@ -19,6 +19,7 @@ from noc.db.session import transaction
 from noc.domain.incident_status import EscalationReason, IncidentStatus
 from noc.llm.client import LLMError, LLMUnavailable, describe_error
 from noc.orchestration.action_checks import read_check
+from noc.orchestration.resource_match import resource_from_processes
 from noc.orchestration.runtime import Runtime
 from noc.orchestration.state import IncidentState
 from noc.policy.loader import PolicyDocument
@@ -167,7 +168,8 @@ class IncidentNodes:
                     session,
                     incident,
                     diagnosis,
-                    affected_resource(diagnosis, alerts),
+                    affected_resource(diagnosis, alerts)
+                    or await resource_from_processes(session, incident.target_id, incident_id),
                     self._runtime.policy,
                     settings.execution_enabled,
                     settings.automation_paused,
@@ -210,7 +212,11 @@ class IncidentNodes:
                     select(AlertEvent).where(AlertEvent.incident_id == incident_id)
                 )
             )
-            resource_id = affected_resource(diagnosis, alerts) or ""
+            resource_id = (
+                affected_resource(diagnosis, alerts)
+                or await resource_from_processes(session, incident.target_id, incident_id)
+                or ""
+            )
             resource = await session.get(ManagedResourceRow, (incident.target_id, resource_id))
             resource_name = resource.name if resource is not None else ""
             checks = evidence_checks(policy.candidate_actions(diagnosis.primary_code), policy)
