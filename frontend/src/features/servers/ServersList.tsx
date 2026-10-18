@@ -4,7 +4,10 @@ import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
 import { List, ListItem } from "../../ui/List";
 import { Skeleton } from "../../ui/Skeleton";
+import { getEndpoints } from "../../api/client";
+import { useQuery } from "@tanstack/react-query";
 import { RemoteNodeGroup, useFollowedPeers } from "../nodes/RemoteServers";
+import { EndpointCard } from "./EndpointCard";
 import { FleetSummary } from "./FleetSummary";
 import { ServerCard } from "./ServerCard";
 import { useServersQuery } from "./queries";
@@ -28,6 +31,7 @@ export function groupServers(servers: ServerSummary[]): { heading: string; serve
 export function ServersList() {
   const query = useServersQuery();
   const followed = useFollowedPeers();
+  const endpoints = useQuery({ queryKey: ["endpoints"], queryFn: getEndpoints, refetchInterval: 30_000 });
 
   if (query.isPending) {
     return <Skeleton lines={4} />;
@@ -65,6 +69,18 @@ export function ServersList() {
           </List>
         </section>
       ))}
+      {endpoints.isSuccess && endpoints.data.length > 0 && (
+        <section aria-label="Servers without NOC" className="grid gap-3">
+          <h3 className="m-0 text-base font-semibold">Servers without NOC</h3>
+          <ul aria-label="Server without NOC cards" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+            {endpoints.data.map((endpoint) => (
+              <li key={endpoint.id} className="min-w-0">
+                <EndpointCard endpoint={endpoint} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {followed.map((peer) => (
         <RemoteNodeGroup key={peer.id} peer={peer} />
       ))}

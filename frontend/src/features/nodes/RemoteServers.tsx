@@ -1,4 +1,5 @@
 import type { IncidentSummary, PeerView } from "../../api/types";
+import { EndpointCard } from "../servers/EndpointCard";
 import { ServerCard } from "../servers/ServerCard";
 import { usePeersQuery } from "./queries";
 import { peerStatusText } from "./view";
@@ -35,13 +36,18 @@ export function RemoteNodeGroup({ peer }: { peer: PeerView }) {
         <h3 className="m-0 text-base font-semibold">{snapshot?.node_name ?? peer.name}</h3>
         <span className="text-xs text-muted">Another NOC · {peerStatusText(peer, Date.now())}</span>
       </header>
-      {servers.length === 0 ? (
+      {servers.length === 0 && (snapshot?.endpoints ?? []).length === 0 ? (
         <p className="m-0 text-sm text-muted">This node reports no servers yet.</p>
       ) : (
         <ul aria-label="Server cards" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
           {servers.map((server) => (
             <li key={server.id} className="min-w-0">
               <ServerCard server={server} readOnly />
+            </li>
+          ))}
+          {(snapshot?.endpoints ?? []).map((endpoint) => (
+            <li key={`endpoint-${endpoint.name}`} className="min-w-0">
+              <EndpointCard endpoint={endpoint} node={snapshot?.node_name} />
             </li>
           ))}
         </ul>

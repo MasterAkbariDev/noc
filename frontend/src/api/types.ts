@@ -677,6 +677,7 @@ export type PeerSnapshot = {
   node_name: string;
   generated_at: string;
   servers: ServerSummary[];
+  endpoints: Omit<EndpointView, "id">[];
   incidents: RemoteIncident[];
 };
 
