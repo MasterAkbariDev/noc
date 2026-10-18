@@ -24,6 +24,7 @@ from noc.detection.file_sd import refresh_file_sd
 from noc.detection.ingest import AlertIngestor
 from noc.domain.incident_status import EscalationReason
 from noc.domain.variants import ModePolicy, parse_variant
+from noc.endpoints.service import recheck_stale
 from noc.jobs import queue
 from noc.jobs.queue import ClaimedJob
 from noc.llm.client import describe_error
@@ -59,6 +60,7 @@ ERROR_BACKOFF_SECONDS = 5.0
 PROMETHEUS_POLL_FAILED = "Prometheus did not answer the alert poll"
 ORPHAN_SWEEP_SECONDS = 60.0
 NOTIFY_SECONDS = 10.0
+ENDPOINT_RECHECK_SECONDS = 300.0
 BOT_IDLE_SECONDS = 15.0
 BOT_BETWEEN_POLLS_SECONDS = 0.5
 EXTERNAL_PING_TIMEOUT_SECONDS = 10.0
@@ -104,6 +106,7 @@ class Worker:
             self.run_ingest_loop(),
             self.run_heartbeat_loop(),
             self.run_orphan_sweep_loop(),
+            self.run_endpoint_loop(),
             self.run_notify_loop(),
             self.run_bot_loop(),
             self._job_loop(),
@@ -214,6 +217,13 @@ class Worker:
         with suppress(asyncio.CancelledError):
             await task
         return False
+
+    async def run_endpoint_loop(self) -> None:
+        await self._repeat("endpoints", self.recheck_endpoints_once, ENDPOINT_RECHECK_SECONDS)
+
+    async def recheck_endpoints_once(self) -> int:
+        async with transaction(self._sessions) as session:
+            return await recheck_stale(session, utc_now())
 
     async def run_orphan_sweep_loop(self) -> None:
         await self._repeat("orphans", self.sweep_orphans_once, ORPHAN_SWEEP_SECONDS)

@@ -23,7 +23,7 @@ from noc.secret_store import SecretStore
 
 CODE_TTL: Final = timedelta(minutes=10)
 SHARED_INCIDENTS: Final = 30
-REQUEST_TIMEOUT_SECONDS: Final = 10.0
+REQUEST_TIMEOUT_SECONDS: Final = 20.0
 NAME_MAX_LENGTH: Final = 64
 HELLO_PATH: Final = "/api/peer/hello"
 STATUS_PATH: Final = "/api/peer/status"

@@ -1,12 +1,19 @@
 import asyncio
 import re
 import time
+from datetime import datetime, timedelta
 from typing import Any, Final
 from urllib.parse import urlsplit
 
 import httpx
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from noc.db.base import utc_now
+from noc.db.models import Endpoint
 
 CONNECT_TIMEOUT_SECONDS: Final = 5.0
+RECHECK_AFTER: Final = timedelta(minutes=5)
 WEB_TIMEOUT_SECONDS: Final = 10.0
 BANNER_MAX_LENGTH: Final = 80
 SSH_BANNER: Final = re.compile(r"^SSH-\d\.\d-\S+")
@@ -74,3 +81,13 @@ async def run_check(host: str, ssh_port: int, url: str | None) -> dict[str, Any]
         result["web"] = await check_web(url)
     result["checked_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return result
+
+
+async def recheck_stale(session: AsyncSession, now: datetime) -> int:
+    """Re-run the check of every server whose last check is older than RECHECK_AFTER."""
+    stale = or_(Endpoint.last_checked_at.is_(None), Endpoint.last_checked_at < now - RECHECK_AFTER)
+    rows = list(await session.scalars(select(Endpoint).where(stale)))
+    for row in rows:
+        row.last_result = await run_check(row.host, row.ssh_port, row.url)
+        row.last_checked_at = utc_now()
+    return len(rows)
