@@ -1,7 +1,14 @@
-import type { IncidentSummary, PeerView } from "../../api/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { refreshPeer, setPeerServerAutomation } from "../../api/client";
+import type { IncidentSummary, PeerView, ServerSummary } from "../../api/types";
+import { useSession } from "../../auth/session";
+import { Field, Select } from "../../ui/Form";
+import { useToast } from "../../ui/Toaster";
+import { settingsErrorText } from "../settings/accountView";
+import { MODE_OPTIONS } from "../servers/ServerAdmin";
 import { EndpointCard } from "../servers/EndpointCard";
 import { ServerCard } from "../servers/ServerCard";
-import { usePeersQuery } from "./queries";
+import { PEERS_KEY, usePeersQuery } from "./queries";
 import { peerStatusText } from "./view";
 
 export function followedPeers(peers: PeerView[]): PeerView[] {
@@ -27,6 +34,40 @@ export function remoteIncidents(peers: PeerView[]): IncidentSummary[] {
   });
 }
 
+// Admins can change a remote server's mode here. The owning NOC applies it and
+// this panel reads the new status back straight away.
+function RemoteModeControl({ peer, server }: { peer: PeerView; server: ServerSummary }) {
+  const { me } = useSession();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const mode = useMutation({
+    mutationFn: async (level: string) => {
+      await setPeerServerAutomation(peer.id, server.name, level);
+      return refreshPeer(peer.id);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [PEERS_KEY] });
+      toast.success(`Mode of ${server.name} saved on ${peer.last_status?.node_name ?? peer.name}.`);
+    },
+    onError: (error) => toast.error(settingsErrorText(error)),
+  });
+  if (me.role !== "admin") {
+    return null;
+  }
+  return (
+    <Field label="Mode">
+      <Select
+        aria-label={`Mode of ${server.name} on ${peer.last_status?.node_name ?? peer.name}`}
+        compact
+        value={server.automation_level}
+        disabled={mode.isPending}
+        options={MODE_OPTIONS}
+        onChange={(event) => mode.mutate(event.target.value)}
+      />
+    </Field>
+  );
+}
+
 export function RemoteNodeGroup({ peer }: { peer: PeerView }) {
   const snapshot = peer.last_status;
   const servers = snapshot?.servers ?? [];
@@ -41,8 +82,9 @@ export function RemoteNodeGroup({ peer }: { peer: PeerView }) {
       ) : (
         <ul aria-label="Server cards" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
           {servers.map((server) => (
-            <li key={server.id} className="min-w-0">
+            <li key={server.id} className="grid min-w-0 gap-2">
               <ServerCard server={server} readOnly />
+              <RemoteModeControl peer={peer} server={server} />
             </li>
           ))}
           {(snapshot?.endpoints ?? []).map((endpoint) => (

@@ -47,6 +47,7 @@ PUBLIC_API_ROUTES = {
     # Node-to-node routes: no session, each request is checked by its peer signature instead.
     ("POST", "/api/peer/hello"),
     ("GET", "/api/peer/status"),
+    ("PUT", "/api/peer/servers/{name}/automation"),
 }
 READ_PATHS = [
     "/api/incidents",

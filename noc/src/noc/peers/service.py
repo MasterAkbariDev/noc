@@ -96,16 +96,18 @@ async def signed_request(
     peer_id: uuid.UUID,
     secret: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    body: bytes = b"",
 ) -> httpx.Response:
     timestamp = str(int(time.time()))
-    signature = sign(secret, method, path, timestamp, b"")
+    signature = sign(secret, method, path, timestamp, body)
     headers = {
         HEADER_PEER: str(peer_id),
         HEADER_TIMESTAMP: timestamp,
         HEADER_SIGNATURE: signature,
+        "Content-Type": "application/json",
     }
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, transport=transport) as http:
-        return await http.request(method, f"{base_url}{path}", headers=headers)
+        return await http.request(method, f"{base_url}{path}", headers=headers, content=body)
 
 
 async def redeem_join_code(

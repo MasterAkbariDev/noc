@@ -404,6 +404,14 @@ export function setServerAutomation(name: string, level: string): Promise<{ name
   return apiRequest("PUT", `/api/servers/${encodedId(name)}/automation`, { level });
 }
 
+export function setPeerServerAutomation(
+  peerId: string,
+  name: string,
+  level: string,
+): Promise<{ name: string; automation_level: string }> {
+  return apiRequest("PUT", `/api/peers/${encodedId(peerId)}/servers/${encodedId(name)}/automation`, { level });
+}
+
 export function setServerLabel(name: string, label: string | null): Promise<{ name: string; label: string | null }> {
   return apiRequest("PUT", `/api/servers/${encodedId(name)}/label`, { label });
 }

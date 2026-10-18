@@ -293,6 +293,26 @@ class SetAutomationRequest(BaseModel):
     level: str = Field(max_length=32)
 
 
+async def apply_automation(
+    session: AsyncSession, name: str, level: str, actor: str
+) -> dict[str, str]:
+    if level not in AUTOMATION_LEVELS:
+        raise HTTPException(422, f"the mode must be one of {', '.join(AUTOMATION_LEVELS)}")
+    target = await session.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(404, "server not found")
+    previous = target.automation_level
+    target.automation_level = level
+    await append_audit(
+        session,
+        actor,
+        "server_automation_set",
+        f"target:{name}",
+        {"from": previous, "to": level},
+    )
+    return {"name": name, "automation_level": level}
+
+
 @router.put("/{name}/automation")
 async def set_automation(
     name: str,
@@ -300,22 +320,9 @@ async def set_automation(
     admin: Annotated[Principal, Depends(require_role(Role.ADMIN))],
     session: Session,
 ) -> dict[str, str]:
-    if body.level not in AUTOMATION_LEVELS:
-        raise HTTPException(422, f"the mode must be one of {', '.join(AUTOMATION_LEVELS)}")
-    target = await session.scalar(select(Target).where(Target.name == name))
-    if target is None:
-        raise HTTPException(404, "server not found")
-    previous = target.automation_level
-    target.automation_level = body.level
-    await append_audit(
-        session,
-        admin.username,
-        "server_automation_set",
-        f"target:{name}",
-        {"from": previous, "to": body.level},
-    )
+    result = await apply_automation(session, name, body.level, admin.username)
     await session.commit()
-    return {"name": name, "automation_level": body.level}
+    return result
 
 
 TAGS = ("panel host",)

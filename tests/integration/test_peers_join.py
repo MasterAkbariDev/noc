@@ -11,7 +11,10 @@ from noc.api.prometheus import PrometheusReader
 from noc.api.tickets import TicketStore
 from noc.config import Settings
 from noc.db.base import Base
-from noc.db.session import SessionFactory, create_engine, create_session_factory
+from noc.db.session import SessionFactory, create_engine, create_session_factory, transaction
+from noc.policy.models import Environment
+from noc.store.targets import add_target
+from tests.support.builders import KEY_ID
 
 pytestmark = pytest.mark.integration
 
@@ -130,6 +133,68 @@ async def test_a_code_works_once(
     again = await follower.post("/api/peers/join", json={"code": code}, headers=AUTH)
     assert again.status_code == 422
     assert "already" in again.text
+
+
+async def pair(owner_http: httpx.AsyncClient, follower: httpx.AsyncClient) -> str:
+    code = (
+        await owner_http.post("/api/peers/join-codes", json={"name": "node-follower"}, headers=AUTH)
+    ).json()["code"]
+    joined = await follower.post("/api/peers/join", json={"code": code}, headers=AUTH)
+    assert joined.status_code == 200, joined.text
+    return str(joined.json()["id"])
+
+
+async def test_the_follower_changes_a_server_mode_on_the_owner(
+    owner: tuple[object, httpx.AsyncClient],
+    follower: httpx.AsyncClient,
+    sessions: SessionFactory,
+) -> None:
+    _, owner_http = owner
+    async with transaction(sessions) as session:
+        await add_target(
+            session, "demo-1", "127.0.0.1", "https://127.0.0.1:9443", Environment.LAB, KEY_ID
+        )
+    peer_id = await pair(owner_http, follower)
+
+    changed = await follower.put(
+        f"/api/peers/{peer_id}/servers/demo-1/automation",
+        json={"level": "approval_required"},
+        headers=AUTH,
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json() == {"name": "demo-1", "automation_level": "approval_required"}
+    listed = (await owner_http.get("/api/servers", headers=AUTH)).json()
+    assert [s["automation_level"] for s in listed if s["name"] == "demo-1"] == ["approval_required"]
+
+
+async def test_the_owner_refuses_a_bad_mode_from_a_follower(
+    owner: tuple[object, httpx.AsyncClient],
+    follower: httpx.AsyncClient,
+    sessions: SessionFactory,
+) -> None:
+    _, owner_http = owner
+    async with transaction(sessions) as session:
+        await add_target(
+            session, "demo-1", "127.0.0.1", "https://127.0.0.1:9443", Environment.LAB, KEY_ID
+        )
+    peer_id = await pair(owner_http, follower)
+
+    refused = await follower.put(
+        f"/api/peers/{peer_id}/servers/demo-1/automation",
+        json={"level": "rm -rf"},
+        headers=AUTH,
+    )
+    assert refused.status_code == 422
+
+
+async def test_the_owner_refuses_an_unsigned_mode_change(
+    owner: tuple[object, httpx.AsyncClient],
+) -> None:
+    _, owner_http = owner
+    response = await owner_http.put(
+        "/api/peer/servers/demo-1/automation", json={"level": "observe_only"}
+    )
+    assert response.status_code == 401
 
 
 async def test_a_follower_without_a_pairing_cannot_refresh(

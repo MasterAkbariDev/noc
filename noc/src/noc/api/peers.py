@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import Principal, get_session, get_settings_dep, require_role
 from noc.api.prometheus import PrometheusReader
+from noc.api.servers import apply_automation
+from noc.audit.chain import append_audit
 from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.base import utc_now
@@ -28,6 +30,7 @@ from noc.peers.service import (
     refresh_status,
     revoke_peer,
     secret_name,
+    signed_request,
 )
 from noc.peers.signing import HEADER_PEER, HEADER_SIGNATURE, HEADER_TIMESTAMP, verify
 from noc.secret_store import SecretStore
@@ -232,6 +235,75 @@ async def hello(request: Request, session: Session, store: Store) -> dict[str, s
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
     await session.commit()
     return {"status": PAIRED}
+
+
+class PeerAutomationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    level: str = Field(max_length=32)
+
+
+@peer_router.put("/servers/{name}/automation")
+async def peer_set_automation(
+    name: str, request: Request, session: Session, store: Store
+) -> dict[str, str]:
+    peer = await verified_peer(request, session, store, int(time.time()))
+    try:
+        ensure_served(peer)
+    except PeerRefused as error:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+    try:
+        body = PeerAutomationRequest.model_validate_json(await request.body())
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "bad request") from error
+    result = await apply_automation(session, name, body.level, f"peer:{peer.name}")
+    await session.commit()
+    return result
+
+
+@peers_router.put("/{peer_id}/servers/{name}/automation")
+async def set_remote_automation(
+    peer_id: uuid.UUID,
+    name: str,
+    body: PeerAutomationRequest,
+    request: Request,
+    admin: AdminPrincipal,
+    session: Session,
+    store: Store,
+) -> dict[str, Any]:
+    peer = await load_peer(session, peer_id)
+    if peer.direction != "follows" or peer.status != PAIRED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "this node is not paired with that peer")
+    secret = await asyncio.to_thread(store.read, secret_name(peer.id))
+    if not secret:
+        raise HTTPException(status.HTTP_409_CONFLICT, "the key for this peer is missing")
+    payload = body.model_dump_json().encode()
+    try:
+        response = await signed_request(
+            "PUT",
+            peer.url,
+            f"/api/peer/servers/{name}/automation",
+            peer.id,
+            secret,
+            peer_transport(request),
+            payload,
+        )
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, f"the other node did not answer: {type(error).__name__}"
+        ) from error
+    if response.status_code != 200:
+        raise HTTPException(response.status_code, response.text[:200])
+    await append_audit(
+        session,
+        admin.username,
+        "remote_server_automation_set",
+        f"peer:{peer.id}",
+        {"server": name, "to": body.level},
+    )
+    await session.commit()
+    reply: dict[str, Any] = response.json()
+    return reply
 
 
 @peer_router.get("/status")
