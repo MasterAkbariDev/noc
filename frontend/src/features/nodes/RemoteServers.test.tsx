@@ -9,7 +9,7 @@ import { sessionFor } from "../settings/fixtures";
 import { summaryFixture } from "../servers/fixtures";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { Toaster } from "../../ui/Toaster";
-import { RemoteNodeGroup } from "./RemoteServers";
+import { RemoteServerCard } from "./RemoteServers";
 
 vi.mock("../../auth/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../auth/session")>()),
@@ -52,7 +52,7 @@ function renderGroup(peer: PeerView) {
       <Toaster>
         <TooltipProvider>
           <MemoryRouter>
-            <RemoteNodeGroup peer={peer} />
+            <RemoteServerCard peer={peer} server={peer.last_status?.servers[0] ?? summaryFixture()} />
           </MemoryRouter>
         </TooltipProvider>
       </Toaster>
@@ -70,7 +70,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("RemoteNodeGroup mode control", () => {
+describe("RemoteServerCard controls", () => {
   it("lets an admin change a remote server's mode and reads the status back", async () => {
     vi.mocked(useSession).mockReturnValue(sessionFor({ username: "admin", role: "admin", via: "session" }));
     vi.mocked(setPeerServerAutomation).mockResolvedValue({ name: "demo-1", automation_level: "approval_required" });
@@ -91,5 +91,14 @@ describe("RemoteNodeGroup mode control", () => {
     renderGroup(peerFixture());
 
     expect(screen.queryByLabelText("Mode of demo-1 on stage-104")).toBeNull();
+  });
+
+  it("syncs the other NOC when the sync button is pressed", async () => {
+    vi.mocked(useSession).mockReturnValue(sessionFor({ username: "admin", role: "admin", via: "session" }));
+    renderGroup(peerFixture());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync stage-104" }));
+
+    await waitFor(() => expect(refreshPeer).toHaveBeenCalledWith(PEER_ID));
   });
 });

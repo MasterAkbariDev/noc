@@ -125,13 +125,13 @@ async def test_the_shared_status_carries_the_server_label(
     assert body["servers"][0]["name"] == "demo-1"
 
 
-async def test_only_the_panel_host_tag_can_be_set(
+async def test_only_the_current_tag_can_be_set(
     client: httpx.AsyncClient, sessions: SessionFactory
 ) -> None:
     await add_demo(sessions)
-    tagged = await client.put("/api/servers/demo-1/tag", json={"tag": "panel host"}, headers=AUTH)
+    tagged = await client.put("/api/servers/demo-1/tag", json={"tag": "current"}, headers=AUTH)
     assert tagged.status_code == 200
-    assert tagged.json() == {"name": "demo-1", "tag": "panel host"}
+    assert tagged.json() == {"name": "demo-1", "tag": "current"}
     refused = await client.put("/api/servers/demo-1/tag", json={"tag": "production"}, headers=AUTH)
     assert refused.status_code == 422
     cleared = await client.put("/api/servers/demo-1/tag", json={"tag": None}, headers=AUTH)

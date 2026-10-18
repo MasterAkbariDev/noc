@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { setServerAutomation, setServerLabel, setServerTag } from "../../api/client";
+import { setServerAutomation, setServerLabel } from "../../api/client";
 import type { ServerSummary } from "../../api/types";
 import { useSession } from "../../auth/session";
 import { Button } from "../../ui/Button";
@@ -38,14 +38,6 @@ function AdminControls({ server }: { server: ServerSummary }) {
     },
     onError: (error) => toast.error(settingsErrorText(error)),
   });
-  const tag = useMutation({
-    mutationFn: (value: string) => setServerTag(server.name, value === "" ? null : value),
-    onSuccess: () => {
-      refresh();
-      toast.success(`Tag of ${server.name} saved.`);
-    },
-    onError: (error) => toast.error(settingsErrorText(error)),
-  });
   const name = useMutation({
     mutationFn: () => setServerLabel(server.name, label.trim() === "" ? null : label.trim()),
     onSuccess: () => {
@@ -70,19 +62,6 @@ function AdminControls({ server }: { server: ServerSummary }) {
           disabled={mode.isPending}
           options={MODE_OPTIONS}
           onChange={(event) => mode.mutate(event.target.value)}
-        />
-      </Field>
-      <Field label="Tag">
-        <Select
-          aria-label={`Tag of ${server.name}`}
-          compact
-          value={server.tag ?? ""}
-          disabled={tag.isPending}
-          options={[
-            { value: "", label: "No tag" },
-            { value: "panel host", label: "Panel host (the server running this panel)" },
-          ]}
-          onChange={(event) => tag.mutate(event.target.value)}
         />
       </Field>
       <form className="flex flex-wrap items-end gap-2" onSubmit={saveLabel}>

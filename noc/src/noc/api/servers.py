@@ -325,7 +325,7 @@ async def set_automation(
     return result
 
 
-TAGS = ("panel host",)
+TAGS = ("current",)
 
 
 class SetTagRequest(BaseModel):

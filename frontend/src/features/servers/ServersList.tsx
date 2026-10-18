@@ -1,31 +1,24 @@
+import { useQuery } from "@tanstack/react-query";
 import { Server } from "lucide-react";
+import { getEndpoints } from "../../api/client";
 import type { ServerSummary } from "../../api/types";
 import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
 import { List, ListItem } from "../../ui/List";
 import { Skeleton } from "../../ui/Skeleton";
-import { getEndpoints } from "../../api/client";
-import { useQuery } from "@tanstack/react-query";
-import { RemoteNodeGroup, useFollowedPeers } from "../nodes/RemoteServers";
+import { RemoteServerCard, useFollowedPeers } from "../nodes/RemoteServers";
 import { EndpointCard } from "./EndpointCard";
 import { FleetSummary } from "./FleetSummary";
 import { ServerCard } from "./ServerCard";
+import { SyncTimer } from "./SyncTimer";
 import { useServersQuery } from "./queries";
 import { errorText } from "./serverView";
 
-const PANEL_TAG = "panel host";
+export const CURRENT_TAG = "current";
 
-export function groupServers(servers: ServerSummary[]): { heading: string; servers: ServerSummary[] }[] {
-  const panel = servers.filter((server) => server.tag === PANEL_TAG);
-  const rest = servers.filter((server) => server.tag !== PANEL_TAG);
-  const groups: { heading: string; servers: ServerSummary[] }[] = [];
-  if (panel.length > 0) {
-    groups.push({ heading: "Panel host", servers: panel });
-  }
-  if (rest.length > 0) {
-    groups.push({ heading: panel.length > 0 ? "Other servers" : "Servers", servers: rest });
-  }
-  return groups;
+// The server this panel runs on comes first; the rest keep their order.
+export function currentFirst(servers: ServerSummary[]): ServerSummary[] {
+  return [...servers].sort((a, b) => Number(b.tag === CURRENT_TAG) - Number(a.tag === CURRENT_TAG));
 }
 
 export function ServersList() {
@@ -54,36 +47,39 @@ export function ServersList() {
       />
     );
   }
+  const cards = [
+    ...currentFirst(query.data).map((server) => (
+      <ListItem key={`local-${server.id}`} className="min-w-0">
+        <ServerCard server={server} />
+      </ListItem>
+    )),
+    ...followed.flatMap((peer) =>
+      (peer.last_status?.servers ?? []).map((server) => (
+        <ListItem key={`peer-${peer.id}-${server.id}`} className="min-w-0">
+          <RemoteServerCard peer={peer} server={server} />
+        </ListItem>
+      )),
+    ),
+    ...followed.flatMap((peer) =>
+      (peer.last_status?.endpoints ?? []).map((endpoint) => (
+        <ListItem key={`peer-${peer.id}-endpoint-${endpoint.name}`} className="min-w-0">
+          <EndpointCard endpoint={endpoint} node={peer.last_status?.node_name ?? peer.name} />
+        </ListItem>
+      )),
+    ),
+    ...(endpoints.data ?? []).map((endpoint) => (
+      <ListItem key={`endpoint-${endpoint.id}`} className="min-w-0">
+        <EndpointCard endpoint={endpoint} />
+      </ListItem>
+    )),
+  ];
   return (
-    <div className="grid gap-8">
+    <div className="grid gap-6">
       <FleetSummary servers={query.data} />
-      {groupServers(query.data).map((group) => (
-        <section key={group.heading} aria-label={group.heading} className="grid gap-3">
-          <h3 className="m-0 text-base font-semibold">{group.heading}</h3>
-          <List label="Server cards" gap="lg" className="sm:grid-cols-2 xl:grid-cols-3">
-            {group.servers.map((server) => (
-              <ListItem key={server.id} className="min-w-0">
-                <ServerCard server={server} />
-              </ListItem>
-            ))}
-          </List>
-        </section>
-      ))}
-      {endpoints.isSuccess && endpoints.data.length > 0 && (
-        <section aria-label="Servers without NOC" className="grid gap-3">
-          <h3 className="m-0 text-base font-semibold">Servers without NOC</h3>
-          <ul aria-label="Server without NOC cards" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
-            {endpoints.data.map((endpoint) => (
-              <li key={endpoint.id} className="min-w-0">
-                <EndpointCard endpoint={endpoint} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {followed.map((peer) => (
-        <RemoteNodeGroup key={peer.id} peer={peer} />
-      ))}
+      <SyncTimer />
+      <List label="Server cards" gap="lg" className="sm:grid-cols-2 xl:grid-cols-3">
+        {cards}
+      </List>
     </div>
   );
 }

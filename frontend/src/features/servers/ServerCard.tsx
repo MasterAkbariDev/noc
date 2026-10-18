@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { ServerStatus, ServerSummary } from "../../api/types";
 import { cx } from "../../lib/cx";
@@ -13,7 +14,16 @@ const STATUS_BORDERS: Record<ServerStatus, string> = {
   unknown: "border-t-unknown",
 };
 
-export function ServerCard({ server, readOnly = false }: { server: ServerSummary; readOnly?: boolean }) {
+type ServerCardProps = {
+  server: ServerSummary;
+  readOnly?: boolean;
+  // Name of the NOC this server came from, for servers shown from another node.
+  node?: string;
+  // Controls that belong to a remote server, shown at the bottom of its card.
+  footer?: ReactNode;
+};
+
+export function ServerCard({ server, readOnly = false, node, footer }: ServerCardProps) {
   const headline = headlineWithoutIncidents(server.headline, server.open_incidents);
   return (
     <Card className={cx("flex h-full flex-col gap-3 rounded-card border-t-4 shadow-sm", STATUS_BORDERS[server.status])}>
@@ -21,6 +31,7 @@ export function ServerCard({ server, readOnly = false }: { server: ServerSummary
         <ServerStatusDot status={server.status} />
         <EnvironmentBadge environment={server.environment} />
         {server.tag && <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{server.tag}</span>}
+        {node && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">From {node}</span>}
         {server.halted && <HaltedBadge />}
       </div>
       <div className="grid gap-0.5">
@@ -42,6 +53,7 @@ export function ServerCard({ server, readOnly = false }: { server: ServerSummary
         <OpenIncidents count={server.open_incidents} worstSeverity={server.worst_severity} />
       </div>
       {!readOnly && <ServerAdmin server={server} />}
+      {footer}
     </Card>
   );
 }
