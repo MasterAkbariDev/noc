@@ -1,3 +1,4 @@
+import re
 from typing import Protocol
 
 from noc.llm.types import LLMRequest, LLMResponse
@@ -53,9 +54,19 @@ class StructuredOutputError(LLMError):
     pass
 
 
+KEY_SHAPES: re.Pattern[str] = re.compile(r"(gsk_|AIza|AQ\.|sk-)[A-Za-z0-9_\-]+")
+
+
+def redact_keys(text: str) -> str:
+    return KEY_SHAPES.sub("[key]", text)
+
+
 def describe_error(error: BaseException) -> str:
     if not isinstance(error, LLMError):
         return f"{type(error).__name__}: {error}"
     status = getattr(error.__cause__, "status_code", None)
     name = type(error).__name__
-    return f"{name} (HTTP {status})" if isinstance(status, int) else name
+    if not isinstance(status, int):
+        return name
+    # The provider's message says why it refused the request, so keep it, without any key.
+    return f"{name} (HTTP {status}): {redact_keys(str(error))}"[:500]

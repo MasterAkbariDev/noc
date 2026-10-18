@@ -99,28 +99,3 @@ export function RemoteServerCard({ peer, server }: { peer: PeerView; server: Ser
   );
 }
 
-// A server without NOC on another node: its checks are refreshed by syncing that node.
-export function RemoteSyncFooter({ peer }: { peer: PeerView }) {
-  const { me } = useSession();
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const node = nodeNameOf(peer);
-  const sync = useMutation({
-    mutationFn: () => refreshPeer(peer.id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [PEERS_KEY] });
-      toast.success(`Synced ${node}.`);
-    },
-    onError: (error) => toast.error(settingsErrorText(error)),
-  });
-  if (me.role !== "admin") {
-    return null;
-  }
-  return (
-    <div className="flex justify-end border-t border-border pt-3">
-      <Button size="sm" aria-label={`Sync ${node}`} disabled={sync.isPending} onClick={() => sync.mutate()}>
-        Sync now
-      </Button>
-    </div>
-  );
-}

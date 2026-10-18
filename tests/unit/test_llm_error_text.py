@@ -19,9 +19,10 @@ def rejected_by_provider() -> ProviderRequestRejected:
         return error
 
 
-def test_an_llm_error_is_described_by_class_and_status_only() -> None:
+def test_an_llm_error_keeps_the_provider_message_without_any_key() -> None:
     described = describe_error(rejected_by_provider())
-    assert described == "ProviderRequestRejected (HTTP 400)"
+    expected = "ProviderRequestRejected (HTTP 400): groq: request rejected (400): "
+    assert described == expected + "Incorrect API key provided: [key]"
     assert "gsk_" not in described
 
 

@@ -1,13 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { Server } from "lucide-react";
-import { getEndpoints } from "../../api/client";
 import type { ServerSummary } from "../../api/types";
 import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
 import { List, ListItem } from "../../ui/List";
 import { Skeleton } from "../../ui/Skeleton";
-import { RemoteServerCard, RemoteSyncFooter, useFollowedPeers } from "../nodes/RemoteServers";
-import { EndpointCard } from "./EndpointCard";
+import { RemoteServerCard, useFollowedPeers } from "../nodes/RemoteServers";
 import { FleetSummary } from "./FleetSummary";
 import { ServerCard } from "./ServerCard";
 import { SyncTimer } from "./SyncTimer";
@@ -24,7 +21,6 @@ export function currentFirst(servers: ServerSummary[]): ServerSummary[] {
 export function ServersList() {
   const query = useServersQuery();
   const followed = useFollowedPeers();
-  const endpoints = useQuery({ queryKey: ["endpoints"], queryFn: getEndpoints, refetchInterval: 30_000 });
 
   if (query.isPending) {
     return <Skeleton lines={4} />;
@@ -60,18 +56,6 @@ export function ServersList() {
         </ListItem>
       )),
     ),
-    ...followed.flatMap((peer) =>
-      (peer.last_status?.endpoints ?? []).map((endpoint) => (
-        <ListItem key={`peer-${peer.id}-endpoint-${endpoint.name}`} className="min-w-0">
-          <EndpointCard endpoint={endpoint} node={peer.last_status?.node_name ?? peer.name} footer={<RemoteSyncFooter peer={peer} />} />
-        </ListItem>
-      )),
-    ),
-    ...(endpoints.data ?? []).map((endpoint) => (
-      <ListItem key={`endpoint-${endpoint.id}`} className="min-w-0">
-        <EndpointCard endpoint={endpoint} />
-      </ListItem>
-    )),
   ];
   return (
     <div className="grid gap-6">
