@@ -437,6 +437,7 @@ class ServerSummary(BaseModel):
     id: uuid.UUID
     name: str
     label: str | None = None
+    tag: str | None = None
     environment: str
     automation_level: str
     automation_label: str

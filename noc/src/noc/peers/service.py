@@ -11,16 +11,18 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from noc.api.prometheus import PrometheusReader
+from noc.api.servers import load_server_summaries
 from noc.audit.chain import append_audit
 from noc.config import Settings
 from noc.db.base import utc_now
 from noc.db.models import Incident, Peer, Target
-from noc.domain.incident_status import ACTIVE_STATUSES
 from noc.peers.codes import make_code, parse_code
 from noc.peers.signing import HEADER_PEER, HEADER_SIGNATURE, HEADER_TIMESTAMP, sign
 from noc.secret_store import SecretStore
 
 CODE_TTL: Final = timedelta(minutes=10)
+SHARED_INCIDENTS: Final = 30
 REQUEST_TIMEOUT_SECONDS: Final = 10.0
 NAME_MAX_LENGTH: Final = 64
 HELLO_PATH: Final = "/api/peer/hello"
@@ -191,37 +193,33 @@ async def revoke_peer(session: AsyncSession, store: SecretStore, peer: Peer, act
     await session.delete(peer)
 
 
-async def local_status(session: AsyncSession, settings: Settings) -> dict[str, Any]:
-    targets = list(await session.scalars(select(Target).order_by(Target.name)))
-    active = (
+async def local_status(
+    session: AsyncSession, settings: Settings, reader: PrometheusReader
+) -> dict[str, Any]:
+    servers = await load_server_summaries(session, reader)
+    recent = (
         await session.execute(
             select(Incident, Target.name)
             .join(Target, Target.id == Incident.target_id)
-            .where(Incident.status.in_([status.value for status in ACTIVE_STATUSES]))
-            .order_by(Incident.opened_at)
+            .order_by(Incident.opened_at.desc())
+            .limit(SHARED_INCIDENTS)
         )
     ).all()
     return {
         "node_name": settings.node_name or socket.gethostname(),
         "generated_at": utc_now().isoformat(),
-        "targets": [
-            {
-                "name": target.name,
-                "label": target.label,
-                "environment": target.environment,
-                "automation": target.automation_level,
-                "halted": target.halted,
-            }
-            for target in targets
-        ],
-        "active_incidents": [
+        "servers": [server.model_dump(mode="json") for server in servers],
+        "incidents": [
             {
                 "id": str(incident.id),
                 "title": incident.title,
                 "status": incident.status,
+                "severity": incident.severity,
                 "target": name,
                 "opened_at": incident.opened_at.isoformat(),
+                "root_cause_code": incident.root_cause_code,
+                "escalation_reason": incident.escalation_reason,
             }
-            for incident, name in active
+            for incident, name in recent
         ],
     }

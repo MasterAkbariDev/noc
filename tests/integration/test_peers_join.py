@@ -7,6 +7,7 @@ from pydantic import SecretStr
 from sqlalchemy import text
 
 from noc.api.app import create_app
+from noc.api.prometheus import PrometheusReader
 from noc.api.tickets import TicketStore
 from noc.config import Settings
 from noc.db.base import Base
@@ -65,6 +66,7 @@ async def owner(
     app.state.settings = settings
     app.state.sessions = sessions
     app.state.tickets = TicketStore()
+    app.state.prometheus = PrometheusReader(httpx.AsyncClient(timeout=2.0), "http://127.0.0.1:9")
     http = await client_for(app)
     yield app, http
     await http.aclose()
@@ -83,6 +85,7 @@ async def follower(
     app.state.settings = settings
     app.state.sessions = follower_sessions
     app.state.tickets = TicketStore()
+    app.state.prometheus = PrometheusReader(httpx.AsyncClient(timeout=2.0), "http://127.0.0.1:9")
     app.state.peer_transport = httpx.ASGITransport(app=owner_app)  # type: ignore[arg-type]
     http = await client_for(app)
     yield http
@@ -111,7 +114,7 @@ async def test_the_follower_joins_with_a_code_and_reads_the_owner_status(
     assert view["name"] == "owner-node"
     assert view["last_error"] is None
     assert view["last_status"]["node_name"] == "owner-node"
-    assert view["last_status"]["targets"] == []
+    assert view["last_status"]["servers"] == []
 
 
 async def test_a_code_works_once(

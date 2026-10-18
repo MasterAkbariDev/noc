@@ -8,6 +8,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from noc.api.app import create_app
+from noc.api.prometheus import PrometheusReader
 from noc.api.tickets import TicketStore
 from noc.config import Settings
 from noc.db.models import AuditEntry, Target
@@ -43,6 +44,7 @@ async def client(sessions: SessionFactory, settings: Settings) -> AsyncIterator[
     app.state.settings = settings
     app.state.sessions = sessions
     app.state.tickets = TicketStore()
+    app.state.prometheus = PrometheusReader(httpx.AsyncClient(timeout=2.0), "http://127.0.0.1:9")
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://noc"
     ) as http:
@@ -119,5 +121,18 @@ async def test_the_shared_status_carries_the_server_label(
         HEADER_SIGNATURE: sign(code.secret, "GET", "/api/peer/status", timestamp, b""),
     }
     body = (await client.get("/api/peer/status", headers=status_headers)).json()
-    assert body["targets"][0]["label"] == "Stage 104"
-    assert body["targets"][0]["name"] == "demo-1"
+    assert body["servers"][0]["label"] == "Stage 104"
+    assert body["servers"][0]["name"] == "demo-1"
+
+
+async def test_only_the_panel_host_tag_can_be_set(
+    client: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    await add_demo(sessions)
+    tagged = await client.put("/api/servers/demo-1/tag", json={"tag": "panel host"}, headers=AUTH)
+    assert tagged.status_code == 200
+    assert tagged.json() == {"name": "demo-1", "tag": "panel host"}
+    refused = await client.put("/api/servers/demo-1/tag", json={"tag": "production"}, headers=AUTH)
+    assert refused.status_code == 422
+    cleared = await client.put("/api/servers/demo-1/tag", json={"tag": None}, headers=AUTH)
+    assert cleared.json() == {"name": "demo-1", "tag": None}

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.api.deps import Principal, get_session, get_settings_dep, require_role
+from noc.api.prometheus import PrometheusReader
 from noc.auth.roles import Role
 from noc.config import Settings
 from noc.db.base import utc_now
@@ -226,4 +227,5 @@ async def peer_status(
         ensure_served(peer)
     except PeerRefused as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
-    return await local_status(session, settings)
+    reader: PrometheusReader = request.app.state.prometheus
+    return await local_status(session, settings, reader)

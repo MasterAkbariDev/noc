@@ -163,6 +163,7 @@ def server_summary(
         id=target.id,
         name=target.name,
         label=target.label,
+        tag=target.tag,
         environment=target.environment,
         automation_level=target.automation_level,
         automation_label=words.text_for(words.AUTOMATION_LABELS, target.automation_level),
@@ -315,6 +316,40 @@ async def set_automation(
     )
     await session.commit()
     return {"name": name, "automation_level": body.level}
+
+
+TAGS = ("panel host",)
+
+
+class SetTagRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str | None = Field(default=None, max_length=32)
+
+
+@router.put("/{name}/tag")
+async def set_tag(
+    name: str,
+    body: SetTagRequest,
+    admin: Annotated[Principal, Depends(require_role(Role.ADMIN))],
+    session: Session,
+) -> dict[str, str | None]:
+    if body.tag is not None and body.tag not in TAGS:
+        raise HTTPException(422, f"the tag must be one of: {', '.join(TAGS)}")
+    target = await session.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(404, "server not found")
+    previous = target.tag
+    target.tag = body.tag
+    await append_audit(
+        session,
+        admin.username,
+        "server_tag_set",
+        f"target:{name}",
+        {"from": previous, "to": body.tag},
+    )
+    await session.commit()
+    return {"name": name, "tag": target.tag}
 
 
 class SetLabelRequest(BaseModel):

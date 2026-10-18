@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from noc.api.app import create_app
+from noc.api.prometheus import PrometheusReader
 from noc.api.tickets import TicketStore
 from noc.config import Settings
 from noc.db.base import utc_now
@@ -44,6 +45,7 @@ async def client(sessions: SessionFactory, settings: Settings) -> AsyncIterator[
     app.state.settings = settings
     app.state.sessions = sessions
     app.state.tickets = TicketStore()
+    app.state.prometheus = PrometheusReader(httpx.AsyncClient(timeout=2.0), "http://127.0.0.1:9")
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://noc"
     ) as http:
@@ -98,8 +100,8 @@ async def test_the_other_node_pairs_with_the_code_and_then_reads_the_status(
     assert status.status_code == 200
     body = status.json()
     assert body["node_name"] == "owner-node"
-    assert body["targets"] == []
-    assert body["active_incidents"] == []
+    assert body["servers"] == []
+    assert body["incidents"] == []
 
     listed = (await client.get("/api/peers", headers=AUTH)).json()
     assert [row["status"] for row in listed] == ["paired"]

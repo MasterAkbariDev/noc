@@ -43,6 +43,7 @@ class Target(CreatedAt, Base):
     variant_override: Mapped[str | None] = mapped_column(String(16))
     sentinel_version: Mapped[str | None] = mapped_column(String(32))
     label: Mapped[str | None] = mapped_column(String(64))
+    tag: Mapped[str | None] = mapped_column(String(32))
 
     resources: Mapped[list["ManagedResourceRow"]] = relationship(
         back_populates="target", cascade="all, delete-orphan"
