@@ -58,8 +58,14 @@ function answer(rows: IncidentSummary[], path: string): IncidentSummary[] {
   );
 }
 
-function serve(rows: IncidentSummary[]) {
-  fetchMock.mockImplementation(async (input) => jsonResponse(answer(rows, String(input))));
+function serve(rows: IncidentSummary[], servers: { name: string }[] = []) {
+  fetchMock.mockImplementation(async (input) => {
+    const path = String(input);
+    if (path.startsWith("/api/servers")) {
+      return jsonResponse(servers);
+    }
+    return jsonResponse(answer(rows, path));
+  });
 }
 
 function requestedUrls(): URL[] {
@@ -230,6 +236,15 @@ describe("IncidentsPage", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search" }), { target: { value: "zzz" } });
 
     expect(await screen.findByText("No incidents match these filters.")).toBeTruthy();
+  });
+
+  it("lists every known server in the server filter, even one without incidents", async () => {
+    serve([openRow], [{ name: "web-1" }, { name: "db-2" }]);
+    renderList("/incidents");
+
+    expect(await screen.findByText("Disk almost full")).toBeTruthy();
+    expect(screen.getByRole("option", { name: "db-2" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "web-1" })).toBeTruthy();
   });
 
   it("explains an empty chip when the server has no incident for it", async () => {

@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { ApiError } from "../api/client";
 import type { IncidentSummary } from "../api/types";
+import { useServersQuery } from "../features/servers/queries";
 import { IncidentFilters } from "../features/incidents/IncidentFilters";
 import { IncidentRows } from "../features/incidents/IncidentRows";
 import { listIncidentRows } from "../features/incidents/api";
@@ -56,6 +57,7 @@ export function IncidentsPage() {
 
   const incidents = query.data ?? [];
   const followed = useFollowedPeers();
+  const serversQuery = useServersQuery();
   const needle = debouncedSearch.trim().toLowerCase();
   const remote = remoteIncidents(followed).filter(
     (incident) =>
@@ -66,7 +68,16 @@ export function IncidentsPage() {
   const visible = all.filter(
     (incident) => matchesSeverity(incident, severity) && (server === "" || incident.target === server),
   );
-  const servers = [...new Set(all.map((incident) => incident.target))].sort();
+  // Every known server belongs in the filter, even one without incidents yet.
+  const localServers = serversQuery.data ?? [];
+  const remoteServers = followed.flatMap((peer) => peer.last_status?.servers ?? []);
+  const servers = [
+    ...new Set([
+      ...localServers.map((server) => server.name),
+      ...remoteServers.map((server) => server.name),
+      ...all.map((incident) => incident.target),
+    ]),
+  ].sort();
   const nothingNarrowsTheList = debouncedSearch.trim() === "" && severity === "" && server === "";
   const emptyText =
     incidents.length === 0 && nothingNarrowsTheList
