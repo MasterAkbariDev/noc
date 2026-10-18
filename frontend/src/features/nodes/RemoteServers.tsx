@@ -1,66 +1,51 @@
-import type { PeerView } from "../../api/types";
-import { Card } from "../../ui/Card";
-import { Section } from "../../ui/Section";
+import type { IncidentSummary, PeerView } from "../../api/types";
+import { ServerCard } from "../servers/ServerCard";
 import { usePeersQuery } from "./queries";
 import { peerStatusText } from "./view";
 
-const AUTOMATION_TEXT: Record<string, string> = {
-  auto_safe: "Safe fixes run automatically",
-  approval_required: "Fixes need approval",
-  observe_only: "Observe only",
-};
-
-export function RemoteServers() {
-  const query = usePeersQuery();
-  if (!query.isSuccess) {
-    return null;
-  }
-  const followed = query.data.filter((peer) => peer.direction === "follows" && peer.status === "paired");
-  if (followed.length === 0) {
-    return null;
-  }
-  return (
-    <Section heading="Servers from other nodes">
-      <p className="m-0 text-sm text-muted">
-        Read only. Each node decides its own fixes, and these are shown here for reference.
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        {followed.map((peer) => (
-          <RemoteNode key={peer.id} peer={peer} />
-        ))}
-      </div>
-    </Section>
-  );
+export function followedPeers(peers: PeerView[]): PeerView[] {
+  return peers.filter((peer) => peer.direction === "follows" && peer.status === "paired");
 }
 
-function RemoteNode({ peer }: { peer: PeerView }) {
+export function useFollowedPeers(): PeerView[] {
+  const query = usePeersQuery();
+  return query.isSuccess ? followedPeers(query.data) : [];
+}
+
+export function remoteIncidents(peers: PeerView[]): IncidentSummary[] {
+  return peers.flatMap((peer) => {
+    const snapshot = peer.last_status;
+    if (snapshot === null) {
+      return [];
+    }
+    return snapshot.incidents.map((incident) => ({
+      ...incident,
+      confidence: null,
+      node: snapshot.node_name,
+    }));
+  });
+}
+
+export function RemoteNodeGroup({ peer }: { peer: PeerView }) {
   const snapshot = peer.last_status;
+  const servers = snapshot?.servers ?? [];
   return (
-    <Card title={snapshot?.node_name ?? peer.name}>
-      <p className="m-0 text-sm">{peerStatusText(peer, Date.now())}</p>
-      {snapshot !== null && (
-        <>
-          <ul className="m-0 mt-3 grid list-none gap-2 p-0">
-            {snapshot.targets.map((target) => (
-              <li key={target.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="break-all">
-                  {target.label ?? target.name}
-                  {target.label && <span className="text-xs text-muted"> ({target.name})</span>}{" "}
-                  <span className="text-xs text-muted">{target.environment}</span>
-                </span>
-                <span className="text-xs text-muted">
-                  {target.halted ? "Halted" : (AUTOMATION_TEXT[target.automation] ?? target.automation)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {snapshot.active_incidents.length > 0 && (
-            <p className="m-0 mt-3 text-sm">
-              Open incidents: {snapshot.active_incidents.map((incident) => incident.title).join("; ")}
-            </p>
-          )}
-        </>
+    <section aria-label={`Servers of ${snapshot?.node_name ?? peer.name}`} className="grid gap-3">
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="m-0 text-base font-semibold">{snapshot?.node_name ?? peer.name}</h3>
+        <span className="text-xs text-muted">Another NOC · {peerStatusText(peer, Date.now())}</span>
+      </header>
+      {servers.length === 0 ? (
+        <p className="m-0 text-sm text-muted">This node reports no servers yet.</p>
+      ) : (
+        <ul aria-label="Server cards" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+          {servers.map((server) => (
+            <li key={server.id} className="min-w-0">
+              <ServerCard server={server} readOnly />
+            </li>
+          ))}
+        </ul>
       )}
-    </Card>
+    </section>
   );
 }

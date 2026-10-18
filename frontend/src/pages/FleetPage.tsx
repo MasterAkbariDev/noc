@@ -12,8 +12,7 @@ import {
   type SshKey,
 } from "../api/fleet";
 import { useSession } from "../auth/session";
-import { NodesSection } from "../features/nodes/NodesAdmin";
-import { EndpointsSection } from "../features/nodes/EndpointsSection";
+import { NodesWorkspace } from "../features/nodes/NodesWorkspace";
 import { AddHostDialog, emptyDraft, type HostDraft } from "../features/fleet/AddHostDialog";
 import { ConfirmCodeDialog, type CodeAction } from "../features/fleet/ConfirmCodeDialog";
 import { GenerateKeyDialog } from "../features/fleet/GenerateKeyDialog";
@@ -37,11 +36,7 @@ export function FleetPage() {
         status="Every server the NOC looks after, reached by SSH or paired with another NOC. The panel only shows commands: you run them on the server yourself."
       />
       {me.role === "admin" ? (
-        <>
-          <NodesSection />
-          <EndpointsSection />
-          <FleetContent />
-        </>
+        <NodesWorkspace ssh={<FleetContent />} />
       ) : (
         <Alert tone="info" title="Only admins manage the fleet">
           Ask an admin to add servers or keys.

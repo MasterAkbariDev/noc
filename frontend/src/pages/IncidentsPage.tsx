@@ -5,7 +5,8 @@ import type { IncidentSummary } from "../api/types";
 import { IncidentFilters } from "../features/incidents/IncidentFilters";
 import { IncidentRows } from "../features/incidents/IncidentRows";
 import { listIncidentRows } from "../features/incidents/api";
-import { FILTER_EMPTY_TEXT, matchesSeverity, parseFilter } from "../features/incidents/filters";
+import { FILTER_EMPTY_TEXT, matchesSeverity, parseFilter, statusesFor } from "../features/incidents/filters";
+import { remoteIncidents, useFollowedPeers } from "../features/nodes/RemoteServers";
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../features/incidents/useDebouncedValue";
 import { useLivePollInterval } from "../live/useEventStream";
 import { useDocumentTitle } from "../shell/useDocumentTitle";
@@ -32,6 +33,7 @@ export function IncidentsPage() {
   const refetchInterval = useLivePollInterval();
   const filter = parseFilter(params.get("filter"));
   const severity = params.get("severity") ?? "";
+  const server = params.get("server") ?? "";
   const search = params.get("q") ?? "";
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
 
@@ -53,8 +55,19 @@ export function IncidentsPage() {
   }
 
   const incidents = query.data ?? [];
-  const visible = incidents.filter((incident) => matchesSeverity(incident, severity));
-  const nothingNarrowsTheList = debouncedSearch.trim() === "" && severity === "";
+  const followed = useFollowedPeers();
+  const needle = debouncedSearch.trim().toLowerCase();
+  const remote = remoteIncidents(followed).filter(
+    (incident) =>
+      statusesFor(filter).includes(incident.status) &&
+      (needle === "" || incident.title.toLowerCase().includes(needle) || incident.target.toLowerCase().includes(needle)),
+  );
+  const all = [...incidents, ...remote];
+  const visible = all.filter(
+    (incident) => matchesSeverity(incident, severity) && (server === "" || incident.target === server),
+  );
+  const servers = [...new Set(all.map((incident) => incident.target))].sort();
+  const nothingNarrowsTheList = debouncedSearch.trim() === "" && severity === "" && server === "";
   const emptyText =
     incidents.length === 0 && nothingNarrowsTheList
       ? FILTER_EMPTY_TEXT[filter]
@@ -67,9 +80,12 @@ export function IncidentsPage() {
         filter={filter}
         severity={severity}
         severities={severityOptions(incidents, severity)}
+        server={server}
+        servers={servers}
         search={search}
         onFilterChange={(value) => setParam("filter", value, false)}
         onSeverityChange={(value) => setParam("severity", value, false)}
+        onServerChange={(value) => setParam("server", value, false)}
         onSearchChange={(value) => setParam("q", value, true)}
       />
       {query.isPending && <Skeleton lines={5} />}

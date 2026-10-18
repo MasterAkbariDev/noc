@@ -1,41 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
-import { addEndpoint, checkEndpoint, getEndpoints, removeEndpoint } from "../../api/client";
-import type { EndpointView } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Card } from "../../ui/Card";
-import { Field, Form, FormActions, FormMessage, TextInput } from "../../ui/Form";
-import { List, ListItem } from "../../ui/List";
-import { RelativeTime } from "../../ui/RelativeTime";
-import { Section } from "../../ui/Section";
-import { useToast } from "../../ui/Toaster";
-import { settingsErrorText } from "../settings/accountView";
+import {useMutation, useQueryClient} from "@tanstack/react-query";
+import {useState, type FormEvent} from "react";
+import {addEndpoint, checkEndpoint, removeEndpoint} from "../../api/client";
+import type {EndpointView} from "../../api/types";
+import {Button} from "../../ui/Button";
+import {Card} from "../../ui/Card";
+import {Field, Form, FormActions, FormMessage, TextInput} from "../../ui/Form";
+import {RelativeTime} from "../../ui/RelativeTime";
+import {useToast} from "../../ui/Toaster";
+import {settingsErrorText} from "../settings/accountView";
 
 const ENDPOINTS_KEY = "endpoints";
 
-export function EndpointsSection() {
-  const query = useQuery({ queryKey: [ENDPOINTS_KEY], queryFn: getEndpoints });
-  return (
-    <Section heading="Servers without NOC">
-      <p className="m-0 text-sm text-muted">
-        Servers that run no NOC. The panel checks them over the network: whether the SSH port answers, and whether the
-        web address responds. Nothing is installed on them.
-      </p>
-      <AddEndpoint />
-      {query.isSuccess && query.data.length > 0 && (
-        <List label="Servers without NOC" gap="sm">
-          {query.data.map((endpoint) => (
-            <ListItem key={endpoint.id}>
-              <EndpointRow endpoint={endpoint} />
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Section>
-  );
-}
-
-function AddEndpoint() {
+export function AddEndpoint() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [name, setName] = useState("");
@@ -92,7 +68,7 @@ function AddEndpoint() {
   );
 }
 
-function EndpointRow({ endpoint }: { endpoint: EndpointView }) {
+export function EndpointRow({ endpoint }: { endpoint: EndpointView }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const check = useMutation({

@@ -63,7 +63,9 @@ function serve(rows: IncidentSummary[]) {
 }
 
 function requestedUrls(): URL[] {
-  return fetchMock.mock.calls.map(([input]) => new URL(String(input), "http://noc.test"));
+  return fetchMock.mock.calls
+    .map(([input]) => new URL(String(input), "http://noc.test"))
+    .filter((url) => url.pathname.startsWith("/api/incidents"));
 }
 
 function LocationProbe() {

@@ -8,6 +8,7 @@ export type IncidentSummary = {
   root_cause_code: string | null;
   confidence: number | null;
   escalation_reason: string | null;
+  node?: string | null;
 };
 
 export type EventView = {
@@ -272,6 +273,7 @@ export type ServerSummary = {
   id: string;
   name: string;
   label?: string | null;
+  tag?: string | null;
   environment: string;
   automation_level: string;
   automation_label: string;
@@ -660,11 +662,22 @@ export type ServerLive = {
 export type PeerDirection = "serves" | "follows";
 export type PeerStatus = "pending" | "paired";
 
+export type RemoteIncident = {
+  id: string;
+  title: string;
+  status: string;
+  severity: string;
+  target: string;
+  opened_at: string;
+  root_cause_code: string | null;
+  escalation_reason: string | null;
+};
+
 export type PeerSnapshot = {
   node_name: string;
   generated_at: string;
-  targets: { name: string; label?: string | null; environment: string; automation: string; halted: boolean }[];
-  active_incidents: { id: string; title: string; status: string; target: string; opened_at: string }[];
+  servers: ServerSummary[];
+  incidents: RemoteIncident[];
 };
 
 export type PeerView = {

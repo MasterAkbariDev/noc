@@ -428,3 +428,7 @@ export function checkEndpoint(id: string): Promise<EndpointView> {
 export function removeEndpoint(id: string): Promise<void> {
   return apiDelete(`/api/endpoints/${encodedId(id)}`);
 }
+
+export function setServerTag(name: string, tag: string | null): Promise<{ name: string; tag: string | null }> {
+  return apiRequest("PUT", `/api/servers/${encodedId(name)}/tag`, { tag });
+}

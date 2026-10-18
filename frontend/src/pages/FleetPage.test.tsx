@@ -99,9 +99,17 @@ function fleet(changes: Partial<Fleet> = {}): Fleet {
   };
 }
 
+function openSshTab() {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /SSH hosts/ }), { button: 0, ctrlKey: false });
+}
+
 function renderAs(role: "viewer" | "operator" | "admin") {
   vi.mocked(useSession).mockReturnValue(sessionFor({ username: "admin", role, via: "session" }));
-  return renderWithProviders(<FleetPage />);
+  const view = renderWithProviders(<FleetPage />);
+  if (role === "admin") {
+    openSshTab();
+  }
+  return view;
 }
 
 beforeEach(() => {

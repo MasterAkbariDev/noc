@@ -10,6 +10,7 @@ function renderFilters(overrides: Partial<Parameters<typeof IncidentFilters>[0]>
   const handlers = {
     onFilterChange: vi.fn(),
     onSeverityChange: vi.fn(),
+    onServerChange: vi.fn(),
     onSearchChange: vi.fn(),
   };
   render(
@@ -17,6 +18,8 @@ function renderFilters(overrides: Partial<Parameters<typeof IncidentFilters>[0]>
       filter="open"
       severity=""
       severities={["critical", "warning"]}
+      server=""
+      servers={["demo-1", "box-95"]}
       search=""
       {...handlers}
       {...overrides}

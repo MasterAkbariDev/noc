@@ -6,9 +6,12 @@ type IncidentFiltersProps = {
   filter: IncidentFilter;
   severity: string;
   severities: string[];
+  server: string;
+  servers: string[];
   search: string;
   onFilterChange: (filter: IncidentFilter) => void;
   onSeverityChange: (severity: string) => void;
+  onServerChange: (server: string) => void;
   onSearchChange: (search: string) => void;
 };
 
@@ -16,9 +19,12 @@ export function IncidentFilters({
   filter,
   severity,
   severities,
+  server,
+  servers,
   search,
   onFilterChange,
   onSeverityChange,
+  onServerChange,
   onSearchChange,
 }: IncidentFiltersProps) {
   return (
@@ -38,6 +44,18 @@ export function IncidentFilters({
             ...severities.map((value) => ({ value, label: severityView(value).label })),
           ]}
           onChange={(event) => onSeverityChange(event.target.value)}
+        />
+      </Field>
+      <Field label="Server" compact>
+        <Select
+          compact
+          aria-label="Server"
+          value={server}
+          options={[
+            { value: "", label: "All servers" },
+            ...servers.map((value) => ({ value, label: value })),
+          ]}
+          onChange={(event) => onServerChange(event.target.value)}
         />
       </Field>
       <Field label="Search" compact className="flex-1 sm:max-w-xs">

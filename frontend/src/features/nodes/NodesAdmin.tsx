@@ -1,44 +1,17 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
-import { createJoinCode, joinPeer, refreshPeer, removePeer } from "../../api/client";
-import type { PeerView } from "../../api/types";
-import { Button } from "../../ui/Button";
-import { Card } from "../../ui/Card";
-import { Field, Form, FormActions, FormMessage, TextArea, TextInput } from "../../ui/Form";
-import { List, ListItem } from "../../ui/List";
-import { RelativeTime } from "../../ui/RelativeTime";
-import { Section } from "../../ui/Section";
-import { useToast } from "../../ui/Toaster";
-import { settingsErrorText } from "../settings/accountView";
-import { PEERS_KEY, usePeersQuery } from "./queries";
-import { directionLabel, peerStatusText } from "./view";
+import {useMutation, useQueryClient} from "@tanstack/react-query";
+import {useState, type FormEvent} from "react";
+import {createJoinCode, joinPeer, refreshPeer, removePeer} from "../../api/client";
+import type {PeerView} from "../../api/types";
+import {Button} from "../../ui/Button";
+import {Card} from "../../ui/Card";
+import {Field, Form, FormActions, FormMessage, TextArea, TextInput} from "../../ui/Form";
+import {RelativeTime} from "../../ui/RelativeTime";
+import {useToast} from "../../ui/Toaster";
+import {settingsErrorText} from "../settings/accountView";
+import {PEERS_KEY} from "./queries";
+import {directionLabel, peerStatusText} from "./view";
 
-export function NodesSection() {
-  const query = usePeersQuery();
-  return (
-    <Section heading="NOC nodes">
-      <p className="m-0 text-sm text-muted">
-        Another NOC you want to show here, or a NOC that should show this one. Each auth token works once and expires
-        after ten minutes.
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <AddNode />
-        <CreateToken />
-      </div>
-      {query.isSuccess && query.data.length > 0 && (
-        <List label="NOC nodes" gap="sm">
-          {query.data.map((peer) => (
-            <ListItem key={peer.id}>
-              <PeerRow peer={peer} />
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Section>
-  );
-}
-
-function AddNode() {
+export function AddNode() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [label, setLabel] = useState("");
@@ -83,7 +56,7 @@ function AddNode() {
   );
 }
 
-function CreateToken() {
+export function CreateToken() {
   const toast = useToast();
   const [label, setLabel] = useState("");
   const [token, setToken] = useState<string | null>(null);
@@ -122,7 +95,7 @@ function CreateToken() {
   );
 }
 
-function PeerRow({ peer }: { peer: PeerView }) {
+export function PeerRow({ peer }: { peer: PeerView }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const refresh = useMutation({

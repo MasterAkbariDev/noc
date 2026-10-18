@@ -13,20 +13,25 @@ const STATUS_BORDERS: Record<ServerStatus, string> = {
   unknown: "border-t-unknown",
 };
 
-export function ServerCard({ server }: { server: ServerSummary }) {
+export function ServerCard({ server, readOnly = false }: { server: ServerSummary; readOnly?: boolean }) {
   const headline = headlineWithoutIncidents(server.headline, server.open_incidents);
   return (
-    <Card className={cx("flex h-full flex-col gap-3 border-t-4", STATUS_BORDERS[server.status])}>
+    <Card className={cx("flex h-full flex-col gap-3 rounded-card border-t-4 shadow-sm", STATUS_BORDERS[server.status])}>
       <div className="flex flex-wrap items-center gap-2">
         <ServerStatusDot status={server.status} />
         <EnvironmentBadge environment={server.environment} />
+        {server.tag && <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{server.tag}</span>}
         {server.halted && <HaltedBadge />}
       </div>
       <div className="grid gap-0.5">
         <h2 className="m-0 text-lg font-semibold break-words">
-          <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:text-accent hover:underline">
-            {server.label ?? server.name}
-          </Link>
+          {readOnly ? (
+            server.label ?? server.name
+          ) : (
+            <Link to={`/servers/${encodeURIComponent(server.id)}`} className="underline-offset-4 hover:text-accent hover:underline">
+              {server.label ?? server.name}
+            </Link>
+          )}
         </h2>
         {server.label && <p className="m-0 text-xs text-muted break-all">{server.name}</p>}
       </div>
@@ -36,7 +41,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         <AutomationLevel level={server.automation_level} label={server.automation_label} />
         <OpenIncidents count={server.open_incidents} worstSeverity={server.worst_severity} />
       </div>
-      <ServerAdmin server={server} />
+      {!readOnly && <ServerAdmin server={server} />}
     </Card>
   );
 }

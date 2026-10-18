@@ -1,6 +1,6 @@
 import type { IncidentSummary } from "../../api/types";
 import { percentFromFraction } from "../../lib/format";
-import { DataTable, IncidentStatusBadge, RelativeTime, SeverityBadge, Term, type Column } from "../../ui";
+import { Badge, DataTable, IncidentStatusBadge, RelativeTime, SeverityBadge, Term, type Column } from "../../ui";
 import { rootCauseLabel } from "./filters";
 import { IncidentLink } from "../incident/IncidentLink";
 
@@ -14,11 +14,17 @@ const COLUMNS: Column<IncidentSummary>[] = [
   {
     key: "title",
     header: "Title",
-    cell: (incident) => (
-      <IncidentLink id={incident.id} className="font-medium text-accent hover:underline">
-        {incident.title}
-      </IncidentLink>
-    ),
+    cell: (incident) =>
+      incident.node ? (
+        <span className="flex flex-wrap items-center gap-2 font-medium">
+          {incident.title}
+          <Badge tone="info">{incident.node}</Badge>
+        </span>
+      ) : (
+        <IncidentLink id={incident.id} className="font-medium text-accent hover:underline">
+          {incident.title}
+        </IncidentLink>
+      ),
     className: "break-words font-semibold sm:min-w-[14rem]",
     labelOnPhone: false,
   },
