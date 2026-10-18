@@ -63,3 +63,18 @@ async def test_new_target_rewrites_only_on_next_refresh(
     assert file_state(tmp_path) != before
     node = json.loads((tmp_path / "node.json").read_text())
     assert [group["labels"]["target"] for group in node] == ["demo-1", "demo-2"]
+
+
+async def test_a_target_without_a_sentinel_is_not_scraped_for_one(
+    sessions: SessionFactory, tmp_path: Path
+) -> None:
+    async with transaction(sessions) as session:
+        await add_target(session, "server-95", "10.0.0.9", "", Environment.LAB, KEY_ID)
+
+    await refresh_file_sd(sessions, tmp_path)
+
+    labels = {"target": "server-95", "env": "lab"}
+    assert json.loads((tmp_path / "node.json").read_text()) == [
+        {"targets": ["10.0.0.9:9100"], "labels": labels}
+    ]
+    assert json.loads((tmp_path / "sentinel.json").read_text()) == []

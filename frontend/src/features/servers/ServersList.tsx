@@ -6,7 +6,7 @@ import { EmptyState } from "../../ui/EmptyState";
 import { ErrorState } from "../../ui/ErrorState";
 import { List, ListItem } from "../../ui/List";
 import { Skeleton } from "../../ui/Skeleton";
-import { RemoteServerCard, useFollowedPeers } from "../nodes/RemoteServers";
+import { RemoteServerCard, RemoteSyncFooter, useFollowedPeers } from "../nodes/RemoteServers";
 import { EndpointCard } from "./EndpointCard";
 import { FleetSummary } from "./FleetSummary";
 import { ServerCard } from "./ServerCard";
@@ -63,7 +63,7 @@ export function ServersList() {
     ...followed.flatMap((peer) =>
       (peer.last_status?.endpoints ?? []).map((endpoint) => (
         <ListItem key={`peer-${peer.id}-endpoint-${endpoint.name}`} className="min-w-0">
-          <EndpointCard endpoint={endpoint} node={peer.last_status?.node_name ?? peer.name} />
+          <EndpointCard endpoint={endpoint} node={peer.last_status?.node_name ?? peer.name} footer={<RemoteSyncFooter peer={peer} />} />
         </ListItem>
       )),
     ),

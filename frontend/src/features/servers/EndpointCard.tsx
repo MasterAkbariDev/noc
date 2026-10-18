@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { checkEndpoint } from "../../api/client";
 import type { EndpointView } from "../../api/types";
 import { useSession } from "../../auth/session";
@@ -12,10 +13,12 @@ import { settingsErrorText } from "../settings/accountView";
 type EndpointCardProps = {
   endpoint: Omit<EndpointView, "id"> & { id?: string };
   node?: string;
+  // Controls for an endpoint from another NOC, shown in place of the check button.
+  footer?: ReactNode;
 };
 
 // A server without a NOC: its SSH and web checks, with a button to check it again now.
-export function EndpointCard({ endpoint, node }: EndpointCardProps) {
+export function EndpointCard({ endpoint, node, footer }: EndpointCardProps) {
   const { me } = useSession();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -49,6 +52,7 @@ export function EndpointCard({ endpoint, node }: EndpointCardProps) {
           Checked <RelativeTime iso={endpoint.last_checked_at} />
         </p>
       )}
+      {footer}
       {canCheck && (
         <div className="flex justify-end border-t border-border pt-3">
           <Button size="sm" aria-label={`Check ${endpoint.name}`} disabled={check.isPending} onClick={() => check.mutate()}>

@@ -86,7 +86,41 @@ function RemoteFooter({ peer, server }: { peer: PeerView; server: ServerSummary 
   );
 }
 
-// One server from another NOC, shown as a normal card.
+// One server from another NOC, shown as a normal card. The "current" tag belongs to the
+// panel's own server only, so the tag another NOC reports is not shown here.
 export function RemoteServerCard({ peer, server }: { peer: PeerView; server: ServerSummary }) {
-  return <ServerCard server={server} readOnly node={nodeNameOf(peer)} footer={<RemoteFooter peer={peer} server={server} />} />;
+  return (
+    <ServerCard
+      server={{ ...server, tag: null }}
+      readOnly
+      node={nodeNameOf(peer)}
+      footer={<RemoteFooter peer={peer} server={server} />}
+    />
+  );
+}
+
+// A server without NOC on another node: its checks are refreshed by syncing that node.
+export function RemoteSyncFooter({ peer }: { peer: PeerView }) {
+  const { me } = useSession();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const node = nodeNameOf(peer);
+  const sync = useMutation({
+    mutationFn: () => refreshPeer(peer.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [PEERS_KEY] });
+      toast.success(`Synced ${node}.`);
+    },
+    onError: (error) => toast.error(settingsErrorText(error)),
+  });
+  if (me.role !== "admin") {
+    return null;
+  }
+  return (
+    <div className="flex justify-end border-t border-border pt-3">
+      <Button size="sm" aria-label={`Sync ${node}`} disabled={sync.isPending} onClick={() => sync.mutate()}>
+        Sync now
+      </Button>
+    </div>
+  );
 }

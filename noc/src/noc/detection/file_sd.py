@@ -19,7 +19,9 @@ def target_groups(targets: list[Target]) -> dict[str, list[dict[str, object]]]:
     for target in sorted(targets, key=lambda t: t.name):
         labels = {"target": target.name, "env": target.environment}
         node.append({"targets": [f"{target.address}:{NODE_EXPORTER_PORT}"], "labels": labels})
-        sentinel.append({"targets": [urlsplit(target.sentinel_url).netloc], "labels": labels})
+        # A target without a sentinel is only watched through its node_exporter.
+        if target.sentinel_url:
+            sentinel.append({"targets": [urlsplit(target.sentinel_url).netloc], "labels": labels})
     return {"node.json": node, "sentinel.json": sentinel}
 
 
