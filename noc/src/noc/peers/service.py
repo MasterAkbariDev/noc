@@ -16,7 +16,7 @@ from noc.api.servers import load_server_summaries
 from noc.audit.chain import append_audit
 from noc.config import Settings
 from noc.db.base import utc_now
-from noc.db.models import Incident, Peer, Target
+from noc.db.models import Endpoint, Incident, Peer, Target
 from noc.peers.codes import make_code, parse_code
 from noc.peers.signing import HEADER_PEER, HEADER_SIGNATURE, HEADER_TIMESTAMP, sign
 from noc.secret_store import SecretStore
@@ -205,10 +205,24 @@ async def local_status(
             .limit(SHARED_INCIDENTS)
         )
     ).all()
+    endpoints = list(await session.scalars(select(Endpoint).order_by(Endpoint.name)))
     return {
         "node_name": settings.node_name or socket.gethostname(),
         "generated_at": utc_now().isoformat(),
         "servers": [server.model_dump(mode="json") for server in servers],
+        "endpoints": [
+            {
+                "name": endpoint.name,
+                "host": endpoint.host,
+                "ssh_port": endpoint.ssh_port,
+                "url": endpoint.url,
+                "last_checked_at": endpoint.last_checked_at.isoformat()
+                if endpoint.last_checked_at
+                else None,
+                "last_result": endpoint.last_result,
+            }
+            for endpoint in endpoints
+        ],
         "incidents": [
             {
                 "id": str(incident.id),

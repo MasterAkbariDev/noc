@@ -105,9 +105,25 @@ async def load_peer(session: AsyncSession, peer_id: uuid.UUID) -> Peer:
 ViewerPrincipal = Annotated[Principal, Depends(require_role(Role.VIEWER))]
 
 
+STALE_AFTER_SECONDS = 60
+
+
 @peers_router.get("")
-async def list_peers(viewer: ViewerPrincipal, session: Session) -> list[PeerView]:
-    rows = await session.scalars(select(Peer).order_by(Peer.created_at))
+async def list_peers(
+    request: Request, viewer: ViewerPrincipal, session: Session, store: Store
+) -> list[PeerView]:
+    rows = list(await session.scalars(select(Peer).order_by(Peer.created_at)))
+    now = utc_now()
+    for peer in rows:
+        if peer.direction != "follows" or peer.status != PAIRED:
+            continue
+        stale = (
+            peer.last_seen_at is None
+            or (now - peer.last_seen_at).total_seconds() > STALE_AFTER_SECONDS
+        )
+        if stale:
+            await refresh_status(session, store, peer, viewer.username, peer_transport(request))
+    await session.commit()
     return [peer_view(peer) for peer in rows]
 
 
