@@ -11,6 +11,7 @@ from noc.db.base import utc_now
 from noc.db.session import SessionFactory, transaction
 from noc.domain.incident_status import IncidentStatus, InvalidTransition
 from noc.llm.keys import KeyRefused
+from noc.notify.cards import card_keyboard, card_text, load_card
 from noc.notify.screens import (
     ApprovalRow,
     IncidentRow,
@@ -29,11 +30,11 @@ from noc.notify.screens import (
     render_close_confirm,
     render_confirm,
     render_help,
-    render_incident,
     render_incidents,
     render_models,
     render_overview,
     render_servers,
+    with_back,
 )
 from noc.notify.settings import (
     MAX_ADMINS,
@@ -95,6 +96,7 @@ class Send:
     chat_id: str
     text: str
     keyboard: Keyboard | None = None
+    html: bool = False
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,7 @@ class Edit:
     message_id: int
     text: str
     keyboard: Keyboard | None = None
+    html: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,10 +126,17 @@ class Outcome:
 
 
 class BotApi(Protocol):
-    async def send(self, chat_id: str, text: str, keyboard: Keyboard | None = None) -> None: ...
+    async def send(
+        self, chat_id: str, text: str, keyboard: Keyboard | None = None, html: bool = False
+    ) -> None: ...
 
     async def edit(
-        self, chat_id: str, message_id: int, text: str, keyboard: Keyboard | None = None
+        self,
+        chat_id: str,
+        message_id: int,
+        text: str,
+        keyboard: Keyboard | None = None,
+        html: bool = False,
     ) -> None: ...
 
     async def answer(self, callback_id: str, text: str) -> None: ...
@@ -377,9 +387,11 @@ async def deliver_replies(api: BotApi, replies: list[Reply]) -> None:
         try:
             match reply:
                 case Send():
-                    await api.send(reply.chat_id, reply.text, reply.keyboard)
+                    await api.send(reply.chat_id, reply.text, reply.keyboard, html=reply.html)
                 case Edit():
-                    await api.edit(reply.chat_id, reply.message_id, reply.text, reply.keyboard)
+                    await api.edit(
+                        reply.chat_id, reply.message_id, reply.text, reply.keyboard, html=reply.html
+                    )
                 case Answer():
                     await api.answer(reply.callback_id, reply.text)
         except TelegramError as failure:
@@ -391,10 +403,23 @@ def is_screen_update(update: TelegramUpdate) -> bool:
     return query is not None and query.data.startswith(SCREEN_PREFIXES)
 
 
-def edited(query: CallbackQuery, text: str, keyboard: Keyboard) -> list[Reply]:
+def edited(query: CallbackQuery, text: str, keyboard: Keyboard, html: bool = False) -> list[Reply]:
     if query.message is None:
         return []
-    return [Edit(str(query.message.chat.id), query.message.message_id, text, keyboard)]
+    return [Edit(str(query.message.chat.id), query.message.message_id, text, keyboard, html)]
+
+
+async def incident_screen(
+    session: AsyncSession, incident_id: uuid.UUID, panel_url: str
+) -> tuple[str, Keyboard] | None:
+    card = await load_card(session, incident_id, await pending_action_of(session, incident_id))
+    if card is None:
+        return None
+    keyboard = card_keyboard(card, "")
+    if card.story.status == IncidentStatus.ESCALATED.value:
+        keyboard.append([Button(text="🔒 Close as handled", callback_data=f"cl:{incident_id}")])
+    keyboard.append([Button(text="🔄 Refresh", callback_data=f"i:{incident_id}")])
+    return card_text(card), with_back(keyboard, panel_url, f"/incidents/{incident_id}")
 
 
 def uuid_or_none(raw: str) -> uuid.UUID | None:
@@ -445,14 +470,11 @@ async def screen_outcome(
         if decision == "cl":
             # For close, the id after "do:cl:" is the incident id.
             note = await close_from_bot(session, action_id, actor)
-            row = await load_incident(session, action_id)
-            if row is None:
+            screen = await incident_screen(session, action_id, settings.panel_url)
+            if screen is None:
                 text, keyboard = render_incidents_menu(await load_incidents(session))
-            else:
-                text, keyboard = render_incident(
-                    row, await pending_action_of(session, action_id), settings.panel_url
-                )
-            return Outcome([Answer(query.id, note), *edited(query, text, keyboard)])
+                return Outcome([Answer(query.id, note), *edited(query, text, keyboard)])
+            return Outcome([Answer(query.id, note), *edited(query, *screen, html=True)])
         note = await decide(
             session, action_id, "approved" if decision == "ok" else "rejected", actor
         )
@@ -468,12 +490,10 @@ async def screen_outcome(
         text, keyboard = render_close_confirm(row)
         return Outcome([Answer(query.id, ""), *edited(query, text, keyboard)])
     if kind == "i":
-        row = await load_incident(session, identifier)
-        if row is None:
+        screen = await incident_screen(session, identifier, settings.panel_url)
+        if screen is None:
             return Outcome([Answer(query.id, "That incident is gone.")])
-        pending = await pending_action_of(session, identifier)
-        text, keyboard = render_incident(row, pending, settings.panel_url)
-        return Outcome([Answer(query.id, ""), *edited(query, text, keyboard)])
+        return Outcome([Answer(query.id, ""), *edited(query, *screen, html=True)])
     if kind in ("a", "y"):
         found: ApprovalRow | None = await load_approval(session, identifier)
         if found is None:

@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from noc.db.models import Incident, IncidentEvent, Target
-from noc.notify.outbox import event_kind, message_for, wanted
+from noc.db.models import IncidentEvent
+from noc.notify.outbox import event_kind, headline, wanted
 from noc.notify.settings import NotifyEvents
 from noc.notify.telegram import scrub, valid_token, valid_user_handle
 
@@ -20,22 +20,6 @@ def event(kind: str, payload: dict[str, object] | None = None) -> IncidentEvent:
         actor="test",
         payload=payload or {},
     )
-
-
-def incident(**changes: object) -> Incident:
-    values: dict[str, object] = {
-        "id": uuid.UUID("11111111-2222-3333-4444-555555555555"),
-        "title": "ServiceDown on demo-1/svc:demo-shop",
-        "status": "ESCALATED",
-        "escalation_reason": "unknown_root_cause",
-        "root_cause_code": "service_crashed",
-        "confidence": 0.85,
-    }
-    values.update(changes)
-    return Incident(**values)
-
-
-TARGET = Target(name="demo-1", environment="lab")
 
 
 def test_bot_tokens_and_user_handles_are_checked() -> None:
@@ -78,30 +62,8 @@ def test_only_chosen_kinds_are_wanted() -> None:
     assert not wanted(event("report_generated"), choice)
 
 
-def test_escalation_message_has_reason_cause_and_link() -> None:
-    text = message_for(
-        event("state_changed", {"to": "ESCALATED", "reason": "unknown_root_cause"}),
-        incident(),
-        TARGET,
-        "https://noc.example",
-    )
-    assert text.splitlines() == [
-        "[NOC] Escalated to a person: ServiceDown on demo-1/svc:demo-shop",
-        "Server: demo-1 (lab)",
-        "Reason: unknown root cause",
-        "Root cause: service crashed (85%)",
-        "https://noc.example/incidents/11111111-2222-3333-4444-555555555555",
-    ]
-
-
-def test_message_without_panel_url_or_diagnosis_stays_short() -> None:
-    text = message_for(
-        event("approval_requested"),
-        incident(root_cause_code=None, confidence=None, escalation_reason=None),
-        TARGET,
-        "",
-    )
-    assert text.splitlines() == [
-        "[NOC] Approval needed: ServiceDown on demo-1/svc:demo-shop",
-        "Server: demo-1 (lab)",
-    ]
+def test_headlines_name_the_event() -> None:
+    assert headline(event("incident_opened")) == "New incident"
+    assert headline(event("approval_requested")) == "Approval needed"
+    assert headline(event("state_changed", {"to": "ESCALATED"})) == "Escalated to a person"
+    assert headline(event("state_changed", {"to": "SELF_RESOLVED"})) == "Resolved on its own"

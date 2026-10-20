@@ -85,20 +85,29 @@ class FakeBot:
         self.pending: list[TelegramUpdate] = []
         self.offsets: list[int | None] = []
         self.sent: list[tuple[str, str]] = []
+        self.keyboards: list[Keyboard | None] = []
         self.tokens: list[str] = []
 
     def factory(self, token: str, proxy: str | None) -> "FakeBot":
         self.tokens.append(token)
         return self
 
-    async def send(self, chat_id: str, text: str, keyboard: Keyboard | None = None) -> None:
+    async def send(
+        self, chat_id: str, text: str, keyboard: Keyboard | None = None, html: bool = False
+    ) -> None:
         if self.failures > 0:
             self.failures -= 1
             raise TelegramError("HTTP 502: bad gateway")
         self.sent.append((chat_id, text))
+        self.keyboards.append(keyboard)
 
     async def edit(
-        self, chat_id: str, message_id: int, text: str, keyboard: Keyboard | None = None
+        self,
+        chat_id: str,
+        message_id: int,
+        text: str,
+        keyboard: Keyboard | None = None,
+        html: bool = False,
     ) -> None:
         self.sent.append((chat_id, text))
 
@@ -227,7 +236,7 @@ async def test_admins_manage_the_bot_from_telegram_and_it_is_audited(
     assert actions == ["telegram_admin_linked", "telegram_admin_added", "telegram_paused"]
 
 
-async def test_escalation_reaches_each_linked_admin_once_with_a_link(
+async def test_escalation_reaches_each_linked_admin_once_with_a_panel_button(
     client: httpx.AsyncClient, sessions: SessionFactory, settings: Settings
 ) -> None:
     await configure(client)
@@ -240,8 +249,14 @@ async def test_escalation_reaches_each_linked_admin_once_with_a_link(
     assert await deliver_once(sessions, store, bot.factory) == 0
     [(chat_id, text)] = bot.sent
     assert chat_id == str(ADMIN)
-    assert text.startswith("[NOC] Escalated to a person: ServiceDown on demo-1/svc:demo-shop")
-    assert f"https://noc.example/incidents/{incident.id}" in text
+    assert text.startswith(
+        "🚨 <b>Escalated to a person</b>\n<b>ServiceDown on demo-1/svc:demo-shop</b>"
+    )
+    assert "<b>What you should do</b>" in text
+    assert "https://" not in text
+    keyboard = bot.keyboards[-1]
+    assert keyboard is not None
+    assert keyboard[-1][0].url == f"https://noc.example/incidents/{incident.id}"
     async with sessions() as session:
         statuses = list(await session.scalars(select(Notification.status)))
     assert sorted(statuses) == [SENT, SENT, SENT]

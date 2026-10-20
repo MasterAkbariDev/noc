@@ -101,9 +101,16 @@ DID_BY_STATUS: tuple[tuple[tuple[str, ...], str], ...] = (
 
 @router.get("/{incident_id}/story")
 async def get_incident_story(incident_id: uuid.UUID, session: Session) -> IncidentStory:
+    story = await load_story(session, incident_id)
+    if story is None:
+        raise HTTPException(404, "incident not found")
+    return story
+
+
+async def load_story(session: AsyncSession, incident_id: uuid.UUID) -> IncidentStory | None:
     incident = await session.get(Incident, incident_id)
     if incident is None:
-        raise HTTPException(404, "incident not found")
+        return None
     target = await session.get_one(Target, incident.target_id)
     alert = await session.scalar(
         select(AlertEvent)

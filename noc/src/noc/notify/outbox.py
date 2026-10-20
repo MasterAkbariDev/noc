@@ -8,8 +8,10 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from noc.db.base import utc_now
-from noc.db.models import Incident, IncidentEvent, Notification, Target
+from noc.db.models import IncidentEvent, Notification
 from noc.db.session import SessionFactory, transaction
+from noc.notify.cards import card_keyboard, card_text, load_card
+from noc.notify.screens import pending_action_of
 from noc.notify.settings import (
     BotAdmin,
     NotifyEvents,
@@ -19,7 +21,7 @@ from noc.notify.settings import (
     read_token,
     recipients,
 )
-from noc.notify.telegram import TelegramError, TelegramSender
+from noc.notify.telegram import Keyboard, TelegramError, TelegramSender
 from noc.secret_store import SecretStore
 
 logger = structlog.get_logger(__name__)
@@ -44,7 +46,9 @@ RESOLVED_STATES: Final = frozenset({"RESOLVED", "SELF_RESOLVED"})
 
 
 class Sender(Protocol):
-    async def send(self, chat_id: str, text: str) -> None: ...
+    async def send(
+        self, chat_id: str, text: str, keyboard: Keyboard | None = None, html: bool = False
+    ) -> None: ...
 
 
 SenderFactory = Callable[[str, str | None], Sender]
@@ -57,6 +61,7 @@ class Outgoing:
     chat_id: str
     attempts: int
     text: str
+    keyboard: Keyboard
 
 
 def recipient_channel(user_id: int) -> str:
@@ -101,20 +106,14 @@ def headline(event: IncidentEvent) -> str:
     return "Resolved" if target == "RESOLVED" else "Resolved on its own"
 
 
-def message_for(event: IncidentEvent, incident: Incident, target: Target, panel_url: str) -> str:
-    lines = [
-        f"[NOC] {headline(event)}: {incident.title}",
-        f"Server: {target.name} ({target.environment})",
-    ]
-    reason = event.payload.get("reason") or incident.escalation_reason
-    if event.type == "state_changed" and reason:
-        lines.append(f"Reason: {str(reason).replace('_', ' ')}")
-    if incident.root_cause_code:
-        confidence = f" ({incident.confidence:.0%})" if incident.confidence is not None else ""
-        lines.append(f"Root cause: {incident.root_cause_code.replace('_', ' ')}{confidence}")
-    if panel_url:
-        lines.append(f"{panel_url}/incidents/{incident.id}")
-    return "\n".join(lines)
+async def message_for(
+    session: AsyncSession, event: IncidentEvent, panel_url: str
+) -> tuple[str, Keyboard]:
+    pending_action = await pending_action_of(session, event.incident_id)
+    card = await load_card(session, event.incident_id, pending_action)
+    if card is None:
+        return headline(event), []
+    return card_text(card, headline(event)), card_keyboard(card, panel_url)
 
 
 async def pending(
@@ -159,10 +158,10 @@ async def collect(
             if not wanted(event, settings.events):
                 await record(session, event.id, channel, SENT, attempts, None, now)
                 continue
-            incident = await session.get_one(Incident, event.incident_id)
-            target = await session.get_one(Target, incident.target_id)
-            text = message_for(event, incident, target, settings.panel_url)
-            outgoing.append(Outgoing(event.id, channel, str(admin.user_id), attempts, text))
+            text, keyboard = await message_for(session, event, settings.panel_url)
+            outgoing.append(
+                Outgoing(event.id, channel, str(admin.user_id), attempts, text, keyboard)
+            )
     return outgoing
 
 
@@ -214,7 +213,7 @@ async def deliver_once(
     results: list[tuple[Outgoing, str | None]] = []
     for item in outgoing:
         try:
-            await sender.send(item.chat_id, item.text)
+            await sender.send(item.chat_id, item.text, item.keyboard or None, html=True)
         except TelegramError as failure:
             logger.warning("telegram_send_failed", event_id=item.event_id, error=str(failure))
             results.append((item, str(failure)))

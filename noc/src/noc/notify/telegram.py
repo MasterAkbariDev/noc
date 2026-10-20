@@ -97,33 +97,42 @@ def keyboard_markup(keyboard: Keyboard) -> dict[str, Any]:
     }
 
 
+def message_body(text: str, keyboard: Keyboard | None, html: bool) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "text": text if html else text[:MESSAGE_MAX_LENGTH],
+        "disable_web_page_preview": True,
+    }
+    if html:
+        body["parse_mode"] = "HTML"
+    if keyboard is not None:
+        body["reply_markup"] = keyboard_markup(keyboard)
+    return body
+
+
 class TelegramSender:
     def __init__(self, token: str, proxy: str | None = None, api_base: str = API_BASE) -> None:
         self._token = token
         self._proxy = proxy
         self._api_base = api_base
 
-    async def send(self, chat_id: str, text: str, keyboard: Keyboard | None = None) -> None:
-        body: dict[str, Any] = {
-            "chat_id": chat_id,
-            "text": text[:MESSAGE_MAX_LENGTH],
-            "disable_web_page_preview": True,
-        }
-        if keyboard is not None:
-            body["reply_markup"] = keyboard_markup(keyboard)
+    async def send(
+        self, chat_id: str, text: str, keyboard: Keyboard | None = None, html: bool = False
+    ) -> None:
+        body = message_body(text, keyboard, html)
+        body["chat_id"] = chat_id
         await self._call("sendMessage", body, SEND_TIMEOUT_SECONDS)
 
     async def edit(
-        self, chat_id: str, message_id: int, text: str, keyboard: Keyboard | None = None
+        self,
+        chat_id: str,
+        message_id: int,
+        text: str,
+        keyboard: Keyboard | None = None,
+        html: bool = False,
     ) -> None:
-        body: dict[str, Any] = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text[:MESSAGE_MAX_LENGTH],
-            "disable_web_page_preview": True,
-        }
-        if keyboard is not None:
-            body["reply_markup"] = keyboard_markup(keyboard)
+        body = message_body(text, keyboard, html)
+        body["chat_id"] = chat_id
+        body["message_id"] = message_id
         await self._call("editMessageText", body, SEND_TIMEOUT_SECONDS)
 
     async def answer(self, callback_id: str, text: str) -> None:

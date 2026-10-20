@@ -162,30 +162,6 @@ def render_incidents(rows: list[IncidentRow], panel_url: str) -> tuple[str, Keyb
     return "\n".join(lines), with_back(keyboard, panel_url)
 
 
-def render_incident(
-    row: IncidentRow, pending: uuid.UUID | None, panel_url: str
-) -> tuple[str, Keyboard]:
-    icon = STATUS_ICON.get(row.status, "❔")
-    lines = [
-        f"{icon} {row.title}",
-        f"Status: {row.status.lower()}",
-        f"Server: {row.target}",
-        f"Opened: {row.opened_at:%Y-%m-%d %H:%M} UTC",
-    ]
-    if row.root_cause:
-        confidence = f" ({row.confidence:.0%})" if row.confidence is not None else ""
-        lines.append(f"Cause: {row.root_cause}{confidence}")
-    if row.reason:
-        lines.append(f"Why a person is needed: {row.reason.replace('_', ' ')}")
-    keyboard: Keyboard = []
-    if pending is not None:
-        keyboard.append([Button(text="✅ Review the fix", callback_data=f"a:{pending}")])
-    if row.status == IncidentStatus.ESCALATED.value:
-        keyboard.append([Button(text="🔒 Close as handled", callback_data=f"cl:{row.id}")])
-    keyboard.append([Button(text="🔄 Refresh", callback_data=f"i:{row.id}")])
-    return "\n".join(lines), with_back(keyboard, panel_url, f"/incidents/{row.id}")
-
-
 def render_approvals(rows: list[ApprovalRow]) -> tuple[str, Keyboard]:
     if not rows:
         return "✅ Nothing is waiting for approval.", with_back([])
