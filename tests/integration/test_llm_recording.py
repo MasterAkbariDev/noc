@@ -39,5 +39,8 @@ async def test_a_failed_call_is_recorded_without_the_provider_text(
     async with sessions() as session:
         row = await session.scalar(select(LlmCall))
     assert row is not None
-    assert row.error == "ProviderRequestRejected (HTTP 400)"
+    assert row.error == (
+        "ProviderRequestRejected (HTTP 400): groq: request rejected (400): "
+        "Incorrect API key provided: [key]"
+    )
     assert "gsk_" not in (row.error or "")

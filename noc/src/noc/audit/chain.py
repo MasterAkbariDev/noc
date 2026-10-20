@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import select, text
@@ -19,7 +20,8 @@ def entry_hash(prev_hash: str, record: dict[str, Any]) -> str:
 
 def hashed_fields(entry: AuditEntry) -> dict[str, Any]:
     return {
-        "ts": entry.ts.isoformat(),
+        # Hash the time in UTC so the chain does not depend on the database's timezone.
+        "ts": entry.ts.astimezone(UTC).isoformat(),
         "actor": entry.actor,
         "action": entry.action,
         "subject": entry.subject,
